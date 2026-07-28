@@ -28,6 +28,7 @@ import {
   AUTH_UNCONFIRMED_LOGIN,
 } from '@/lib/auth-confirmation-copy';
 import { downloadInvoiceAsPdf, openInvoicePdfForPrint } from '@/lib/pdf-export';
+import { DocumentScannerModal } from '@/components/scanner/DocumentScannerModal';
 
 type AuthFeedback = { type: 'success' | 'error'; message: string } | null;
 
@@ -79,6 +80,7 @@ export default function Home() {
   const [customerLocalPhone, setCustomerLocalPhone] = useState('');
   const [customerInvoices, setCustomerInvoices] = useState<any[]>([]);
   const [isUploading, setIsUploading] = useState(false);
+  const [showDocumentScanner, setShowDocumentScanner] = useState(false);
 
   // حفظ رسائل الواتساب المخصصة لكل فاتورة
   const [whatsappMessages, setWhatsappMessages] = useState<{ [key: string]: string }>({});
@@ -744,30 +746,31 @@ export default function Home() {
     }
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  /** يقرأ Blob ويحوّله إلى data URL (لاستخدامه في وضع الضيف بدون Supabase). */
+  const blobToDataUrl = (blob: Blob): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = () => reject(reader.error ?? new Error('تعذّر قراءة ملف المستند.'));
+      reader.readAsDataURL(blob);
+    });
 
+  /**
+   * يُستدعى بعد أن يلتقط الماسح الضوئي الذكي (DocumentScannerModal) المستند
+   * ويصحّح منظوره ويحوّله إلى صورة JPEG نظيفة + ملف PDF جاهزين. يرمي خطأً
+   * عند الفشل كي تعرضه نافذة الماسح مباشرةً للمستخدم مع خيار إعادة المحاولة.
+   */
+  const handleDocumentCaptured = async ({ jpegBlob, pdfBlob }: { jpegBlob: Blob; pdfBlob: Blob }) => {
     if (!customerLocalPhone.trim()) {
-      alert('يرجى كتابة رقم جوال العميل أولاً.');
-      return;
+      throw new Error('يرجى كتابة رقم جوال العميل أولاً.');
     }
 
     const fullCustomerPhone = `${customerCountryCode}${customerLocalPhone}`;
     setIsUploading(true);
 
     try {
-      let publicUrl = '';
-
       if (!supabase) {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        await new Promise((resolve) => {
-          reader.onload = () => {
-            publicUrl = reader.result as string;
-            resolve(true);
-          };
-        });
+        const publicUrl = await blobToDataUrl(jpegBlob);
 
         const newInvoice = {
           id: 'local-' + Date.now(),
@@ -782,36 +785,42 @@ export default function Home() {
         localStorage.setItem('mistarh_local_invoices', JSON.stringify(updatedInvoices));
 
         searchInvoices(customerLocalPhone, customerCountryCode);
-        alert('تم التقاط وحفظ الفاتورة محلياً بنجاح!');
+        alert('تم مسح وحفظ المستند محلياً بنجاح!');
       } else {
-        const fileName = `${user.id}/${Date.now()}.jpg`;
-        
+        const basePath = `${user.id}/${Date.now()}`;
+
         const { error: uploadError } = await supabase.storage
           .from('invoices-images')
-          .upload(fileName, file, { contentType: file.type || 'image/jpeg', upsert: true });
+          .upload(`${basePath}.jpg`, jpegBlob, { contentType: 'image/jpeg', upsert: true });
 
         if (uploadError) throw uploadError;
 
+        // رفع نسخة PDF الرسمية للمستند الممسوح إلى نفس مسار Storage للأرشفة.
+        // فشل هذه الخطوة تحديداً غير حرج: زرا "تنزيل/طباعة PDF" في الواجهة
+        // يعيدان توليد نفس الملف عند الطلب مباشرةً من الصورة المصحَّحة.
+        const { error: pdfUploadError } = await supabase.storage
+          .from('invoices-images')
+          .upload(`${basePath}.pdf`, pdfBlob, { contentType: 'application/pdf', upsert: true });
+
+        if (pdfUploadError) {
+          console.warn('[scanner] فشل رفع نسخة PDF الأرشيفية (غير حرج):', pdfUploadError.message);
+        }
+
         const { data: { publicUrl: s3Url } } = supabase.storage
           .from('invoices-images')
-          .getPublicUrl(fileName);
-
-        publicUrl = s3Url;
+          .getPublicUrl(`${basePath}.jpg`);
 
         const { error: dbError } = await supabase
           .from('invoices')
-          .insert([{ user_id: user.id, customer_phone: fullCustomerPhone, image_url: publicUrl }]);
+          .insert([{ user_id: user.id, customer_phone: fullCustomerPhone, image_url: s3Url }]);
 
         if (dbError) throw dbError;
 
         await searchInvoices(customerLocalPhone, customerCountryCode);
-        alert('تم رفع الفاتورة بنجاح!');
+        alert('تم مسح ورفع المستند بنجاح!');
       }
-    } catch (error: any) {
-      alert(`فشل الرفع: ${error.message}`);
     } finally {
       setIsUploading(false);
-      e.target.value = '';
     }
   };
 
@@ -1388,25 +1397,33 @@ export default function Home() {
         )}
       </main>
 
-      {/* زر الاتصال بتصميم دائري كبير بارز في منتصف أسفل الشاشة مع علامة (+) بارزة */}
+      {/* زر الاتصال بتصميم دائري كبير بارز في منتصف أسفل الشاشة مع علامة (+) بارزة — يفتح الماسح الضوئي الذكي */}
       {customerLocalPhone.trim().length >= 1 && (
         <div className="fixed bottom-4 left-0 right-0 z-40 flex justify-center items-center pointer-events-none">
-          <label 
-            className="pointer-events-auto w-24 h-24 rounded-full bg-gradient-to-tr from-emerald-500 via-teal-400 to-cyan-400 text-slate-950 font-black shadow-[0_0_40px_rgba(16,185,129,0.8)] border-4 border-slate-950 flex flex-col items-center justify-center cursor-pointer transition-transform transform active:scale-95 animate-bounce"
-            title="التقاط فاتورة جديدة"
+          <button
+            type="button"
+            onClick={() => setShowDocumentScanner(true)}
+            disabled={isUploading}
+            className="pointer-events-auto w-24 h-24 rounded-full bg-gradient-to-tr from-emerald-500 via-teal-400 to-cyan-400 text-slate-950 font-black shadow-[0_0_40px_rgba(16,185,129,0.8)] border-4 border-slate-950 flex flex-col items-center justify-center cursor-pointer transition-transform transform active:scale-95 animate-bounce disabled:opacity-60 disabled:animate-none disabled:cursor-not-allowed"
+            title="مسح فاتورة أو مستند جديد بالماسح الضوئي الذكي"
           >
-            <span className="text-3xl font-black leading-none mb-0.5">+</span>
-            <span className="text-xs font-black tracking-tight text-slate-950">إلتقاط</span>
-            <input 
-              type="file" 
-              accept="image/*" 
-              capture="environment" 
-              disabled={isUploading}
-              onChange={handleFileUpload} 
-              className="hidden" 
-            />
-          </label>
+            {isUploading ? (
+              <span className="h-7 w-7 rounded-full border-2 border-slate-950/30 border-t-slate-950 animate-spin" />
+            ) : (
+              <>
+                <span className="text-3xl font-black leading-none mb-0.5">+</span>
+                <span className="text-xs font-black tracking-tight text-slate-950">مسح</span>
+              </>
+            )}
+          </button>
         </div>
+      )}
+
+      {showDocumentScanner && (
+        <DocumentScannerModal
+          onClose={() => setShowDocumentScanner(false)}
+          onConfirm={handleDocumentCaptured}
+        />
       )}
 
       {/* مودال إعدادات الخياط وملاحظات سحابية عامة */}
