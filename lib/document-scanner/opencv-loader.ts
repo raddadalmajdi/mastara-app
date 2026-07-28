@@ -33,7 +33,7 @@ declare global {
 }
 
 const OPENCV_SCRIPT_SRC = '/opencv/opencv.js';
-const LOAD_TIMEOUT_MS = 15000;
+const LOAD_TIMEOUT_MS = 8000;
 
 let loadPromise: Promise<OpenCvNamespace | null> | null = null;
 

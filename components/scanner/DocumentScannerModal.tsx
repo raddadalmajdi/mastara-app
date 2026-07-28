@@ -13,6 +13,7 @@ import { enhanceDocumentCanvas, enhanceDocumentCanvasCv, softEnhanceCanvas } fro
 import { canvasToDocumentPdfBlob } from '@/lib/document-scanner/to-pdf';
 import { ensureOpenCvLoaded } from '@/lib/document-scanner/opencv-loader';
 import {
+  CAMERA_START_TIMEOUT_MS,
   CAPTURE_DETECTION_SAMPLE_WIDTH,
   CV_CAPTURE_DETECTION_SAMPLE_WIDTH,
   CV_DETECTION_SAMPLE_WIDTH,
@@ -148,6 +149,10 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
   const missStreakRef = useRef(0);
   /** هل نتج الالتقاط الحالي عن اكتشاف حواف واثق (يُستخدم لاختيار صيغة تصدير PDF الأنسب لاحقاً — PNG للمسح الثنائي المُحسَّن، JPEG للمعاينة اللطيفة الاحترازية). */
   const confidentCaptureRef = useRef(false);
+  /** يُضبَط فوراً عند ضغط زر الإغلاق (X) — يمنع أي متابعة لعمليات غير متزامنة قيد التنفيذ (بدء الكاميرا، معالجة الالتقاط...) من تحديث الحالة بعد إغلاق المستخدم للماسح صراحة. */
+  const isClosingRef = useRef(false);
+  /** معرِّف مؤقّت انتهاء مهلة تشغيل الكاميرا — يُلغى فوراً عند الإغلاق اليدوي كي لا يُفعَّل بعد فوات الأوان. */
+  const cameraTimeoutIdRef = useRef<number | null>(null);
 
   const [phase, setPhase] = useState<Phase>('starting');
   const [detectionStatus, setDetectionStatus] = useState<DetectionStatus>('none');
@@ -163,10 +168,35 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
     setPhase('starting');
     setErrorMessage(null);
 
-    try {
-      if (!navigator.mediaDevices?.getUserMedia) {
-        throw new Error('لا يدعم هذا المتصفح الوصول إلى الكاميرا.');
+    if (!navigator.mediaDevices?.getUserMedia) {
+      if (!signal.cancelled && !isClosingRef.current) {
+        setErrorMessage('لا يدعم هذا المتصفح الوصول إلى الكاميرا. استخدم صورة من المعرض بدلاً منها.');
+        setPhase('error');
       }
+      return;
+    }
+
+    // مهلة زمنية قصوى صريحة: إن لم تُحلّ نافذة إذن الكاميرا أو تبدأ الكاميرا
+    // فعلياً خلالها (نافذة إذن متأخرة الاستجابة، أو أي عائق آخر يحجب
+    // استكمال الـ Promise)، نفكّ التعليق تلقائياً بدل ترك المستخدم أمام شاشة
+    // "جاري تشغيل الكاميرا..." إلى ما لا نهاية.
+    let timedOut = false;
+    cameraTimeoutIdRef.current = window.setTimeout(() => {
+      timedOut = true;
+      if (signal.cancelled || isClosingRef.current) return;
+      console.warn('[scanner] انتهت مهلة تشغيل الكاميرا —', CAMERA_START_TIMEOUT_MS, 'ms بلا استجابة.');
+      setErrorMessage('تعذّر تشغيل الكاميرا خلال المهلة المسموحة. انقر «إعادة المحاولة»، أو استخدم صورة من المعرض.');
+      setPhase('error');
+    }, CAMERA_START_TIMEOUT_MS);
+
+    const clearCameraTimeout = () => {
+      if (cameraTimeoutIdRef.current !== null) {
+        window.clearTimeout(cameraTimeoutIdRef.current);
+        cameraTimeoutIdRef.current = null;
+      }
+    };
+
+    try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: { ideal: 'environment' },
@@ -175,8 +205,12 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
         },
         audio: false,
       });
+      clearCameraTimeout();
 
-      if (signal.cancelled) {
+      // إمّا أُغلق الماسح صراحة، أو سبق أن انتهت المهلة وعُرض خطأ للمستخدم
+      // بالفعل — في الحالتين نُحرِّر الكاميرا فوراً بدل تركها مشغَّلة (مؤشر
+      // الكاميرا مضاء) دون أي استخدام فعلي لبثّها.
+      if (signal.cancelled || isClosingRef.current || timedOut) {
         stream.getTracks().forEach((t) => t.stop());
         return;
       }
@@ -187,9 +221,10 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
         video.srcObject = stream;
         await video.play().catch(() => undefined);
       }
-      if (!signal.cancelled) setPhase('live');
+      if (!signal.cancelled && !isClosingRef.current) setPhase('live');
     } catch (err) {
-      if (signal.cancelled) return;
+      clearCameraTimeout();
+      if (signal.cancelled || isClosingRef.current || timedOut) return;
       console.error('[scanner] getUserMedia failed', err);
       const name = err instanceof Error ? err.name : '';
       setErrorMessage(
@@ -210,18 +245,29 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
     });
     return () => {
       signal.cancelled = true;
+      isClosingRef.current = true;
+      if (cameraTimeoutIdRef.current !== null) {
+        window.clearTimeout(cameraTimeoutIdRef.current);
+        cameraTimeoutIdRef.current = null;
+      }
       stopStream();
     };
   }, [startCamera, stopStream]);
 
-  // تحميل محرّك OpenCV.js (رؤية حاسوبية حقيقية) في الخلفية فوراً عند فتح
-  // الماسح — لا يُعطِّل ظهور الكاميرا الحية إطلاقاً (Fire-and-forget)، والهدف
-  // أن يكون المحرّك جاهزاً غالباً بحلول لحظة الالتقاط الفعلي. كل مسار
+  // تحميل محرّك OpenCV.js (رؤية حاسوبية حقيقية) في الخلفية — لكن فقط بعد أن
+  // تبدأ الكاميرا فعلياً (`phase === 'live'`)، وليس فور فتح الماسح مباشرة.
+  // هذا التأجيل مقصود: تحميل/تهيئة WASM ضخم (~10MB) قد يستهلك وقت المعالج
+  // الرئيسي بشكل ملحوظ للحظات، وتشغيله بالتزامن مع طلب إذن الكاميرا وبدء
+  // تشغيلها هو بالضبط ما قد يُسبِّب تعليق الشاشة على "جاري تشغيل الكاميرا..."
+  // الذي أبلغ عنه المستخدم. تأجيله لما بعد ظهور البث الحي يفصل المسارين
+  // زمنياً تماماً، بينما يبقى المحرّك على الأرجح جاهزاً بحلول لحظة الالتقاط
+  // الفعلي (يحتاج المستخدم عادة بضع ثوانٍ لتوجيه الكاميرا). كل مسار
   // اكتشاف/تصحيح/تحسين يتراجع تلقائياً وبأمان لخط الأنابيب اليدوي إن لم يكن
   // المحرّك قد اكتمل تحميله بعد (لا تعطّل أبداً لتجربة المستخدم).
   useEffect(() => {
+    if (phase !== 'live') return;
     void ensureOpenCvLoaded();
-  }, []);
+  }, [phase]);
 
   /** اكتشاف موحَّد: يجرِّب OpenCV.js أولاً (رؤية حاسوبية حقيقية أدق بكثير)، ويتراجع تلقائياً للاكتشاف اليدوي القائم على السطوع عند عدم توفّره أو فشله. */
   const detectQuadUnified = useCallback(
@@ -274,6 +320,8 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
     // واضحة عند تصوير طويل)، نتراجع لإطار مركزي احترازي أضيق، ونتجنّب كلياً
     // تطبيق تحويل المسح الثنائي (أبيض/أسود) القاسي عليه — لأنه مصمَّم لصفحة
     // بيضاء نظيفة فقط، وسيُنتج ضجيجاً كثيفاً فوق أي خلفية واقعية غير مسطّحة.
+    if (isClosingRef.current) return;
+
     const confident = Boolean(precise);
     confidentCaptureRef.current = confident;
     const quad = precise?.points ?? centeredFallbackQuad(vw, vh);
@@ -294,6 +342,8 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
       softEnhanceCanvas(corrected);
     }
 
+    if (isClosingRef.current) return;
+
     correctedCanvasRef.current = corrected;
     setPreviewDataUrl(corrected.toDataURL('image/jpeg', SCAN_JPEG_QUALITY));
     setPhase(confident ? 'preview' : 'preview-uncertain');
@@ -309,12 +359,14 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
     window.setTimeout(() => {
       void (async () => {
         try {
+          if (isClosingRef.current) return;
           const vw = video.videoWidth;
           const vh = video.videoHeight;
           if (!vw || !vh) throw new Error('تعذّر قراءة إطار الكاميرا.');
           const fullCanvas = drawFullFrame(video, vw, vh);
           await finishCapture(fullCanvas);
         } catch (err) {
+          if (isClosingRef.current) return;
           console.error('[scanner] capture failed', err);
           setErrorMessage('تعذّرت معالجة المستند. حاول مجدداً بإضاءة أفضل وثبات أكبر.');
           setPhase('live');
@@ -475,6 +527,14 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
   };
 
   const handleClose = () => {
+    // يُضبَط أولاً وفوراً — قبل أي عملية أخرى — كي تتوقف كل العمليات غير
+    // المتزامنة الجارية (بدء الكاميرا، مهلتها، الاكتشاف/الالتقاط) عن تحديث
+    // حالة هذا المكوّن بمجرّد اكتمالها لاحقاً، مهما كانت المرحلة الحالية.
+    isClosingRef.current = true;
+    if (cameraTimeoutIdRef.current !== null) {
+      window.clearTimeout(cameraTimeoutIdRef.current);
+      cameraTimeoutIdRef.current = null;
+    }
     stopStream();
     onClose();
   };
@@ -496,12 +556,17 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
         onChange={handleGalleryFile}
       />
 
-      {/* شريط علوي */}
-      <div className="absolute top-0 inset-x-0 z-20 flex items-center justify-between px-4 py-3 bg-gradient-to-b from-black/70 to-transparent">
+      {/*
+        شريط علوي: موضعه `fixed` (لا `absolute`) وبأعلى ترتيب طبقات (z-[100])
+        عمداً — مستقل تماماً عن أي طبقة تحميل/معالجة داخل منطقة الكاميرا
+        (`starting`/`processing`/`error`...)، فيبقى زر الإغلاق (X) ظاهراً
+        وقابلاً للنقر فوق كل شيء دوماً، أياً كانت حالة المكوّن الداخلية.
+      */}
+      <div className="fixed top-0 inset-x-0 z-[100] flex items-center justify-between px-4 py-3 bg-gradient-to-b from-black/70 to-transparent pointer-events-none">
         <button
           type="button"
           onClick={handleClose}
-          className="w-11 h-11 rounded-full bg-slate-900/70 backdrop-blur border border-white/10 text-white flex items-center justify-center text-lg"
+          className="pointer-events-auto w-11 h-11 rounded-full bg-slate-900/70 backdrop-blur border border-white/10 text-white flex items-center justify-center text-lg active:scale-95 transition-transform"
           aria-label="إغلاق الماسح الضوئي"
         >
           ✕
