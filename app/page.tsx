@@ -889,7 +889,7 @@ export default function Home() {
   if (!user && isSupabaseConfigured()) {
     return (
       <main
-        className="relative min-h-screen bg-[#030712] flex flex-col justify-center px-5 py-8 overflow-hidden"
+        className="relative min-h-screen bg-[#030712] flex flex-col justify-center px-5 sm:px-8 py-8 sm:py-12 overflow-hidden"
         style={{ backgroundColor: '#030712', color: '#f1f5f9' }}
         dir="rtl"
       >
@@ -901,14 +901,14 @@ export default function Home() {
           className="pointer-events-none absolute -bottom-32 left-1/2 h-72 w-72 -translate-x-1/2 rounded-full bg-emerald-500/10 blur-[100px]"
           aria-hidden
         />
-        <div className="relative w-full max-w-sm mx-auto bg-slate-900/90 backdrop-blur-xl border border-white/10 rounded-[2rem] p-6 sm:p-7 shadow-[0_25px_70px_-15px_rgba(8,145,178,0.35)] space-y-6">
-          <div className="text-center mb-1 space-y-1.5">
-            <h1 className="text-3xl font-black bg-gradient-to-l from-cyan-300 via-cyan-400 to-teal-300 bg-clip-text text-transparent tracking-tight">
+        <div className="relative w-full max-w-sm sm:max-w-md mx-auto bg-slate-900/90 backdrop-blur-xl border border-white/10 rounded-[2rem] p-6 sm:p-8 shadow-[0_25px_70px_-15px_rgba(8,145,178,0.35)] space-y-6">
+          <div className="text-center mb-1 space-y-2">
+            <h1 className="text-4xl sm:text-5xl font-black bg-gradient-to-l from-cyan-300 via-cyan-400 to-teal-300 bg-clip-text text-transparent tracking-tight">
               مسطرة 2030
             </h1>
-            <p className="text-xs text-slate-400">نظام إدارة فواتير الخياطة الذكي</p>
+            <p className="text-sm sm:text-base text-slate-400">نظام إدارة فواتير الخياطة الذكي</p>
             {sessionCheckPending && (
-              <p className="text-[10px] text-slate-500 mt-2 animate-pulse">جاري التحقق من جلسة الدخول...</p>
+              <p className="text-xs text-slate-500 mt-2 animate-pulse">جاري التحقق من جلسة الدخول...</p>
             )}
           </div>
 
@@ -939,7 +939,7 @@ export default function Home() {
               {authFeedback && (
                 <div
                   role="alert"
-                  className={`flex items-start gap-3 rounded-2xl border px-3 py-3 text-xs leading-relaxed ${
+                  className={`flex items-start gap-3 rounded-2xl border px-3 py-3 text-sm leading-relaxed ${
                     authFeedback.type === 'success'
                       ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-100'
                       : 'border-rose-500/40 bg-rose-500/10 text-rose-100'
@@ -985,7 +985,7 @@ export default function Home() {
                 className="space-y-4 relative z-10"
               >
                 <div>
-                  <label className="block text-xs font-bold text-cyan-400 mb-1.5">البريد الإلكتروني</label>
+                  <label className="block text-sm font-bold text-cyan-400 mb-1.5">البريد الإلكتروني</label>
                   <input
                     type="email"
                     required
@@ -995,7 +995,7 @@ export default function Home() {
                       setEmail(e.target.value);
                       if (authFeedback) setAuthFeedback(null);
                     }}
-                    className={`w-full rounded-2xl bg-slate-950/70 border p-3.5 text-white placeholder:text-slate-600 outline-none transition-all focus:ring-4 ${
+                    className={`w-full rounded-2xl bg-slate-950/70 border p-3.5 text-base text-white placeholder:text-slate-600 outline-none transition-all focus:ring-4 ${
                       authFeedback?.type === 'error'
                         ? 'border-rose-500/50 focus:border-rose-400 focus:ring-rose-500/10'
                         : 'border-slate-800 focus:border-cyan-500 focus:ring-cyan-500/10'
@@ -1010,7 +1010,7 @@ export default function Home() {
                         setLoginMethod('password');
                         setAuthFeedback(null);
                       }}
-                      className={`rounded-xl py-2.5 text-[11px] font-bold transition-all ${
+                      className={`rounded-xl py-2.5 text-xs sm:text-sm font-bold transition-all ${
                         loginMethod === 'password'
                           ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20'
                           : 'text-slate-500 hover:text-slate-300'
@@ -1024,7 +1024,7 @@ export default function Home() {
                         setLoginMethod('otp');
                         setAuthFeedback(null);
                       }}
-                      className={`rounded-xl py-2.5 text-[11px] font-bold transition-all ${
+                      className={`rounded-xl py-2.5 text-xs sm:text-sm font-bold transition-all ${
                         loginMethod === 'otp'
                           ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20'
                           : 'text-slate-500 hover:text-slate-300'
@@ -1036,7 +1036,7 @@ export default function Home() {
                 )}
                 {(isSignUp || loginMethod === 'password') && (
                 <div>
-                  <label className="block text-xs font-bold text-cyan-400 mb-1.5">كلمة المرور</label>
+                  <label className="block text-sm font-bold text-cyan-400 mb-1.5">كلمة المرور</label>
                   <input
                     type="password"
                     required={isSignUp || loginMethod === 'password'}
@@ -1047,26 +1047,26 @@ export default function Home() {
                       setPassword(e.target.value);
                       if (authFeedback) setAuthFeedback(null);
                     }}
-                    className={`w-full rounded-2xl bg-slate-950/70 border p-3.5 text-white placeholder:text-slate-600 outline-none transition-all focus:ring-4 ${
+                    className={`w-full rounded-2xl bg-slate-950/70 border p-3.5 text-base text-white placeholder:text-slate-600 outline-none transition-all focus:ring-4 ${
                       authFeedback?.type === 'error'
                         ? 'border-rose-500/50 focus:border-rose-400 focus:ring-rose-500/10'
                         : 'border-slate-800 focus:border-cyan-500 focus:ring-cyan-500/10'
                     }`}
                   />
                   {isSignUp && (
-                    <p className="text-[10px] text-slate-500 mt-1.5">6 أحرف على الأقل — يُفضّل أرقام ورموز.</p>
+                    <p className="text-xs text-slate-500 mt-1.5">6 أحرف على الأقل — يُفضّل أرقام ورموز.</p>
                   )}
                 </div>
                 )}
                 {!isSignUp && loginMethod === 'otp' && (
-                  <p className="text-[10px] text-slate-400 leading-relaxed bg-slate-950/50 border border-slate-800 rounded-xl p-2.5">
+                  <p className="text-xs text-slate-400 leading-relaxed bg-slate-950/50 border border-slate-800 rounded-xl p-2.5">
                     سنرسل رمز تحقق مكوّناً من 6 أرقام إلى بريدك لتسجيل الدخول دون كلمة مرور.
                   </p>
                 )}
                 <button
                   type="submit"
                   disabled={authSubmitting}
-                  className="w-full rounded-2xl bg-gradient-to-l from-cyan-400 to-cyan-500 py-3.5 text-slate-950 font-black text-sm shadow-lg shadow-cyan-500/20 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none flex items-center justify-center gap-2 transition-all active:scale-[0.99]"
+                  className="w-full rounded-2xl bg-gradient-to-l from-cyan-400 to-cyan-500 py-3.5 text-slate-950 font-black text-base shadow-lg shadow-cyan-500/20 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none flex items-center justify-center gap-2 transition-all active:scale-[0.99]"
                 >
                   {authSubmitting && (
                     <span className="h-4 w-4 rounded-full border-2 border-slate-950/30 border-t-slate-950 animate-spin" />
@@ -1089,14 +1089,14 @@ export default function Home() {
             <div className="text-center pt-2 border-t border-slate-800 space-y-2">
               <button
                 onClick={() => setUser({ id: 'guest-local-user', email: 'guest@mistarh.local' })}
-                className="w-full bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs py-2.5 rounded-xl border border-cyan-500/20 font-bold"
+                className="w-full bg-slate-800 hover:bg-slate-700 text-cyan-300 text-sm py-3 rounded-xl border border-cyan-500/20 font-bold"
               >
                 🚀 الدخول الفوري وتجربة النظام (بلا حساب)
               </button>
 
               {process.env.NODE_ENV === 'development' && (
                 <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3 text-right space-y-2">
-                  <p className="text-[10px] font-bold text-amber-300">أدوات المطوّر (DEV فقط)</p>
+                  <p className="text-xs font-bold text-amber-300">أدوات المطوّر (DEV فقط)</p>
                   <button
                     type="button"
                     disabled={devDeleteLoading}
@@ -1140,73 +1140,77 @@ export default function Home() {
                 />
               </svg>
             </div>
-            <p className="text-sm font-bold text-emerald-300">تم التحقق بنجاح</p>
-            <p className="text-xs text-slate-400">مرحباً بك في لوحة مسطرة</p>
+            <p className="text-base font-bold text-emerald-300">تم التحقق بنجاح</p>
+            <p className="text-sm text-slate-400">مرحباً بك في لوحة مسطرة</p>
           </div>
         </div>
       )}
       {/* الهيدر العلوي */}
-      <header className="sticky top-0 z-40 bg-[#030712]/90 backdrop-blur-md border-b border-cyan-500/20 px-4 py-3 flex items-center justify-between">
+      <header className="sticky top-0 z-40 bg-[#030712]/90 backdrop-blur-md border-b border-cyan-500/20 px-4 sm:px-6 lg:px-8 py-3">
+        <div className="max-w-lg sm:max-w-2xl lg:max-w-4xl w-full mx-auto flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <h1 className="font-black text-cyan-400 text-lg">مسطرة 2030</h1>
+          <h1 className="font-black text-cyan-400 text-xl">مسطرة 2030</h1>
           {!isSupabaseConfigured() && (
-            <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-full font-mono">وضع التجربة (بلا حساب)</span>
+            <span className="text-xs bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-full font-mono">وضع التجربة (بلا حساب)</span>
           )}
         </div>
 
         <div className="relative" ref={menuRef}>
           <button
             onClick={() => setShowMenu(!showMenu)}
-            className="w-10 h-10 rounded-xl bg-cyan-500 text-slate-950 font-black flex items-center justify-center text-lg shadow-md"
+            className="w-11 h-11 rounded-xl bg-cyan-500 text-slate-950 font-black flex items-center justify-center text-xl shadow-md"
           >
             م
           </button>
 
           {showMenu && (
-            <div className="absolute left-0 mt-2 w-72 bg-slate-900 border border-cyan-500/30 rounded-2xl shadow-2xl p-4 z-50 space-y-3">
+            <div className="absolute left-0 mt-2 w-72 sm:w-80 bg-slate-900 border border-cyan-500/30 rounded-2xl shadow-2xl p-4 z-50 space-y-3">
               <div className="border-b border-slate-800 pb-2">
-                <span className="text-xs text-cyan-400">الحساب:</span>
-                <p className="text-xs text-white truncate">{user?.email || 'ضيف'}</p>
+                <span className="text-sm text-cyan-400">الحساب:</span>
+                <p className="text-sm text-white truncate">{user?.email || 'ضيف'}</p>
               </div>
               <div className="border-b border-slate-800 pb-2 flex justify-between items-center">
                 <div>
-                  <span className="text-xs text-cyan-400">هاتف الخياط:</span>
-                  <p className="text-xs text-white font-mono" dir="ltr">
+                  <span className="text-sm text-cyan-400">هاتف الخياط:</span>
+                  <p className="text-sm text-white font-bold tnum" dir="ltr">
                     {isTailorRegistered ? `+${tailorCountryCode}${tailorLocalPhone}` : 'غير مسجل'}
                   </p>
                 </div>
                 <button
                   onClick={() => { setShowMenu(false); setShowTailorProfileModal(true); }}
-                  className="bg-cyan-500/10 text-cyan-400 text-xs px-2.5 py-1.5 rounded-lg border border-cyan-500/30"
+                  className="bg-cyan-500/10 text-cyan-400 text-sm px-3 py-2 rounded-lg border border-cyan-500/30"
                 >
                   الإعدادات
                 </button>
               </div>
               <button
                 onClick={handleLogout}
-                className="w-full bg-rose-500/10 text-rose-400 text-xs py-2.5 rounded-xl border border-rose-500/30 font-bold"
+                className="w-full bg-rose-500/10 text-rose-400 text-sm py-3 rounded-xl border border-rose-500/30 font-bold"
               >
                 خروج / تسجيل الدخول بحساب آخر
               </button>
             </div>
           )}
         </div>
+        </div>
       </header>
 
       {/* المحتوى الرئيسي */}
-      <main className="flex-1 max-w-lg w-full mx-auto p-4 space-y-4">
-        
+      <main className="flex-1 max-w-lg sm:max-w-2xl lg:max-w-4xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 space-y-4 sm:space-y-6">
+
+        {/* معلومات الخياط ورقم العميل: عمود واحد على الجوال، عمودان جنباً إلى جنب على الشاشات الأوسع */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-stretch">
         {/* معلومات الخياط المبسطة */}
-        <div className="bg-slate-900 border border-cyan-500/20 p-4 rounded-2xl flex items-center justify-between">
-          <div>
-            <span className="text-xs text-cyan-400 font-bold">لوحة الخياط</span>
-            <p className="text-xs text-white font-mono" dir="ltr">
+        <div className="bg-slate-900 border border-cyan-500/20 p-4 rounded-2xl flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <span className="text-sm text-cyan-400 font-bold">لوحة الخياط</span>
+            <p className="text-sm text-white font-bold tnum truncate" dir="ltr">
               {isTailorRegistered ? `+${tailorCountryCode}${tailorLocalPhone}` : '⚠️ أضف رقم هاتفك'}
             </p>
           </div>
           <button
             onClick={() => setShowTailorProfileModal(true)}
-            className="bg-cyan-500 text-slate-950 text-xs font-bold px-3 py-2 rounded-xl shadow"
+            className="shrink-0 bg-cyan-500 text-slate-950 text-sm font-bold px-3.5 py-2.5 rounded-xl shadow"
           >
             {isTailorRegistered ? 'الإعدادات' : 'إضافة الرقم'}
           </button>
@@ -1215,20 +1219,20 @@ export default function Home() {
         {/* خانة رقم العميل (الرقم يمين ومفتاح الدولة يساراً) */}
         <section className="bg-slate-900 border border-cyan-500/40 p-4 rounded-3xl space-y-3 shadow-xl">
           <div className="space-y-1.5">
-            <label className="text-xs text-cyan-400 font-bold block">رقم هاتف العميل</label>
+            <label className="text-sm text-cyan-400 font-bold block">رقم هاتف العميل</label>
             <div className="flex gap-2 items-center">
               <input
                 type="tel"
                 value={customerLocalPhone}
                 onChange={(e) => handleCustomerPhoneInput(e.target.value)}
                 placeholder="أدخل رقم الجوال..."
-                className="flex-1 rounded-xl bg-slate-950 border border-slate-800 p-3.5 text-lg text-white font-mono text-right"
+                className="flex-1 min-w-0 rounded-xl bg-slate-950 border border-slate-800 p-3.5 text-lg font-bold text-white font-mono tnum text-right"
                 dir="ltr"
               />
               <select
                 value={customerCountryCode}
                 onChange={(e) => handleCountryCodeChange(e.target.value)}
-                className="bg-slate-950 border border-slate-800 text-sm text-cyan-300 rounded-xl p-3.5 font-mono w-28 text-center"
+                className="bg-slate-950 border border-slate-800 text-sm text-cyan-300 rounded-xl p-3.5 font-mono tnum w-28 text-center"
               >
                 {COUNTRY_CODES.map((c) => (
                   <option key={c.code} value={c.code}>+{c.code}</option>
@@ -1237,11 +1241,14 @@ export default function Home() {
             </div>
           </div>
         </section>
+        </div>
 
         {/* عرض الفواتير: الفاتورة الحديثة (الأحدث) ضخمة في المقدمة يعقبها الأرشيف */}
         {customerLocalPhone.length >= 1 && customerInvoices.length > 0 && (
           <section className="space-y-4">
-            <h2 className="text-xs text-cyan-400 font-bold">أرشيف فواتير العميل ({customerInvoices.length})</h2>
+            <h2 className="text-base sm:text-lg text-cyan-400 font-bold">
+              أرشيف فواتير العميل (<span className="tnum">{customerInvoices.length}</span>)
+            </h2>
 
             {/* الفاتورة الأحدث */}
             {(() => {
@@ -1253,8 +1260,10 @@ export default function Home() {
                 <div className="bg-slate-900 border-2 border-cyan-400/60 rounded-3xl p-4 shadow-2xl space-y-3">
                   <div className="flex items-center justify-between bg-slate-950 px-4 py-2.5 rounded-2xl border border-cyan-500/30">
                     <div>
-                      <span className="text-xs font-black text-cyan-300">⭐ الفاتورة الأحدث (فاتورة #{latestInvoiceNumber})</span>
-                      <span className="text-[10px] text-slate-400 font-mono block" dir="ltr">{formatDate(latestInvoice.created_at)}</span>
+                      <span className="text-sm sm:text-base font-black text-cyan-300">
+                        ⭐ الفاتورة الأحدث (فاتورة #<span className="tnum">{latestInvoiceNumber}</span>)
+                      </span>
+                      <span className="text-xs text-slate-400 font-bold font-mono tnum block" dir="ltr">{formatDate(latestInvoice.created_at)}</span>
                     </div>
                   </div>
 
@@ -1262,7 +1271,7 @@ export default function Home() {
                   <div className="w-full bg-slate-950 rounded-2xl border border-slate-800 p-2 flex flex-col items-center space-y-3">
                     <div 
                       onClick={() => setActiveImageIndex(latestIndex)}
-                      className="w-full h-96 rounded-xl overflow-hidden border border-cyan-500/30 bg-slate-900 cursor-pointer relative shadow-inner flex items-center justify-center"
+                      className="w-full h-96 sm:h-[28rem] lg:h-[32rem] rounded-xl overflow-hidden border border-cyan-500/30 bg-slate-900 cursor-pointer relative shadow-inner flex items-center justify-center"
                     >
                       <img 
                         src={latestInvoice.image_url} 
@@ -1274,7 +1283,7 @@ export default function Home() {
                     <div className="flex gap-2 w-full">
                       <button
                         onClick={() => setActiveImageIndex(latestIndex)}
-                        className="flex-1 bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 text-xs py-3 rounded-xl font-bold"
+                        className="flex-1 bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 text-sm py-3 rounded-xl font-bold"
                       >
                         تكبير المعاينة
                       </button>
@@ -1282,7 +1291,7 @@ export default function Home() {
                         type="button"
                         disabled={exportingPdfId === latestInvoice.id}
                         onClick={() => handleDownloadInvoicePdf(latestInvoice, latestInvoiceNumber)}
-                        className="flex-1 bg-cyan-500 text-slate-950 font-bold text-xs py-3 rounded-xl text-center shadow-md flex items-center justify-center gap-1 disabled:opacity-50"
+                        className="flex-1 bg-cyan-500 text-slate-950 font-bold text-sm py-3 rounded-xl text-center shadow-md flex items-center justify-center gap-1 disabled:opacity-50"
                       >
                         <span>{exportingPdfId === latestInvoice.id ? 'جارٍ التجهيز...' : '📄 تنزيل PDF'}</span>
                       </button>
@@ -1291,7 +1300,7 @@ export default function Home() {
                       type="button"
                       disabled={exportingPdfId === latestInvoice.id}
                       onClick={() => handlePrintInvoicePdf(latestInvoice, latestInvoiceNumber)}
-                      className="w-full bg-slate-900 text-cyan-300 border border-cyan-500/30 text-xs py-3 rounded-xl font-bold flex items-center justify-center gap-1 disabled:opacity-50"
+                      className="w-full bg-slate-900 text-cyan-300 border border-cyan-500/30 text-sm py-3 rounded-xl font-bold flex items-center justify-center gap-1 disabled:opacity-50"
                     >
                       <span>{exportingPdfId === latestInvoice.id ? 'جارٍ التجهيز...' : '🖨️ معاينة وطباعة PDF'}</span>
                     </button>
@@ -1299,17 +1308,17 @@ export default function Home() {
 
                   {/* خانة رسالة الواتساب المخصصة تحت الفاتورة الأحدث */}
                   <div className="bg-slate-950 border border-slate-800 rounded-2xl p-3 space-y-2">
-                    <label className="text-[11px] text-cyan-400 font-bold block">رسالة الواتساب المخصصة لهذه الفاتورة:</label>
+                    <label className="text-sm text-cyan-400 font-bold block">رسالة الواتساب المخصصة لهذه الفاتورة:</label>
                     <textarea
                       value={whatsappMessages[latestInvoice.id] || ''}
                       onChange={(e) => setWhatsappMessages({ ...whatsappMessages, [latestInvoice.id]: e.target.value })}
                       rows={3}
-                      className="w-full bg-slate-900 border border-slate-800 rounded-xl p-3 text-xs text-white focus:border-cyan-500 focus:outline-none resize-y"
+                      className="w-full bg-slate-900 border border-slate-800 rounded-xl p-3 text-sm text-white focus:border-cyan-500 focus:outline-none resize-y"
                       placeholder="اكتب رسالة الواتساب..."
                     />
                     <button
                       onClick={() => sendViaWhatsApp(latestInvoice.customer_phone, latestInvoice.id)}
-                      className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-sm py-3.5 rounded-xl flex items-center justify-center gap-2 shadow-lg transition-all"
+                      className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-base py-3.5 rounded-xl flex items-center justify-center gap-2 shadow-lg transition-all"
                     >
                       <span>💬 إرسال عبر واتساب</span>
                     </button>
@@ -1318,11 +1327,11 @@ export default function Home() {
               );
             })()}
 
-            {/* الفواتير القديمة والأرشيف */}
+            {/* الفواتير القديمة والأرشيف: عمود واحد على الجوال، شبكة على الشاشات الأوسع لتفادي الفراغ الجانبي */}
             {customerInvoices.length > 1 && (
               <div className="space-y-3 pt-2">
-                <h3 className="text-[11px] text-slate-400 font-bold">الفواتير السابقة (الأرشيف)</h3>
-                <div className="space-y-4">
+                <h3 className="text-sm text-slate-400 font-bold">الفواتير السابقة (الأرشيف)</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
                   {customerInvoices.slice(1).map((inv, subIndex) => {
                     const actualIndex = subIndex + 1;
                     const invoiceNumber = customerInvoices.length - actualIndex;
@@ -1330,8 +1339,10 @@ export default function Home() {
                     return (
                       <div key={inv.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-3 space-y-2">
                         <div className="flex items-center justify-between">
-                          <span className="text-xs text-cyan-400 font-bold">فاتورة #{invoiceNumber}</span>
-                          <span className="text-[10px] text-slate-500 font-mono" dir="ltr">{formatDate(inv.created_at)}</span>
+                          <span className="text-sm text-cyan-400 font-bold">
+                            فاتورة #<span className="tnum">{invoiceNumber}</span>
+                          </span>
+                          <span className="text-xs text-slate-500 font-bold font-mono tnum" dir="ltr">{formatDate(inv.created_at)}</span>
                         </div>
                         
                         <div className="flex gap-3">
@@ -1342,17 +1353,17 @@ export default function Home() {
                             <img src={inv.image_url} alt="Old Invoice" className="w-full h-full object-contain" />
                           </div>
 
-                          <div className="flex-1 space-y-2">
+                          <div className="flex-1 min-w-0 space-y-2">
                             <textarea
                               value={whatsappMessages[inv.id] || ''}
                               onChange={(e) => setWhatsappMessages({ ...whatsappMessages, [inv.id]: e.target.value })}
                               rows={2}
-                              className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2 text-xs text-white focus:border-cyan-500 focus:outline-none resize-y"
+                              className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2 text-sm text-white focus:border-cyan-500 focus:outline-none resize-y"
                             />
                             <div className="flex gap-1.5">
                               <button
                                 onClick={() => sendViaWhatsApp(inv.customer_phone, inv.id)}
-                                className="flex-1 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-xs font-bold py-2 rounded-xl flex items-center justify-center gap-1.5"
+                                className="flex-1 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-xs sm:text-sm font-bold py-2.5 rounded-xl flex items-center justify-center gap-1.5"
                               >
                                 <span>💬 واتساب</span>
                               </button>
@@ -1360,7 +1371,7 @@ export default function Home() {
                                 type="button"
                                 disabled={exportingPdfId === inv.id}
                                 onClick={() => handleDownloadInvoicePdf(inv, invoiceNumber)}
-                                className="flex-1 bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-xs font-bold py-2 rounded-xl flex items-center justify-center gap-1.5 disabled:opacity-50"
+                                className="flex-1 bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-xs sm:text-sm font-bold py-2.5 rounded-xl flex items-center justify-center gap-1.5 disabled:opacity-50"
                               >
                                 <span>{exportingPdfId === inv.id ? '...' : '📄 PDF'}</span>
                               </button>
@@ -1385,7 +1396,7 @@ export default function Home() {
             title="التقاط فاتورة جديدة"
           >
             <span className="text-3xl font-black leading-none mb-0.5">+</span>
-            <span className="text-[11px] font-black tracking-tight text-slate-950">إلتقاط</span>
+            <span className="text-xs font-black tracking-tight text-slate-950">إلتقاط</span>
             <input 
               type="file" 
               accept="image/*" 
@@ -1401,17 +1412,17 @@ export default function Home() {
       {/* مودال إعدادات الخياط وملاحظات سحابية عامة */}
       {showTailorProfileModal && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-slate-900 border border-cyan-500/40 rounded-3xl p-6 w-full max-w-sm space-y-4 shadow-2xl">
+          <div className="bg-slate-900 border border-cyan-500/40 rounded-3xl p-6 w-full max-w-sm sm:max-w-md space-y-4 shadow-2xl">
             <div className="flex justify-between items-center border-b border-slate-800 pb-2">
-              <h3 className="font-bold text-white text-sm">إعدادات الخياط</h3>
-              <button onClick={() => { setShowTailorProfileModal(false); setSettingsFeedback(null); }} className="text-cyan-400">✕</button>
+              <h3 className="font-bold text-white text-base">إعدادات الخياط</h3>
+              <button onClick={() => { setShowTailorProfileModal(false); setSettingsFeedback(null); }} className="text-cyan-400 text-lg">✕</button>
             </div>
             
             <form onSubmit={handleSaveTailorProfile} className="space-y-4">
               {settingsFeedback && (
                 <div
                   role="alert"
-                  className={`flex items-start gap-2 rounded-xl border px-3 py-2.5 text-[11px] leading-relaxed ${
+                  className={`flex items-start gap-2 rounded-xl border px-3 py-2.5 text-sm leading-relaxed ${
                     settingsFeedback.type === 'success'
                       ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-100'
                       : 'border-rose-500/40 bg-rose-500/10 text-rose-100'
@@ -1449,7 +1460,7 @@ export default function Home() {
                 </div>
               )}
               <div>
-                <label className="block text-xs font-bold text-cyan-400 mb-1">رقم هاتف الخياط</label>
+                <label className="block text-sm font-bold text-cyan-400 mb-1">رقم هاتف الخياط</label>
                 <div className="flex gap-2 items-center">
                   <input
                     type="tel"
@@ -1457,13 +1468,13 @@ export default function Home() {
                     value={tailorLocalPhone}
                     onChange={(e) => setTailorLocalPhone(e.target.value.replace(/\D/g, ''))}
                     placeholder="رقم الجوال"
-                    className="flex-1 rounded-xl bg-slate-950 border border-slate-800 p-3 text-sm text-white font-mono text-right"
+                    className="flex-1 min-w-0 rounded-xl bg-slate-950 border border-slate-800 p-3 text-base font-bold text-white font-mono tnum text-right"
                     dir="ltr"
                   />
                   <select
                     value={tailorCountryCode}
                     onChange={(e) => setTailorCountryCode(e.target.value)}
-                    className="bg-slate-950 border border-slate-800 text-xs text-cyan-300 rounded-xl p-3 font-mono w-24 text-center"
+                    className="bg-slate-950 border border-slate-800 text-sm text-cyan-300 rounded-xl p-3 font-mono tnum w-24 text-center"
                   >
                     {COUNTRY_CODES.map((c) => (
                       <option key={c.code} value={c.code}>+{c.code}</option>
@@ -1473,13 +1484,13 @@ export default function Home() {
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-cyan-400 mb-1">ملاحظات سحابية عامة</label>
+                <label className="block text-sm font-bold text-cyan-400 mb-1">ملاحظات سحابية عامة</label>
                 <textarea
                   value={cloudNotes}
                   onChange={(e) => setCloudNotes(e.target.value)}
                   placeholder="اكتب ملاحظات عامة تحفظ في حسابك..."
                   rows={3}
-                  className="w-full rounded-xl bg-slate-950 border border-slate-800 p-3 text-xs text-white focus:border-cyan-500 focus:outline-none resize-none"
+                  className="w-full rounded-xl bg-slate-950 border border-slate-800 p-3 text-sm text-white focus:border-cyan-500 focus:outline-none resize-none"
                 />
               </div>
 
@@ -1487,14 +1498,14 @@ export default function Home() {
                 <button
                   type="button"
                   onClick={() => { setShowTailorProfileModal(false); setSettingsFeedback(null); }}
-                  className="flex-1 bg-slate-800 text-white text-xs py-3 rounded-xl font-bold"
+                  className="flex-1 bg-slate-800 text-white text-sm py-3 rounded-xl font-bold"
                 >
                   إلغاء
                 </button>
                 <button
                   type="submit"
                   disabled={savingSettings}
-                  className="flex-1 bg-cyan-500 text-slate-950 font-bold text-xs py-3 rounded-xl shadow"
+                  className="flex-1 bg-cyan-500 text-slate-950 font-bold text-sm py-3 rounded-xl shadow"
                 >
                   {savingSettings ? 'جاري الحفظ...' : 'حفظ الإعدادات'}
                 </button>
@@ -1510,13 +1521,13 @@ export default function Home() {
           <div className="absolute top-4 right-4 z-10">
             <button 
               onClick={() => setActiveImageIndex(null)}
-              className="w-10 h-10 rounded-full bg-slate-900 border border-cyan-500/30 text-cyan-400 font-bold flex items-center justify-center text-lg shadow-lg"
+              className="w-11 h-11 rounded-full bg-slate-900 border border-cyan-500/30 text-cyan-400 font-bold flex items-center justify-center text-lg shadow-lg"
             >
               ✕
             </button>
           </div>
 
-          <div className="w-full max-w-lg h-[80vh] bg-slate-900 border border-cyan-500/30 rounded-2xl overflow-hidden flex items-center justify-center p-2 shadow-2xl">
+          <div className="w-full max-w-lg lg:max-w-2xl h-[70vh] sm:h-[80vh] bg-slate-900 border border-cyan-500/30 rounded-2xl overflow-hidden flex items-center justify-center p-2 shadow-2xl">
             <img 
               src={customerInvoices[activeImageIndex]?.image_url} 
               alt="Invoice Large" 
@@ -1528,24 +1539,24 @@ export default function Home() {
             <button
               disabled={activeImageIndex >= customerInvoices.length - 1}
               onClick={() => setActiveImageIndex(activeImageIndex + 1)}
-              className="bg-slate-900 disabled:opacity-30 border border-cyan-500/30 text-cyan-400 text-xs px-4 py-2.5 rounded-xl font-bold"
+              className="bg-slate-900 disabled:opacity-30 border border-cyan-500/30 text-cyan-400 text-sm px-4 py-2.5 rounded-xl font-bold"
             >
               السابق
             </button>
-            <span className="text-xs text-cyan-400 font-mono">
+            <span className="text-sm text-cyan-400 font-bold font-mono tnum">
               {activeImageIndex + 1} / {customerInvoices.length}
             </span>
             <button
               disabled={activeImageIndex <= 0}
               onClick={() => setActiveImageIndex(activeImageIndex - 1)}
-              className="bg-slate-900 disabled:opacity-30 border border-cyan-500/30 text-cyan-400 text-xs px-4 py-2.5 rounded-xl font-bold"
+              className="bg-slate-900 disabled:opacity-30 border border-cyan-500/30 text-cyan-400 text-sm px-4 py-2.5 rounded-xl font-bold"
             >
               التالي
             </button>
           </div>
 
           {customerInvoices[activeImageIndex] && (
-            <div className="flex items-center gap-2 mt-3 w-full max-w-lg px-2">
+            <div className="flex items-center gap-2 mt-3 w-full max-w-lg lg:max-w-2xl px-2">
               <button
                 type="button"
                 disabled={exportingPdfId === customerInvoices[activeImageIndex].id}
@@ -1555,7 +1566,7 @@ export default function Home() {
                     customerInvoices.length - activeImageIndex
                   )
                 }
-                className="flex-1 bg-cyan-500 text-slate-950 font-bold text-xs py-3 rounded-xl shadow-md disabled:opacity-50"
+                className="flex-1 bg-cyan-500 text-slate-950 font-bold text-sm py-3 rounded-xl shadow-md disabled:opacity-50"
               >
                 {exportingPdfId === customerInvoices[activeImageIndex].id
                   ? 'جارٍ التجهيز...'
@@ -1570,7 +1581,7 @@ export default function Home() {
                     customerInvoices.length - activeImageIndex
                   )
                 }
-                className="flex-1 bg-slate-900 text-cyan-300 border border-cyan-500/30 text-xs py-3 rounded-xl font-bold disabled:opacity-50"
+                className="flex-1 bg-slate-900 text-cyan-300 border border-cyan-500/30 text-sm py-3 rounded-xl font-bold disabled:opacity-50"
               >
                 {exportingPdfId === customerInvoices[activeImageIndex].id
                   ? 'جارٍ التجهيز...'

@@ -96,7 +96,7 @@ export function OtpCodeInput({ value, onChange, onComplete, disabled, hasError }
                   inputsRef.current[index + 1]?.focus();
                 }
               }}
-              className={`h-14 w-11 sm:h-16 sm:w-12 rounded-2xl border-2 bg-slate-950 text-center text-xl sm:text-2xl font-black font-mono text-white shadow-inner outline-none transition-all duration-150 ${
+              className={`h-14 w-11 sm:h-16 sm:w-12 rounded-2xl border-2 bg-slate-950 text-center text-2xl sm:text-3xl font-black font-mono tnum text-white shadow-inner outline-none transition-all duration-150 ${
                 hasError
                   ? 'border-rose-500/70 shadow-[0_0_0_3px_rgba(244,63,94,0.15)]'
                   : filled
@@ -107,7 +107,7 @@ export function OtpCodeInput({ value, onChange, onComplete, disabled, hasError }
           );
         })}
       </div>
-      <p className="text-[11px] text-slate-500 text-center" dir="rtl">
+      <p className="text-xs sm:text-sm text-slate-500 text-center" dir="rtl">
         أدخل الرمز المكوّن من 6 أرقام المرسل إلى بريدك — يمكنك أيضاً لصقه دفعة واحدة.
       </p>
     </div>

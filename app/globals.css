@@ -4,7 +4,10 @@
 @theme {
   --color-background: #030712;
   --color-foreground: #f1f5f9;
-  --font-sans: ui-sans-serif, system-ui, sans-serif, "Segoe UI", "Noto Sans Arabic", sans-serif;
+  /* خط Cairo (عربي/لاتيني عصري) محمَّل ذاتياً عبر next/font/google في
+     app/fonts.ts، ومربوط هنا بمتغيّر --font-cairo على وسم <html>. تبقى
+     الخطوط الاحتياطية كما هي في حال فشل تحميل الخط لأي سبب. */
+  --font-sans: var(--font-cairo), ui-sans-serif, system-ui, sans-serif, "Segoe UI", "Noto Sans Arabic", sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
@@ -12,6 +15,9 @@ html {
   background-color: #030712;
   color: #f1f5f9;
   min-height: 100%;
+  /* حجم أساس أكبر قليلاً (16px) لقراءة أوضح على الجوال والشاشات الكبيرة */
+  font-size: 16px;
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
@@ -20,7 +26,28 @@ body {
   min-height: 100%;
   margin: 0;
   font-family: var(--font-sans);
+  /* تباعد أسطر مريح للعين يمنع تداخل النصوص العربية (خصوصاً مع الحركات
+     والامتدادات الرأسية للحروف)، بدون التأثير على الأزرار/الشارات الصغيرة
+     التي تحدّد ارتفاعها بنفسها. */
+  line-height: 1.65;
+  letter-spacing: 0;
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  line-height: 1.35;
+}
+
+/* أرقام إنجليزية بارزة: تُستخدم على أي عنصر يعرض تاريخاً/وقتاً/مبلغاً/عدّاداً
+   لضمان محاذاة ثابتة (tabular) ووضوح أكبر بصرياً بمعزل عن سياق النص العربي
+   المحيط به. الاستخدام: className="tnum" على العنصر الحاوي للرقم. */
+.tnum {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+  direction: ltr;
+  unicode-bidi: isolate;
+  letter-spacing: 0.01em;
 }
 
 @keyframes auth-boot-slide {

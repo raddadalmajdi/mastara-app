@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from 'next';
+import { cairo } from './fonts';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -33,7 +34,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="ar" dir="rtl" style={shellStyle} className="bg-[#030712]" suppressHydrationWarning>
+    <html
+      lang="ar"
+      dir="rtl"
+      style={shellStyle}
+      className={`${cairo.variable} bg-[#030712]`}
+      suppressHydrationWarning
+    >
       <body
         style={shellStyle}
         className="min-h-screen bg-[#030712] text-slate-100 antialiased"

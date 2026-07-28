@@ -21,7 +21,7 @@ type AuthModeTabsProps = {
  */
 export function AuthModeTabs({ mode, onModeChange, disabled = false }: AuthModeTabsProps) {
   const baseTabClass =
-    'relative z-10 w-full rounded-xl py-2.5 text-xs font-bold transition-all duration-150 ' +
+    'relative z-10 w-full rounded-xl py-3 text-sm font-bold transition-all duration-150 ' +
     'touch-manipulation select-none disabled:opacity-50 disabled:cursor-not-allowed';
 
   const activeClass = 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20';

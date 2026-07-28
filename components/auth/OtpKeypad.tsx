@@ -11,7 +11,7 @@ type OtpKeypadProps = {
 const DIGIT_KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9'];
 
 const keyClass =
-  'h-13 sm:h-14 rounded-2xl bg-slate-900 border border-slate-800 text-white text-lg font-black ' +
+  'h-14 sm:h-16 rounded-2xl bg-slate-900 border border-slate-800 text-white text-xl font-black tnum ' +
   'transition-all duration-100 active:scale-95 active:bg-slate-800 active:border-cyan-500/50 ' +
   'disabled:opacity-30 disabled:active:scale-100 select-none touch-manipulation';
 
@@ -54,7 +54,7 @@ export function OtpKeypad({ value, onChange, onComplete, disabled, maxLength = 6
         type="button"
         disabled={disabled || value.length === 0}
         onClick={clearAll}
-        className={`${keyClass} text-[10px] font-bold text-slate-400`}
+        className={`${keyClass} text-xs font-bold text-slate-400`}
       >
         مسح الكل
       </button>

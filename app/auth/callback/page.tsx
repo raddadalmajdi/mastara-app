@@ -81,13 +81,13 @@ function AuthCallbackContent() {
         className="pointer-events-none absolute -top-32 left-1/2 h-72 w-72 -translate-x-1/2 rounded-full bg-cyan-500/20 blur-[100px]"
         aria-hidden
       />
-      <div className="relative w-full max-w-sm mx-auto bg-slate-900/90 backdrop-blur-xl border border-white/10 rounded-[2rem] p-8 shadow-[0_25px_70px_-15px_rgba(8,145,178,0.35)] text-center space-y-4">
-        <h1 className="text-2xl font-black text-cyan-400">مسطرة 2030</h1>
+      <div className="relative w-full max-w-sm sm:max-w-md mx-auto bg-slate-900/90 backdrop-blur-xl border border-white/10 rounded-[2rem] p-8 shadow-[0_25px_70px_-15px_rgba(8,145,178,0.35)] text-center space-y-4">
+        <h1 className="text-3xl font-black text-cyan-400">مسطرة 2030</h1>
 
         {status === 'loading' && (
           <>
             <div className="mx-auto h-12 w-12 rounded-full border-2 border-cyan-500/30 border-t-cyan-400 animate-spin" />
-            <p className="text-sm text-slate-300">جاري تأكيد حسابك بأمان...</p>
+            <p className="text-base text-slate-300">جاري تأكيد حسابك بأمان...</p>
           </>
         )}
 
@@ -104,8 +104,8 @@ function AuthCallbackContent() {
                 />
               </svg>
             </div>
-            <p className="text-sm font-bold text-emerald-300">تم تأكيد حسابك بنجاح!</p>
-            <p className="text-xs text-slate-400">سيتم تحويلك إلى لوحة التحكم...</p>
+            <p className="text-base font-bold text-emerald-300">تم تأكيد حسابك بنجاح!</p>
+            <p className="text-sm text-slate-400">سيتم تحويلك إلى لوحة التحكم...</p>
           </>
         )}
 
@@ -116,12 +116,12 @@ function AuthCallbackContent() {
                 <path d="M8 8l8 8M16 8l-8 8" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
               </svg>
             </div>
-            <p className="text-sm font-bold text-rose-300">تعذّر تأكيد الحساب</p>
-            <p className="text-xs text-slate-400 leading-relaxed">{errorMessage}</p>
+            <p className="text-base font-bold text-rose-300">تعذّر تأكيد الحساب</p>
+            <p className="text-sm text-slate-400 leading-relaxed">{errorMessage}</p>
             <button
               type="button"
               onClick={() => router.replace('/')}
-              className="w-full rounded-xl bg-cyan-500 py-3 text-slate-950 font-bold text-sm"
+              className="w-full rounded-xl bg-cyan-500 py-3 text-slate-950 font-bold text-base"
             >
               العودة لإدخال رمز التحقق
             </button>

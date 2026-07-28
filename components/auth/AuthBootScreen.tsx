@@ -12,8 +12,8 @@ export function AuthBootScreen({ message = 'جاري التحميل...' }: { mes
         <div className="h-full w-1/3 bg-emerald-500 animate-[auth-boot-slide_1.2s_ease-in-out_infinite]" />
       </div>
       <div className="h-12 w-12 rounded-full border-2 border-cyan-500/30 border-t-cyan-400 animate-spin mb-4" />
-      <p className="text-sm text-cyan-400 font-mono text-center">{message}</p>
-      <p className="text-[10px] text-slate-500 mt-2 text-center max-w-xs">
+      <p className="text-base text-cyan-400 font-mono text-center">{message}</p>
+      <p className="text-xs text-slate-500 mt-2 text-center max-w-xs">
         إن استغرق الأمر أكثر من 10 ثوانٍ، حدّث الصفحة أو تحقق من الاتصال.
       </p>
     </div>

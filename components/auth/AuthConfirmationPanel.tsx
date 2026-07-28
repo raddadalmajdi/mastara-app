@@ -71,8 +71,8 @@ export function AuthConfirmationPanel({
             />
           </svg>
         </div>
-        <h2 className="text-lg font-black text-white">تحقق من بريدك الإلكتروني</h2>
-        <p className="text-xs text-slate-400 leading-relaxed">
+        <h2 className="text-xl sm:text-2xl font-black text-white">تحقق من بريدك الإلكتروني</h2>
+        <p className="text-sm text-slate-400 leading-relaxed">
           أرسلنا رمز تحقق مكوّناً من 6 أرقام إلى
           <br />
           <span className="font-mono text-cyan-300 font-bold" dir="ltr">
@@ -84,7 +84,7 @@ export function AuthConfirmationPanel({
       {authFeedback && (
         <div
           role="alert"
-          className={`flex items-start gap-3 rounded-2xl border px-3.5 py-3 text-xs leading-relaxed ${
+          className={`flex items-start gap-3 rounded-2xl border px-3.5 py-3 text-sm leading-relaxed ${
             authFeedback.type === 'success'
               ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-100'
               : 'border-rose-500/40 bg-rose-500/10 text-rose-100'
@@ -108,7 +108,7 @@ export function AuthConfirmationPanel({
         <button
           type="submit"
           disabled={authSubmitting || !canSubmitOtp}
-          className="w-full rounded-2xl bg-gradient-to-l from-cyan-400 to-cyan-500 py-3.5 text-slate-950 font-black text-sm shadow-lg shadow-cyan-500/20 disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none flex items-center justify-center gap-2 transition-all active:scale-[0.99]"
+          className="w-full rounded-2xl bg-gradient-to-l from-cyan-400 to-cyan-500 py-3.5 text-slate-950 font-black text-base shadow-lg shadow-cyan-500/20 disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none flex items-center justify-center gap-2 transition-all active:scale-[0.99]"
         >
           {authSubmitting && (
             <span className="h-4 w-4 rounded-full border-2 border-slate-950/30 border-t-slate-950 animate-spin" />
@@ -119,9 +119,9 @@ export function AuthConfirmationPanel({
 
       <div className="flex items-center justify-center">
         {otpResendCooldown > 0 ? (
-          <p className="text-xs text-slate-500" dir="ltr">
+          <p className="text-sm text-slate-500" dir="ltr">
             <span dir="rtl">إعادة الإرسال خلال</span>{' '}
-            <span className="font-mono font-bold text-cyan-400 tabular-nums">
+            <span className="font-mono font-bold text-cyan-400 text-base tnum">
               {formatCooldown(otpResendCooldown)}
             </span>
           </p>
@@ -130,19 +130,19 @@ export function AuthConfirmationPanel({
             type="button"
             disabled={authSubmitting}
             onClick={onResend}
-            className="text-xs font-bold text-cyan-400 disabled:text-slate-600 py-1 underline-offset-4 hover:underline"
+            className="text-sm font-bold text-cyan-400 disabled:text-slate-600 py-1 underline-offset-4 hover:underline"
           >
             لم يصلك الرمز؟ إعادة الإرسال
           </button>
         )}
       </div>
 
-      <p className="text-[10px] text-slate-500 text-center leading-relaxed">{AUTH_CONFIRMATION_LINK_HINT}</p>
+      <p className="text-xs text-slate-500 text-center leading-relaxed">{AUTH_CONFIRMATION_LINK_HINT}</p>
 
       <button
         type="button"
         onClick={onBack}
-        className="w-full rounded-2xl bg-slate-800/80 hover:bg-slate-800 py-3 text-xs text-white font-bold transition-colors"
+        className="w-full rounded-2xl bg-slate-800/80 hover:bg-slate-800 py-3 text-sm text-white font-bold transition-colors"
       >
         تعديل البريد أو العودة
       </button>
