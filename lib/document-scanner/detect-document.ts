@@ -6,8 +6,13 @@
  *   2) تحويل إلى تدرج رمادي.
  *   3) عتبة Otsu تلقائية لفصل "الورقة" الساطعة عن الخلفية (والعكس احتياطاً
  *      لحالة ورقة داكنة على خلفية فاتحة).
- *   4) أكبر منطقة متصلة (Flood Fill تكراري بدون Recursion) تُعامَل كالمستند.
- *   5) تقريب حوافها الأربع عبر أقصى/أدنى قيم (x+y) و(x-y) — حيلة كلاسيكية
+ *   4) (اختياري لحظة الالتقاط فقط) إغلاق مورفولوجي (Dilate ثم Erode) على
+ *      القناع الثنائي لسدّ الثغرات الصغيرة (ظلال/انعكاسات/نص داكن داخل
+ *      الورقة) قبل البحث عن أكبر منطقة متصلة — يرفع دقة تحديد الحواف
+ *      بوضوح مقابل تكلفة حسابية إضافية بسيطة (مقبولة لأنها تُشغَّل مرّة
+ *      واحدة فقط عند الالتقاط، لا في كل إطار حي).
+ *   5) أكبر منطقة متصلة (Flood Fill تكراري بدون Recursion) تُعامَل كالمستند.
+ *   6) تقريب حوافها الأربع عبر أقصى/أدنى قيم (x+y) و(x-y) — حيلة كلاسيكية
  *      خفيفة الحساب لتقدير شبه منحرف محدِّب من مجموعة نقاط دون تتبّع Contour
  *      كامل.
  *
@@ -16,16 +21,23 @@
  */
 
 import type { Point, Quad } from './geometry';
-import {
-  DETECTION_SAMPLE_WIDTH,
-  MAX_COVERAGE_RATIO,
-  MIN_COVERAGE_RATIO,
-} from './constants';
+import { DETECTION_SAMPLE_WIDTH, MAX_COVERAGE_RATIO, MIN_COVERAGE_RATIO } from './constants';
 
 export type DetectedQuad = {
   points: Quad;
   /** نسبة مساحة المستند المكتشف من مساحة الإطار الكلية (0..1) — مفيدة للتشخيص/الواجهة. */
   coverage: number;
+};
+
+export type DetectDocumentOptions = {
+  /** عرض كانفاس العمل المصغّر (كلما زاد، ارتفعت الدقة وزادت التكلفة الحسابية). */
+  sampleWidth?: number;
+  /**
+   * تفعيل إغلاق مورفولوجي (Morphological Closing) لسدّ الثغرات الصغيرة قبل
+   * البحث عن أكبر منطقة متصلة. يُنصح بتفعيلها فقط عند الالتقاط الفعلي
+   * (مرة واحدة) وليس في حلقة الاكتشاف الحي المتكررة (لأداء أفضل).
+   */
+  denoise?: boolean;
 };
 
 function toGrayscale(data: Uint8ClampedArray, pixelCount: number): Uint8ClampedArray {
@@ -70,6 +82,81 @@ function otsuThreshold(gray: Uint8ClampedArray): number {
   return threshold;
 }
 
+function buildMask(gray: Uint8ClampedArray, threshold: number): Uint8Array {
+  const mask = new Uint8Array(gray.length);
+  for (let i = 0; i < gray.length; i++) mask[i] = gray[i] > threshold ? 1 : 0;
+  return mask;
+}
+
+function invertMask(mask: Uint8Array): Uint8Array {
+  const out = new Uint8Array(mask.length);
+  for (let i = 0; i < mask.length; i++) out[i] = mask[i] ? 0 : 1;
+  return out;
+}
+
+function dilate(mask: Uint8Array, width: number, height: number): Uint8Array {
+  const out = new Uint8Array(mask.length);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const idx = y * width + x;
+      if (mask[idx]) {
+        out[idx] = 1;
+        continue;
+      }
+      let hasNeighbor = false;
+      for (let dy = -1; dy <= 1 && !hasNeighbor; dy++) {
+        const ny = y + dy;
+        if (ny < 0 || ny >= height) continue;
+        for (let dx = -1; dx <= 1; dx++) {
+          const nx = x + dx;
+          if (nx < 0 || nx >= width) continue;
+          if (mask[ny * width + nx]) {
+            hasNeighbor = true;
+            break;
+          }
+        }
+      }
+      out[idx] = hasNeighbor ? 1 : 0;
+    }
+  }
+  return out;
+}
+
+function erode(mask: Uint8Array, width: number, height: number): Uint8Array {
+  const out = new Uint8Array(mask.length);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const idx = y * width + x;
+      if (!mask[idx]) {
+        out[idx] = 0;
+        continue;
+      }
+      let allSet = true;
+      for (let dy = -1; dy <= 1 && allSet; dy++) {
+        const ny = y + dy;
+        if (ny < 0 || ny >= height) {
+          allSet = false;
+          break;
+        }
+        for (let dx = -1; dx <= 1; dx++) {
+          const nx = x + dx;
+          if (nx < 0 || nx >= width || !mask[ny * width + nx]) {
+            allSet = false;
+            break;
+          }
+        }
+      }
+      out[idx] = allSet ? 1 : 0;
+    }
+  }
+  return out;
+}
+
+/** إغلاق مورفولوجي (Dilate ثم Erode) لسدّ الثغرات الصغيرة داخل منطقة الورقة دون تغيير حجمها الكلي فعلياً. */
+function closeMask(mask: Uint8Array, width: number, height: number): Uint8Array {
+  return erode(dilate(mask, width, height), width, height);
+}
+
 type BlobCorners = {
   count: number;
   minSum: Point;
@@ -79,21 +166,20 @@ type BlobCorners = {
 };
 
 /**
- * يبحث عن أكبر منطقة متصلة من البكسلات "الساطعة" (أعلى من العتبة) عبر
- * Flood Fill تكراري (مصفوفة Stack يدوية بدل استدعاء دوال متداخلة لتفادي
- * حدود عمق التكرار)، ويتتبّع أثناء الزحف 4 نقاط متطرفة تقارب زوايا شبه
- * منحرف محدِّب يحيط بالمنطقة (بدل تتبّع Contour كامل الأثقل حسابياً).
+ * يبحث عن أكبر منطقة متصلة داخل قناع ثنائي عبر Flood Fill تكراري (مصفوفة
+ * Stack يدوية بدل استدعاء دوال متداخلة لتفادي حدود عمق التكرار)، ويتتبّع
+ * أثناء الزحف 4 نقاط متطرفة تقارب زوايا شبه منحرف محدِّب يحيط بالمنطقة
+ * (بدل تتبّع Contour كامل الأثقل حسابياً).
  */
-function findLargestBrightBlob(gray: Uint8ClampedArray, width: number, height: number, threshold: number): BlobCorners | null {
+function findLargestBlob(mask: Uint8Array, width: number, height: number): BlobCorners | null {
   const total = width * height;
   const visited = new Uint8Array(total);
   const stack = new Int32Array(total);
-  const isForeground = (idx: number) => gray[idx] > threshold;
 
   let best: BlobCorners | null = null;
 
   for (let start = 0; start < total; start++) {
-    if (visited[start] || !isForeground(start)) continue;
+    if (visited[start] || !mask[start]) continue;
 
     let sp = 0;
     stack[sp++] = start;
@@ -134,19 +220,19 @@ function findLargestBrightBlob(gray: Uint8ClampedArray, width: number, height: n
         maxDiffPt = { x, y };
       }
 
-      if (x > 0 && !visited[idx - 1] && isForeground(idx - 1)) {
+      if (x > 0 && !visited[idx - 1] && mask[idx - 1]) {
         visited[idx - 1] = 1;
         stack[sp++] = idx - 1;
       }
-      if (x < width - 1 && !visited[idx + 1] && isForeground(idx + 1)) {
+      if (x < width - 1 && !visited[idx + 1] && mask[idx + 1]) {
         visited[idx + 1] = 1;
         stack[sp++] = idx + 1;
       }
-      if (y > 0 && !visited[idx - width] && isForeground(idx - width)) {
+      if (y > 0 && !visited[idx - width] && mask[idx - width]) {
         visited[idx - width] = 1;
         stack[sp++] = idx - width;
       }
-      if (y < height - 1 && !visited[idx + width] && isForeground(idx + width)) {
+      if (y < height - 1 && !visited[idx + width] && mask[idx + width]) {
         visited[idx + width] = 1;
         stack[sp++] = idx + width;
       }
@@ -179,12 +265,16 @@ export function detectDocumentQuad(
   source: CanvasImageSource,
   sourceWidth: number,
   sourceHeight: number,
-  workCanvas: HTMLCanvasElement
+  workCanvas: HTMLCanvasElement,
+  options?: DetectDocumentOptions
 ): DetectedQuad | null {
   if (!sourceWidth || !sourceHeight) return null;
 
-  const scale = DETECTION_SAMPLE_WIDTH / sourceWidth;
-  const w = DETECTION_SAMPLE_WIDTH;
+  const sampleWidth = options?.sampleWidth ?? DETECTION_SAMPLE_WIDTH;
+  const denoise = options?.denoise ?? false;
+
+  const scale = sampleWidth / sourceWidth;
+  const w = sampleWidth;
   const h = Math.max(1, Math.round(sourceHeight * scale));
 
   workCanvas.width = w;
@@ -206,13 +296,16 @@ export function detectDocumentQuad(
   const threshold = otsuThreshold(gray);
 
   // الحالة الشائعة: ورقة فاتحة على خلفية أغمق (طاولة/يد/أرضية)
-  const brightBlob = findLargestBrightBlob(gray, w, h, threshold);
+  let brightMask = buildMask(gray, threshold);
+  if (denoise) brightMask = closeMask(brightMask, w, h);
+  const brightBlob = findLargestBlob(brightMask, w, h);
   let chosen = brightBlob ? blobToQuad(brightBlob, w * h) : null;
 
-  // احتياط: مستند/خلفية معكوسة (نادر لكن وارد) — نعكس التدرج الرمادي ونكرر
+  // احتياط: مستند/خلفية معكوسة (نادر لكن وارد)
   if (!chosen) {
-    const inverted = gray.map((v) => 255 - v);
-    const darkBlob = findLargestBrightBlob(inverted, w, h, 255 - threshold);
+    let darkMask = invertMask(brightMask);
+    if (denoise) darkMask = closeMask(darkMask, w, h);
+    const darkBlob = findLargestBlob(darkMask, w, h);
     chosen = darkBlob ? blobToQuad(darkBlob, w * h) : null;
   }
 

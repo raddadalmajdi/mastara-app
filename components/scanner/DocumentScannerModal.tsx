@@ -10,6 +10,7 @@ import { detectDocumentQuad, quadsAreClose, type DetectedQuad } from '@/lib/docu
 import { enhanceDocumentCanvas } from '@/lib/document-scanner/enhance';
 import { canvasToDocumentPdfBlob } from '@/lib/document-scanner/to-pdf';
 import {
+  CAPTURE_DETECTION_SAMPLE_WIDTH,
   DETECTION_INTERVAL_MS,
   MAX_OUTPUT_DIMENSION,
   SCAN_JPEG_QUALITY,
@@ -185,11 +186,17 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
     const vw = fullCanvas.width;
     const vh = fullCanvas.height;
 
-    let quad = quadHint;
-    if (!quad) {
-      const fresh = detectDocumentQuad(fullCanvas, vw, vh, getOrCreateCanvas(workCanvasRef));
-      quad = fresh?.points ?? null;
-    }
+    // نُجري دائماً اكتشافاً دقيقاً وطازجاً على كامل دقة الإطار الملتقط في
+    // هذه اللحظة بالذات (مع إغلاق مورفولوجي لسدّ الثغرات) — بدل الاعتماد
+    // فقط على آخر اكتشاف حي منخفض الدقة (`quadHint`) الذي قد يكون غير دقيق
+    // أو متأخراً بضع أجزاء من الثانية. الاكتشاف الحي يبقى فقط كشبكة أمان
+    // احتياطية إن تعذّر اكتشاف دقيق في هذه اللحظة تحديداً.
+    const precise = detectDocumentQuad(fullCanvas, vw, vh, getOrCreateCanvas(workCanvasRef), {
+      sampleWidth: CAPTURE_DETECTION_SAMPLE_WIDTH,
+      denoise: true,
+    });
+
+    let quad = precise?.points ?? quadHint;
     if (!quad) {
       quad = [
         { x: 0, y: 0 },
@@ -379,8 +386,13 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
         <span className="w-11" aria-hidden />
       </div>
 
-      {/* منطقة الكاميرا/المعاينة */}
-      <div className="relative flex-1 overflow-hidden bg-black">
+      {/* منطقة الكاميرا/المعاينة — النقر عليها أثناء البث الحي يلتقط المستند فوراً أيضاً (مثل زر الالتقاط تماماً) */}
+      <div
+        className={`relative flex-1 overflow-hidden bg-black ${phase === 'live' ? 'cursor-pointer' : ''}`}
+        onClick={phase === 'live' ? handleCapture : undefined}
+        role={phase === 'live' ? 'button' : undefined}
+        aria-label={phase === 'live' ? 'اضغط في أي مكان لالتقاط المستند' : undefined}
+      >
         {(phase === 'starting' || phase === 'live' || phase === 'processing') && (
           <>
             <video
@@ -443,7 +455,9 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
               alt="معاينة المستند الممسوح"
               className="max-h-[65vh] w-auto max-w-full rounded-2xl border-2 border-cyan-400/60 shadow-[0_25px_70px_-15px_rgba(8,145,178,0.5)] object-contain bg-white"
             />
-            <p className="text-sm text-slate-300 text-center">راجع وضوح المستند قبل المتابعة</p>
+            <p className="text-sm text-slate-300 text-center font-bold">
+              راجع وضوح المستند والحواف قبل الاعتماد النهائي — لن يُحفظ أو يُرسل تلقائياً
+            </p>
           </div>
         )}
 
@@ -502,14 +516,14 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
                 onClick={handleRetake}
                 className="flex-1 rounded-2xl bg-slate-800/80 hover:bg-slate-800 py-3.5 text-sm text-white font-bold border border-white/10"
               >
-                🔁 إعادة المحاولة
+                🔁 إعادة الالتقاط
               </button>
               <button
                 type="button"
                 onClick={handleConfirm}
                 className="flex-1 rounded-2xl bg-gradient-to-l from-cyan-400 to-cyan-500 py-3.5 text-slate-950 font-black text-sm shadow-lg shadow-cyan-500/20"
               >
-                ✅ استخدام هذا المستند
+                ✅ اعتماد المستند وحفظه
               </button>
             </div>
           </div>
