@@ -7,11 +7,17 @@ import {
   type Quad,
 } from '@/lib/document-scanner/geometry';
 import { detectDocumentQuad, quadsAreClose } from '@/lib/document-scanner/detect-document';
-import { enhanceDocumentCanvas, softEnhanceCanvas } from '@/lib/document-scanner/enhance';
+import { detectDocumentQuadCv } from '@/lib/document-scanner/cv-detect';
+import { warpPerspectiveCv } from '@/lib/document-scanner/cv-warp';
+import { enhanceDocumentCanvas, enhanceDocumentCanvasCv, softEnhanceCanvas } from '@/lib/document-scanner/enhance';
 import { canvasToDocumentPdfBlob } from '@/lib/document-scanner/to-pdf';
+import { ensureOpenCvLoaded } from '@/lib/document-scanner/opencv-loader';
 import {
   CAPTURE_DETECTION_SAMPLE_WIDTH,
+  CV_CAPTURE_DETECTION_SAMPLE_WIDTH,
+  CV_DETECTION_SAMPLE_WIDTH,
   DETECTION_INTERVAL_MS,
+  DETECTION_SAMPLE_WIDTH,
   FALLBACK_MARGIN_X_RATIO,
   FALLBACK_MARGIN_Y_RATIO,
   MAX_MISSED_DETECTION_STREAK,
@@ -140,6 +146,8 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
   const smoothedQuadRef = useRef<Quad | null>(null);
   /** عدّاد محاولات الاكتشاف الفاشلة المتتالية (لإتاحة فترة سماح قبل إخفاء الإطار). */
   const missStreakRef = useRef(0);
+  /** هل نتج الالتقاط الحالي عن اكتشاف حواف واثق (يُستخدم لاختيار صيغة تصدير PDF الأنسب لاحقاً — PNG للمسح الثنائي المُحسَّن، JPEG للمعاينة اللطيفة الاحترازية). */
+  const confidentCaptureRef = useRef(false);
 
   const [phase, setPhase] = useState<Phase>('starting');
   const [detectionStatus, setDetectionStatus] = useState<DetectionStatus>('none');
@@ -206,18 +214,60 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
     };
   }, [startCamera, stopStream]);
 
-  const finishCapture = useCallback((fullCanvas: HTMLCanvasElement) => {
+  // تحميل محرّك OpenCV.js (رؤية حاسوبية حقيقية) في الخلفية فوراً عند فتح
+  // الماسح — لا يُعطِّل ظهور الكاميرا الحية إطلاقاً (Fire-and-forget)، والهدف
+  // أن يكون المحرّك جاهزاً غالباً بحلول لحظة الالتقاط الفعلي. كل مسار
+  // اكتشاف/تصحيح/تحسين يتراجع تلقائياً وبأمان لخط الأنابيب اليدوي إن لم يكن
+  // المحرّك قد اكتمل تحميله بعد (لا تعطّل أبداً لتجربة المستخدم).
+  useEffect(() => {
+    void ensureOpenCvLoaded();
+  }, []);
+
+  /** اكتشاف موحَّد: يجرِّب OpenCV.js أولاً (رؤية حاسوبية حقيقية أدق بكثير)، ويتراجع تلقائياً للاكتشاف اليدوي القائم على السطوع عند عدم توفّره أو فشله. */
+  const detectQuadUnified = useCallback(
+    (
+      source: CanvasImageSource,
+      vw: number,
+      vh: number,
+      cvSampleWidth: number,
+      fallbackSampleWidth: number,
+      denoiseFallback: boolean
+    ): { points: Quad; coverage: number } | null => {
+      const cvResult = detectDocumentQuadCv(source, vw, vh, getOrCreateCanvas(workCanvasRef), {
+        sampleWidth: cvSampleWidth,
+      });
+      if (cvResult) return cvResult;
+
+      return detectDocumentQuad(source, vw, vh, getOrCreateCanvas(workCanvasRef), {
+        sampleWidth: fallbackSampleWidth,
+        denoise: denoiseFallback,
+      });
+    },
+    []
+  );
+
+  const finishCapture = useCallback(async (fullCanvas: HTMLCanvasElement) => {
     const vw = fullCanvas.width;
     const vh = fullCanvas.height;
 
+    // ننتظر تحميل OpenCV.js لحظات قصيرة إضافية إن لم يكن جاهزاً تماماً بعد
+    // (غالباً يكون جاهزاً بالفعل لأنه بدأ التحميل فور فتح الماسح) — بلا حجب
+    // طويل يُعطِّل تجربة الالتقاط إن تعذّر التحميل كلياً.
+    await ensureOpenCvLoaded();
+
     // نُجري دائماً اكتشافاً دقيقاً وطازجاً على كامل دقة الإطار الملتقط في هذه
-    // اللحظة بالذات (مع إغلاق مورفولوجي لسدّ الثغرات وفحص نسيج داخلي يرفض
-    // الكتل المشبوهة) — لا نعتمد إطلاقاً على آخر اكتشاف حي منخفض الدقة، فهو
-    // معرَّض لنفس مصدر الخطأ (خلفية قريبة الإضاءة من الورقة).
-    const precise = detectDocumentQuad(fullCanvas, vw, vh, getOrCreateCanvas(workCanvasRef), {
-      sampleWidth: CAPTURE_DETECTION_SAMPLE_WIDTH,
-      denoise: true,
-    });
+    // اللحظة بالذات — أولاً عبر OpenCV.js (كشف حواف Canny حقيقي + مضلّعات)،
+    // ثم احتياطاً عبر الاكتشاف اليدوي القائم على السطوع (مع إغلاق مورفولوجي
+    // وفحص نسيج داخلي يرفض الكتل المشبوهة). لا نعتمد إطلاقاً على آخر اكتشاف
+    // حي منخفض الدقة، فهو معرَّض لنفس مصدر الخطأ (خلفية قريبة الإضاءة من الورقة).
+    const precise = detectQuadUnified(
+      fullCanvas,
+      vw,
+      vh,
+      CV_CAPTURE_DETECTION_SAMPLE_WIDTH,
+      CAPTURE_DETECTION_SAMPLE_WIDTH,
+      true
+    );
 
     // ثقة كاملة فقط عند نجاح اكتشاف دقيق وطازج لحواف حقيقية. غير ذلك، بدل
     // استخدام إطار الكاميرا بكامله (حواف-إلى-حواف، وما يحمله من أرضية/خلفية
@@ -225,6 +275,7 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
     // تطبيق تحويل المسح الثنائي (أبيض/أسود) القاسي عليه — لأنه مصمَّم لصفحة
     // بيضاء نظيفة فقط، وسيُنتج ضجيجاً كثيفاً فوق أي خلفية واقعية غير مسطّحة.
     const confident = Boolean(precise);
+    confidentCaptureRef.current = confident;
     const quad = precise?.points ?? centeredFallbackQuad(vw, vh);
 
     const { width, height } = computeOutputSize(quad);
@@ -232,9 +283,13 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
     const outW = Math.max(1, Math.round(width * scaleDown));
     const outH = Math.max(1, Math.round(height * scaleDown));
 
-    const corrected = warpPerspective(fullCanvas, quad, outW, outH);
+    // تصحيح منظور حقيقي (Homography) — عبر OpenCV.js أولاً (أدق وأسرع WASM)،
+    // واحتياطاً عبر التطبيق اليدوي (Canvas 2D خالص) عند عدم التوفّر.
+    const corrected = warpPerspectiveCv(fullCanvas, quad, outW, outH) ?? warpPerspective(fullCanvas, quad, outW, outH);
+
     if (confident) {
-      enhanceDocumentCanvas(corrected);
+      // عتبة تكيّفية ذكية حقيقية عبر OpenCV.js أولاً؛ واحتياطاً خط أنابيب Otsu اليدوي.
+      if (!enhanceDocumentCanvasCv(corrected)) enhanceDocumentCanvas(corrected);
     } else {
       softEnhanceCanvas(corrected);
     }
@@ -242,7 +297,7 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
     correctedCanvasRef.current = corrected;
     setPreviewDataUrl(corrected.toDataURL('image/jpeg', SCAN_JPEG_QUALITY));
     setPhase(confident ? 'preview' : 'preview-uncertain');
-  }, []);
+  }, [detectQuadUnified]);
 
   const handleCapture = useCallback(() => {
     const video = videoRef.current;
@@ -252,17 +307,19 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
     // مهلة قصيرة جداً كي تُعاد رسم الواجهة (سبينر "جاري المعالجة") قبل حساب
     // تصحيح المنظور نسبياً الثقيل على الخيط الرئيسي.
     window.setTimeout(() => {
-      try {
-        const vw = video.videoWidth;
-        const vh = video.videoHeight;
-        if (!vw || !vh) throw new Error('تعذّر قراءة إطار الكاميرا.');
-        const fullCanvas = drawFullFrame(video, vw, vh);
-        finishCapture(fullCanvas);
-      } catch (err) {
-        console.error('[scanner] capture failed', err);
-        setErrorMessage('تعذّرت معالجة المستند. حاول مجدداً بإضاءة أفضل وثبات أكبر.');
-        setPhase('live');
-      }
+      void (async () => {
+        try {
+          const vw = video.videoWidth;
+          const vh = video.videoHeight;
+          if (!vw || !vh) throw new Error('تعذّر قراءة إطار الكاميرا.');
+          const fullCanvas = drawFullFrame(video, vw, vh);
+          await finishCapture(fullCanvas);
+        } catch (err) {
+          console.error('[scanner] capture failed', err);
+          setErrorMessage('تعذّرت معالجة المستند. حاول مجدداً بإضاءة أفضل وثبات أكبر.');
+          setPhase('live');
+        }
+      })();
     }, 30);
   }, [phase, finishCapture]);
 
@@ -285,7 +342,7 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
       const vh = video.videoHeight;
       if (!vw || !vh) return;
 
-      const detected = detectDocumentQuad(video, vw, vh, getOrCreateCanvas(workCanvasRef));
+      const detected = detectQuadUnified(video, vw, vh, CV_DETECTION_SAMPLE_WIDTH, DETECTION_SAMPLE_WIDTH, false);
 
       // تنعيم زمني (Exponential Moving Average) لموضع زوايا الإطار التفاعلي
       // بين الإطارات المتتالية — يُقلِّل الاهتزاز الناتج عن ضجيج بسيط في
@@ -335,7 +392,7 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
 
     rafId = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(rafId);
-  }, [phase, handleCapture]);
+  }, [phase, handleCapture, detectQuadUnified]);
 
   const handleGalleryPick = () => galleryInputRef.current?.click();
 
@@ -349,7 +406,7 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
       const dataUrl = await readFileAsDataUrl(file);
       const img = await loadImageElement(dataUrl);
       const fullCanvas = drawFullFrame(img, img.naturalWidth || img.width, img.naturalHeight || img.height);
-      finishCapture(fullCanvas);
+      await finishCapture(fullCanvas);
     } catch (err) {
       console.error('[scanner] gallery import failed', err);
       setErrorMessage('تعذّر تحميل الصورة المختارة. جرّب صورة أخرى.');
@@ -394,7 +451,10 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
           SCAN_JPEG_QUALITY
         );
       });
-      const pdfBlob = await canvasToDocumentPdfBlob(canvas);
+      // PNG (ضغط بلا فقد) فقط للمسح الثنائي المُحسَّن (مناطق مسطّحة واسعة
+      // تضغط ممتازاً وبلا تشويش حواف)؛ JPEG للمعاينة اللطيفة الاحترازية
+      // (صورة فوتوغرافية عادية الألوان) حيث يبقى أصغر حجماً بكثير من PNG.
+      const pdfBlob = await canvasToDocumentPdfBlob(canvas, { preferPng: confidentCaptureRef.current });
 
       await onConfirm({ jpegBlob, pdfBlob });
       stopStream();
