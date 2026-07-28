@@ -1,0 +1,18 @@
+# Project Rules & Architecture: Mastara (مسطرة)
+
+## Tech Stack
+- Next.js (App Router)
+- TypeScript
+- Tailwind CSS
+- Supabase (Backend & Auth)
+
+## Core Workflow & Features
+1. **Landing / Root Page:** The main entry page (`/`) handles Tailor/Manager Login and Email/Phone Authentication.
+2. **Client Management:** After successful authentication, the workflow directs the user to add the client's phone number/ID.
+3. **Document Scanner & PDF:** Invoicing and document capturing must process through edge-detection utilities and export/save as clean PDF documents instead of standard raw images.
+4. **WhatsApp Integration:** Sharing invoices with clients via WhatsApp must send the generated PDF document format.
+
+## General Guidelines
+- Maintain clean, modular code structure inside `app/` and `components/`.
+- Prioritize TypeScript type safety across all components.
+- Do not alter core authentication logic unless explicitly requested.
