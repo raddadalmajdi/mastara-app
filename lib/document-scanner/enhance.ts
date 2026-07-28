@@ -229,3 +229,36 @@ export function enhanceDocumentCanvas(canvas: HTMLCanvasElement): void {
 
   ctx.putImageData(imageData, 0, 0);
 }
+
+/**
+ * تحسين "لطيف" فقط (تباين/سطوع بسيطان مع الحفاظ على الألوان) — بلا أي
+ * تحويل ثنائي (أبيض/أسود) قاسٍ. يُستخدم حصراً حين لا نثق بأن القصّ يحتوي
+ * على ورقة فعلية فقط (مثلاً تعذّر اكتشاف الحواف فتراجعنا لإطار مركزي
+ * احترازي قد لا يزال يحوي خلفية حقيقية كأرضية/طاولة). تطبيق التحويل الثنائي
+ * الحاد على خلفية طبيعية غير مستوية اللون دائماً يُنتج "ضجيجاً" كثيفاً يشبه
+ * التشويش (كما في الصور الملتقطة فوق أرضية بلاط فاتحة) لأن هذا التحويل
+ * مصمَّم أصلاً لصفحة بيضاء مسطّحة، لا لمشهد واقعي كامل — لذا نتفادى تطبيقه
+ * كلياً في حالة عدم اليقين، ونكتفي بتحسين بسيط وآمن للوضوح.
+ */
+export function softEnhanceCanvas(canvas: HTMLCanvasElement): void {
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+
+  const { width, height } = canvas;
+  if (!width || !height) return;
+
+  const imageData = ctx.getImageData(0, 0, width, height);
+  const data = imageData.data;
+
+  const contrast = 1.12;
+  const brightness = 6;
+  const midpoint = 128;
+
+  for (let i = 0; i < data.length; i += 4) {
+    data[i] = clamp255((data[i] - midpoint) * contrast + midpoint + brightness);
+    data[i + 1] = clamp255((data[i + 1] - midpoint) * contrast + midpoint + brightness);
+    data[i + 2] = clamp255((data[i + 2] - midpoint) * contrast + midpoint + brightness);
+  }
+
+  ctx.putImageData(imageData, 0, 0);
+}

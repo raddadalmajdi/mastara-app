@@ -31,6 +31,7 @@ import type { Point, Quad } from './geometry';
 import {
   DETECTION_SAMPLE_WIDTH,
   MAX_COVERAGE_RATIO,
+  MAX_INTERIOR_TEXTURE,
   MIN_BLOB_FILL_RATIO,
   MIN_CANDIDATE_BLOB_RATIO,
   MIN_COVERAGE_RATIO,
@@ -326,6 +327,72 @@ function quadArea(quad: Quad): number {
   return Math.abs(area) / 2;
 }
 
+/** يحسب خارطة "قوة التدرّج" (Sobel Gradient Magnitude) لكل بكسل — تُستخدم لتمييز سطح ورقة مسطّح عن خلفية مليئة بالنقوش/الفواصل. */
+function computeGradientMagnitude(gray: Float32Array, width: number, height: number): Float32Array {
+  const mag = new Float32Array(gray.length);
+  for (let y = 1; y < height - 1; y++) {
+    const row = y * width;
+    for (let x = 1; x < width - 1; x++) {
+      const idx = row + x;
+      const gx =
+        -gray[idx - width - 1] +
+        gray[idx - width + 1] -
+        2 * gray[idx - 1] +
+        2 * gray[idx + 1] -
+        gray[idx + width - 1] +
+        gray[idx + width + 1];
+      const gy =
+        -gray[idx - width - 1] -
+        2 * gray[idx - width] -
+        gray[idx - width + 1] +
+        gray[idx + width - 1] +
+        2 * gray[idx + width] +
+        gray[idx + width + 1];
+      mag[idx] = Math.sqrt(gx * gx + gy * gy);
+    }
+  }
+  return mag;
+}
+
+/**
+ * يُقدِّر متوسط "نسيج" منطقة داخل شبه منحرف عبر أخذ عينات من شبكة نقاط في
+ * صندوقه المحيط (Bounding Box) بعد تصغيره للداخل بهامش (لتفادي حواف المستند
+ * نفسها التي تحمل تدرّجاً حاداً طبيعياً وليست جزءاً من "نسيج" السطح الداخلي).
+ */
+function meanInteriorTexture(mag: Float32Array, width: number, height: number, quad: Quad): number {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const p of quad) {
+    if (p.x < minX) minX = p.x;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.y > maxY) maxY = p.y;
+  }
+
+  const insetX = (maxX - minX) * 0.15;
+  const insetY = (maxY - minY) * 0.15;
+  const x0 = Math.max(1, Math.round(minX + insetX));
+  const x1 = Math.min(width - 2, Math.round(maxX - insetX));
+  const y0 = Math.max(1, Math.round(minY + insetY));
+  const y1 = Math.min(height - 2, Math.round(maxY - insetY));
+  if (x1 <= x0 || y1 <= y0) return 0;
+
+  const steps = 12;
+  let sum = 0;
+  let count = 0;
+  for (let iy = 0; iy < steps; iy++) {
+    const y = Math.round(y0 + ((y1 - y0) * iy) / (steps - 1));
+    for (let ix = 0; ix < steps; ix++) {
+      const x = Math.round(x0 + ((x1 - x0) * ix) / (steps - 1));
+      sum += mag[y * width + x];
+      count++;
+    }
+  }
+  return count > 0 ? sum / count : 0;
+}
+
 /**
  * يختار أفضل كتلة مرشَّحة لتمثيل "الورقة" من بين عدة كتل: يُفضِّل الكتل ذات
  * "نسبة امتلاء" عالية (قريبة الشكل من مستطيل صلب لا بقعة ضجيج متناثرة)، ثم
@@ -402,11 +469,21 @@ export function detectDocumentQuad(
 
   const threshold = otsuThreshold(normalized);
 
+  // خط دفاع أخير: عند دمج الورقة والخلفية في كتلة واحدة (خلفية فاتحة قريبة
+  // من لون الورقة، كأرضية بلاط)، نرفض الكتلة إن كان "نسيج" منتصفها مرتفعاً
+  // (فواصل/نقوش خلفية حقيقية) بدل قبولها كمستند نظيف خطأً.
+  let gradMag: Float32Array | null = null;
+  const passesTextureCheck = (quad: Quad): boolean => {
+    if (!gradMag) gradMag = computeGradientMagnitude(normalized, w, h);
+    return meanInteriorTexture(gradMag, w, h, quad) <= MAX_INTERIOR_TEXTURE;
+  };
+
   // الحالة الشائعة: ورقة فاتحة على خلفية أغمق (طاولة/يد/أرضية)
   let brightMask = buildMask(normalized, threshold);
   if (denoise) brightMask = openMask(closeMask(brightMask, w, h), w, h);
   const brightBlobs = findCandidateBlobs(brightMask, w, h, MIN_CANDIDATE_BLOB_RATIO);
   let chosen = pickBestDocumentBlob(brightBlobs, w * h);
+  if (chosen && !passesTextureCheck(chosen.points)) chosen = null;
 
   // احتياط: مستند/خلفية معكوسة (نادر لكن وارد)
   if (!chosen) {
@@ -414,6 +491,7 @@ export function detectDocumentQuad(
     if (denoise) darkMask = openMask(closeMask(darkMask, w, h), w, h);
     const darkBlobs = findCandidateBlobs(darkMask, w, h, MIN_CANDIDATE_BLOB_RATIO);
     chosen = pickBestDocumentBlob(darkBlobs, w * h);
+    if (chosen && !passesTextureCheck(chosen.points)) chosen = null;
   }
 
   if (!chosen) return null;

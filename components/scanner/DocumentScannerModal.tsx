@@ -6,12 +6,14 @@ import {
   warpPerspective,
   type Quad,
 } from '@/lib/document-scanner/geometry';
-import { detectDocumentQuad, quadsAreClose, type DetectedQuad } from '@/lib/document-scanner/detect-document';
-import { enhanceDocumentCanvas } from '@/lib/document-scanner/enhance';
+import { detectDocumentQuad, quadsAreClose } from '@/lib/document-scanner/detect-document';
+import { enhanceDocumentCanvas, softEnhanceCanvas } from '@/lib/document-scanner/enhance';
 import { canvasToDocumentPdfBlob } from '@/lib/document-scanner/to-pdf';
 import {
   CAPTURE_DETECTION_SAMPLE_WIDTH,
   DETECTION_INTERVAL_MS,
+  FALLBACK_MARGIN_X_RATIO,
+  FALLBACK_MARGIN_Y_RATIO,
   MAX_MISSED_DETECTION_STREAK,
   MAX_OUTPUT_DIMENSION,
   OVERLAY_SMOOTHING_ALPHA,
@@ -27,7 +29,7 @@ type DocumentScannerModalProps = {
   onConfirm: (result: DocumentScanResult) => Promise<void>;
 };
 
-type Phase = 'starting' | 'live' | 'processing' | 'preview' | 'uploading' | 'error';
+type Phase = 'starting' | 'live' | 'processing' | 'preview' | 'preview-uncertain' | 'uploading' | 'error';
 type DetectionStatus = 'none' | 'searching' | 'stable';
 
 function readFileAsDataUrl(file: File): Promise<string> {
@@ -51,6 +53,23 @@ function loadImageElement(src: string): Promise<HTMLImageElement> {
 function getOrCreateCanvas(ref: React.MutableRefObject<HTMLCanvasElement | null>): HTMLCanvasElement {
   if (!ref.current) ref.current = document.createElement('canvas');
   return ref.current;
+}
+
+/**
+ * إطار احتياطي مركزي آمن يُستخدم فقط حين يتعذّر اكتشاف حواف المستند بثقة.
+ * بدل استخدام إطار الكاميرا كاملاً حرفياً (حواف-إلى-حواف) — وما قد يظهر
+ * فيه من أرضية/أثاث/أطراف جسم عند تصوير مستند بالطول على خلفية غير محايدة —
+ * نقتصّ هامشاً آمناً من كل جهة، فنقلّل احتمال ظهور خلفية واضحة في الناتج.
+ */
+function centeredFallbackQuad(width: number, height: number): Quad {
+  const marginX = width * FALLBACK_MARGIN_X_RATIO;
+  const marginY = height * FALLBACK_MARGIN_Y_RATIO;
+  return [
+    { x: marginX, y: marginY },
+    { x: width - marginX, y: marginY },
+    { x: width - marginX, y: height - marginY },
+    { x: marginX, y: height - marginY },
+  ];
 }
 
 function drawFullFrame(source: CanvasImageSource, width: number, height: number): HTMLCanvasElement {
@@ -115,7 +134,6 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
   const streamRef = useRef<MediaStream | null>(null);
   const galleryInputRef = useRef<HTMLInputElement | null>(null);
 
-  const lastQuadRef = useRef<DetectedQuad | null>(null);
   const historyRef = useRef<Quad[]>([]);
   const autoCapturedRef = useRef(false);
   /** موضع الإطار التفاعلي بعد التنعيم الزمني (EMA) — يُستخدم للرسم وفحص الثبات فقط، لا لدقة القصّ النهائية. */
@@ -188,29 +206,26 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
     };
   }, [startCamera, stopStream]);
 
-  const finishCapture = useCallback((fullCanvas: HTMLCanvasElement, quadHint: Quad | null) => {
+  const finishCapture = useCallback((fullCanvas: HTMLCanvasElement) => {
     const vw = fullCanvas.width;
     const vh = fullCanvas.height;
 
-    // نُجري دائماً اكتشافاً دقيقاً وطازجاً على كامل دقة الإطار الملتقط في
-    // هذه اللحظة بالذات (مع إغلاق مورفولوجي لسدّ الثغرات) — بدل الاعتماد
-    // فقط على آخر اكتشاف حي منخفض الدقة (`quadHint`) الذي قد يكون غير دقيق
-    // أو متأخراً بضع أجزاء من الثانية. الاكتشاف الحي يبقى فقط كشبكة أمان
-    // احتياطية إن تعذّر اكتشاف دقيق في هذه اللحظة تحديداً.
+    // نُجري دائماً اكتشافاً دقيقاً وطازجاً على كامل دقة الإطار الملتقط في هذه
+    // اللحظة بالذات (مع إغلاق مورفولوجي لسدّ الثغرات وفحص نسيج داخلي يرفض
+    // الكتل المشبوهة) — لا نعتمد إطلاقاً على آخر اكتشاف حي منخفض الدقة، فهو
+    // معرَّض لنفس مصدر الخطأ (خلفية قريبة الإضاءة من الورقة).
     const precise = detectDocumentQuad(fullCanvas, vw, vh, getOrCreateCanvas(workCanvasRef), {
       sampleWidth: CAPTURE_DETECTION_SAMPLE_WIDTH,
       denoise: true,
     });
 
-    let quad = precise?.points ?? quadHint;
-    if (!quad) {
-      quad = [
-        { x: 0, y: 0 },
-        { x: vw, y: 0 },
-        { x: vw, y: vh },
-        { x: 0, y: vh },
-      ];
-    }
+    // ثقة كاملة فقط عند نجاح اكتشاف دقيق وطازج لحواف حقيقية. غير ذلك، بدل
+    // استخدام إطار الكاميرا بكامله (حواف-إلى-حواف، وما يحمله من أرضية/خلفية
+    // واضحة عند تصوير طويل)، نتراجع لإطار مركزي احترازي أضيق، ونتجنّب كلياً
+    // تطبيق تحويل المسح الثنائي (أبيض/أسود) القاسي عليه — لأنه مصمَّم لصفحة
+    // بيضاء نظيفة فقط، وسيُنتج ضجيجاً كثيفاً فوق أي خلفية واقعية غير مسطّحة.
+    const confident = Boolean(precise);
+    const quad = precise?.points ?? centeredFallbackQuad(vw, vh);
 
     const { width, height } = computeOutputSize(quad);
     const scaleDown = Math.min(1, MAX_OUTPUT_DIMENSION / Math.max(width, height));
@@ -218,11 +233,15 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
     const outH = Math.max(1, Math.round(height * scaleDown));
 
     const corrected = warpPerspective(fullCanvas, quad, outW, outH);
-    enhanceDocumentCanvas(corrected);
+    if (confident) {
+      enhanceDocumentCanvas(corrected);
+    } else {
+      softEnhanceCanvas(corrected);
+    }
 
     correctedCanvasRef.current = corrected;
     setPreviewDataUrl(corrected.toDataURL('image/jpeg', SCAN_JPEG_QUALITY));
-    setPhase('preview');
+    setPhase(confident ? 'preview' : 'preview-uncertain');
   }, []);
 
   const handleCapture = useCallback(() => {
@@ -238,7 +257,7 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
         const vh = video.videoHeight;
         if (!vw || !vh) throw new Error('تعذّر قراءة إطار الكاميرا.');
         const fullCanvas = drawFullFrame(video, vw, vh);
-        finishCapture(fullCanvas, lastQuadRef.current?.points ?? null);
+        finishCapture(fullCanvas);
       } catch (err) {
         console.error('[scanner] capture failed', err);
         setErrorMessage('تعذّرت معالجة المستند. حاول مجدداً بإضاءة أفضل وثبات أكبر.');
@@ -267,7 +286,6 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
       if (!vw || !vh) return;
 
       const detected = detectDocumentQuad(video, vw, vh, getOrCreateCanvas(workCanvasRef));
-      lastQuadRef.current = detected;
 
       // تنعيم زمني (Exponential Moving Average) لموضع زوايا الإطار التفاعلي
       // بين الإطارات المتتالية — يُقلِّل الاهتزاز الناتج عن ضجيج بسيط في
@@ -331,7 +349,7 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
       const dataUrl = await readFileAsDataUrl(file);
       const img = await loadImageElement(dataUrl);
       const fullCanvas = drawFullFrame(img, img.naturalWidth || img.width, img.naturalHeight || img.height);
-      finishCapture(fullCanvas, null);
+      finishCapture(fullCanvas);
     } catch (err) {
       console.error('[scanner] gallery import failed', err);
       setErrorMessage('تعذّر تحميل الصورة المختارة. جرّب صورة أخرى.');
@@ -344,7 +362,6 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
     correctedCanvasRef.current = null;
     autoCapturedRef.current = false;
     historyRef.current = [];
-    lastQuadRef.current = null;
     smoothedQuadRef.current = null;
     missStreakRef.current = 0;
     setDetectionStatus('none');
@@ -503,14 +520,23 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
           </div>
         )}
 
-        {phase === 'preview' && previewDataUrl && (
+        {(phase === 'preview' || phase === 'preview-uncertain') && previewDataUrl && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 p-4 bg-slate-950">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={previewDataUrl}
               alt="معاينة المستند الممسوح"
-              className="max-h-[65vh] w-auto max-w-full rounded-2xl border-2 border-cyan-400/60 shadow-[0_25px_70px_-15px_rgba(8,145,178,0.5)] object-contain bg-white"
+              className="max-h-[62vh] w-auto max-w-full rounded-2xl border-2 border-cyan-400/60 shadow-[0_25px_70px_-15px_rgba(8,145,178,0.5)] object-contain bg-white"
             />
+            {phase === 'preview-uncertain' && (
+              <div className="w-full max-w-sm rounded-2xl border border-amber-400/40 bg-amber-500/10 px-3.5 py-2.5 text-center">
+                <p className="text-xs sm:text-sm font-bold text-amber-200">
+                  ⚠️ تعذّر تحديد حواف المستند بدقة (قد تظهر خلفية). للحصول على
+                  أفضل نتيجة، أعد الالتقاط مع وضع الورقة على خلفية داكنة موحّدة
+                  وإضاءة جيدة.
+                </p>
+              </div>
+            )}
             <p className="text-sm text-slate-300 text-center font-bold">
               راجع وضوح المستند والحواف قبل الاعتماد النهائي — لن يُحفظ أو يُرسل تلقائياً
             </p>
@@ -556,7 +582,7 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
           </div>
         )}
 
-        {phase === 'preview' && (
+        {(phase === 'preview' || phase === 'preview-uncertain') && (
           <div className="space-y-3">
             {errorMessage && (
               <div
