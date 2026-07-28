@@ -1,17 +1,12 @@
 'use client';
 
 import {
-  CV_ADAPTIVE_BLOCK_SIZE_MAX,
-  CV_ADAPTIVE_BLOCK_SIZE_MIN,
-  CV_ADAPTIVE_BLOCK_SIZE_RATIO,
-  CV_ADAPTIVE_THRESHOLD_C,
   SCAN_CONTRAST_STEEPNESS,
   SCAN_DESPECKLE_MAX_SIZE,
   SCAN_DESPECKLE_MIN_SIZE,
   SCAN_DESPECKLE_SIZE_RATIO,
   SCAN_INK_BIAS,
 } from './constants';
-import { getOpenCv, isOpenCvReady, type OpenCvNamespace } from './opencv-loader';
 
 /**
  * "تأثير الماسح الضوئي الحقيقي" (Scan Effect): يحوّل صورة المستند الملتقطة
@@ -233,83 +228,6 @@ export function enhanceDocumentCanvas(canvas: HTMLCanvasElement): void {
   }
 
   ctx.putImageData(imageData, 0, 0);
-}
-
-function deleteAll(mats: Array<{ delete: () => void } | undefined | null>): void {
-  for (const m of mats) {
-    try {
-      m?.delete();
-    } catch {
-      // تجاهل: قد يكون الكائن محذوفاً بالفعل في مسار خطأ جزئي.
-    }
-  }
-}
-
-function oddClamp(value: number, min: number, max: number): number {
-  let v = Math.max(min, Math.min(max, Math.round(value)));
-  if (v % 2 === 0) v += 1;
-  return v;
-}
-
-/**
- * تحسين "ذكي" (Smart Binarization) عبر OpenCV.js: عتبة تكيّفية محلية حقيقية
- * (`adaptiveThreshold` بنمط `ADAPTIVE_THRESH_GAUSSIAN_C`) — تُحسَب عتبة
- * مختلفة تلقائياً لكل منطقة صغيرة من الصورة بناءً على متوسط جيرانها، فتحافظ
- * على حبر الكتابة أسود داكناً حتى في مناطق فيها تفاوت إضاءة متبقٍّ، بينما
- * تدفع الخلفية نحو أبيض نقي — هذا هو الأسلوب المعياري المستخدم فعلياً في
- * تطبيقات المسح الضوئي الاحترافية. يليها فتح مورفولوجي خفيف (`MORPH_OPEN`)
- * لمحو أي بقع "ملح وفلفل" معزولة دون المساس بضربات الحروف الحقيقية.
- *
- * يُرجع `true` عند النجاح (ونتيجته مكتوبة مباشرة في الكانفاس)، أو `false`
- * فوراً بلا أي تعديل إن لم يكن OpenCV.js جاهزاً بعد أو حدث خطأ — كي يتراجع
- * المستدعي بأمان تام إلى `enhanceDocumentCanvas` اليدوي أدناه.
- */
-export function enhanceDocumentCanvasCv(canvas: HTMLCanvasElement): boolean {
-  if (!isOpenCvReady()) return false;
-  const cv: OpenCvNamespace = getOpenCv();
-  if (!cv) return false;
-
-  const { width, height } = canvas;
-  if (!width || !height) return false;
-
-  let src, gray, blurred, binary, kernel, cleaned;
-  try {
-    src = cv.imread(canvas);
-    gray = new cv.Mat();
-    cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-
-    blurred = new cv.Mat();
-    cv.GaussianBlur(gray, blurred, new cv.Size(3, 3), 0);
-
-    const blockSize = oddClamp(
-      Math.min(width, height) * CV_ADAPTIVE_BLOCK_SIZE_RATIO,
-      CV_ADAPTIVE_BLOCK_SIZE_MIN,
-      CV_ADAPTIVE_BLOCK_SIZE_MAX
-    );
-
-    binary = new cv.Mat();
-    cv.adaptiveThreshold(
-      blurred,
-      binary,
-      255,
-      cv.ADAPTIVE_THRESH_GAUSSIAN_C,
-      cv.THRESH_BINARY,
-      blockSize,
-      CV_ADAPTIVE_THRESHOLD_C
-    );
-
-    kernel = cv.Mat.ones(2, 2, cv.CV_8U);
-    cleaned = new cv.Mat();
-    cv.morphologyEx(binary, cleaned, cv.MORPH_OPEN, kernel);
-
-    cv.imshow(canvas, cleaned);
-    return true;
-  } catch (err) {
-    console.error('[scanner] فشل التحسين الذكي عبر OpenCV.js', err);
-    return false;
-  } finally {
-    deleteAll([src, gray, blurred, binary, kernel, cleaned]);
-  }
 }
 
 /**

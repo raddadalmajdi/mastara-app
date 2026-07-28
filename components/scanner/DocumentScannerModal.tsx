@@ -7,16 +7,11 @@ import {
   type Quad,
 } from '@/lib/document-scanner/geometry';
 import { detectDocumentQuad, quadsAreClose } from '@/lib/document-scanner/detect-document';
-import { detectDocumentQuadCv } from '@/lib/document-scanner/cv-detect';
-import { warpPerspectiveCv } from '@/lib/document-scanner/cv-warp';
-import { enhanceDocumentCanvas, enhanceDocumentCanvasCv, softEnhanceCanvas } from '@/lib/document-scanner/enhance';
+import { enhanceDocumentCanvas, softEnhanceCanvas } from '@/lib/document-scanner/enhance';
 import { canvasToDocumentPdfBlob } from '@/lib/document-scanner/to-pdf';
-import { ensureOpenCvLoaded } from '@/lib/document-scanner/opencv-loader';
 import {
   CAMERA_START_TIMEOUT_MS,
   CAPTURE_DETECTION_SAMPLE_WIDTH,
-  CV_CAPTURE_DETECTION_SAMPLE_WIDTH,
-  CV_DETECTION_SAMPLE_WIDTH,
   DETECTION_INTERVAL_MS,
   DETECTION_SAMPLE_WIDTH,
   FALLBACK_MARGIN_X_RATIO,
@@ -254,66 +249,19 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
     };
   }, [startCamera, stopStream]);
 
-  // تحميل محرّك OpenCV.js (رؤية حاسوبية حقيقية) في الخلفية — لكن فقط بعد أن
-  // تبدأ الكاميرا فعلياً (`phase === 'live'`)، وليس فور فتح الماسح مباشرة.
-  // هذا التأجيل مقصود: تحميل/تهيئة WASM ضخم (~10MB) قد يستهلك وقت المعالج
-  // الرئيسي بشكل ملحوظ للحظات، وتشغيله بالتزامن مع طلب إذن الكاميرا وبدء
-  // تشغيلها هو بالضبط ما قد يُسبِّب تعليق الشاشة على "جاري تشغيل الكاميرا..."
-  // الذي أبلغ عنه المستخدم. تأجيله لما بعد ظهور البث الحي يفصل المسارين
-  // زمنياً تماماً، بينما يبقى المحرّك على الأرجح جاهزاً بحلول لحظة الالتقاط
-  // الفعلي (يحتاج المستخدم عادة بضع ثوانٍ لتوجيه الكاميرا). كل مسار
-  // اكتشاف/تصحيح/تحسين يتراجع تلقائياً وبأمان لخط الأنابيب اليدوي إن لم يكن
-  // المحرّك قد اكتمل تحميله بعد (لا تعطّل أبداً لتجربة المستخدم).
-  useEffect(() => {
-    if (phase !== 'live') return;
-    void ensureOpenCvLoaded();
-  }, [phase]);
-
-  /** اكتشاف موحَّد: يجرِّب OpenCV.js أولاً (رؤية حاسوبية حقيقية أدق بكثير)، ويتراجع تلقائياً للاكتشاف اليدوي القائم على السطوع عند عدم توفّره أو فشله. */
-  const detectQuadUnified = useCallback(
-    (
-      source: CanvasImageSource,
-      vw: number,
-      vh: number,
-      cvSampleWidth: number,
-      fallbackSampleWidth: number,
-      denoiseFallback: boolean
-    ): { points: Quad; coverage: number } | null => {
-      const cvResult = detectDocumentQuadCv(source, vw, vh, getOrCreateCanvas(workCanvasRef), {
-        sampleWidth: cvSampleWidth,
-      });
-      if (cvResult) return cvResult;
-
-      return detectDocumentQuad(source, vw, vh, getOrCreateCanvas(workCanvasRef), {
-        sampleWidth: fallbackSampleWidth,
-        denoise: denoiseFallback,
-      });
-    },
-    []
-  );
-
   const finishCapture = useCallback(async (fullCanvas: HTMLCanvasElement) => {
     const vw = fullCanvas.width;
     const vh = fullCanvas.height;
 
-    // ننتظر تحميل OpenCV.js لحظات قصيرة إضافية إن لم يكن جاهزاً تماماً بعد
-    // (غالباً يكون جاهزاً بالفعل لأنه بدأ التحميل فور فتح الماسح) — بلا حجب
-    // طويل يُعطِّل تجربة الالتقاط إن تعذّر التحميل كلياً.
-    await ensureOpenCvLoaded();
-
     // نُجري دائماً اكتشافاً دقيقاً وطازجاً على كامل دقة الإطار الملتقط في هذه
-    // اللحظة بالذات — أولاً عبر OpenCV.js (كشف حواف Canny حقيقي + مضلّعات)،
-    // ثم احتياطاً عبر الاكتشاف اليدوي القائم على السطوع (مع إغلاق مورفولوجي
-    // وفحص نسيج داخلي يرفض الكتل المشبوهة). لا نعتمد إطلاقاً على آخر اكتشاف
-    // حي منخفض الدقة، فهو معرَّض لنفس مصدر الخطأ (خلفية قريبة الإضاءة من الورقة).
-    const precise = detectQuadUnified(
-      fullCanvas,
-      vw,
-      vh,
-      CV_CAPTURE_DETECTION_SAMPLE_WIDTH,
-      CAPTURE_DETECTION_SAMPLE_WIDTH,
-      true
-    );
+    // اللحظة بالذات (خوارزمية يدوية خفيفة قائمة على Canvas 2D/ImageData: تحسين
+    // تباين محلي + عتبة Otsu + إغلاق مورفولوجي + فحص نسيج داخلي يرفض الكتل
+    // المشبوهة) — لا نعتمد إطلاقاً على آخر اكتشاف حي منخفض الدقة، فهو معرَّض
+    // لنفس مصدر الخطأ (خلفية قريبة الإضاءة من الورقة).
+    const precise = detectDocumentQuad(fullCanvas, vw, vh, getOrCreateCanvas(workCanvasRef), {
+      sampleWidth: CAPTURE_DETECTION_SAMPLE_WIDTH,
+      denoise: true,
+    });
 
     // ثقة كاملة فقط عند نجاح اكتشاف دقيق وطازج لحواف حقيقية. غير ذلك، بدل
     // استخدام إطار الكاميرا بكامله (حواف-إلى-حواف، وما يحمله من أرضية/خلفية
@@ -331,13 +279,11 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
     const outW = Math.max(1, Math.round(width * scaleDown));
     const outH = Math.max(1, Math.round(height * scaleDown));
 
-    // تصحيح منظور حقيقي (Homography) — عبر OpenCV.js أولاً (أدق وأسرع WASM)،
-    // واحتياطاً عبر التطبيق اليدوي (Canvas 2D خالص) عند عدم التوفّر.
-    const corrected = warpPerspectiveCv(fullCanvas, quad, outW, outH) ?? warpPerspective(fullCanvas, quad, outW, outH);
+    // تصحيح منظور يدوي خفيف (Canvas 2D خالص — Homography + أخذ عيّنة ثنائية الخطية).
+    const corrected = warpPerspective(fullCanvas, quad, outW, outH);
 
     if (confident) {
-      // عتبة تكيّفية ذكية حقيقية عبر OpenCV.js أولاً؛ واحتياطاً خط أنابيب Otsu اليدوي.
-      if (!enhanceDocumentCanvasCv(corrected)) enhanceDocumentCanvas(corrected);
+      enhanceDocumentCanvas(corrected);
     } else {
       softEnhanceCanvas(corrected);
     }
@@ -347,7 +293,7 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
     correctedCanvasRef.current = corrected;
     setPreviewDataUrl(corrected.toDataURL('image/jpeg', SCAN_JPEG_QUALITY));
     setPhase(confident ? 'preview' : 'preview-uncertain');
-  }, [detectQuadUnified]);
+  }, []);
 
   const handleCapture = useCallback(() => {
     const video = videoRef.current;
@@ -394,7 +340,9 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
       const vh = video.videoHeight;
       if (!vw || !vh) return;
 
-      const detected = detectQuadUnified(video, vw, vh, CV_DETECTION_SAMPLE_WIDTH, DETECTION_SAMPLE_WIDTH, false);
+      const detected = detectDocumentQuad(video, vw, vh, getOrCreateCanvas(workCanvasRef), {
+        sampleWidth: DETECTION_SAMPLE_WIDTH,
+      });
 
       // تنعيم زمني (Exponential Moving Average) لموضع زوايا الإطار التفاعلي
       // بين الإطارات المتتالية — يُقلِّل الاهتزاز الناتج عن ضجيج بسيط في
@@ -444,7 +392,7 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
 
     rafId = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(rafId);
-  }, [phase, handleCapture, detectQuadUnified]);
+  }, [phase, handleCapture]);
 
   const handleGalleryPick = () => galleryInputRef.current?.click();
 
