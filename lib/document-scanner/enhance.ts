@@ -1,5 +1,13 @@
 'use client';
 
+import {
+  SCAN_CONTRAST_STEEPNESS,
+  SCAN_DESPECKLE_MAX_SIZE,
+  SCAN_DESPECKLE_MIN_SIZE,
+  SCAN_DESPECKLE_SIZE_RATIO,
+  SCAN_INK_BIAS,
+} from './constants';
+
 /**
  * "تأثير الماسح الضوئي الحقيقي" (Scan Effect): يحوّل صورة المستند الملتقطة
  * (بألوانها، ظلالها، وإضاءتها غير المتساوية/الصفراء) إلى مستند أبيض/أسود
@@ -62,6 +70,63 @@ function boxBlur2D(src: Float32Array, width: number, height: number, radius: num
 
 function clamp255(v: number): number {
   return v < 0 ? 0 : v > 255 ? 255 : v;
+}
+
+/**
+ * يُزيل بقع "الضجيج الأسود" الصغيرة المتناثرة (بكسلات داكنة معزولة نتجت عن
+ * تشويش الكاميرا أو بقايا خلفية تسرّبت من قصّ غير مثالي للحواف) عبر تحويلها
+ * إلى أبيض نقي، دون المساس بالنص الحقيقي (الذي يُشكِّل كتلاً متصلة أكبر
+ * بكثير من حجم البقعة الواحدة). يعمل عبر Flood Fill بسيط على البكسلات
+ * الداكنة (قيمة < 128): أي كتلة متصلة أصغر من `minComponentSize` تُعتبر
+ * ضجيجاً فتُمحى.
+ */
+function despeckleDarkNoise(gray: Uint8ClampedArray, width: number, height: number, minComponentSize: number): void {
+  const total = width * height;
+  const isDark = new Uint8Array(total);
+  for (let i = 0; i < total; i++) isDark[i] = gray[i] < 128 ? 1 : 0;
+
+  const visited = new Uint8Array(total);
+  const stack = new Int32Array(total);
+
+  for (let start = 0; start < total; start++) {
+    if (visited[start] || !isDark[start]) continue;
+
+    let sp = 0;
+    stack[sp++] = start;
+    visited[start] = 1;
+    const members: number[] = [start];
+
+    while (sp > 0) {
+      const idx = stack[--sp];
+      const x = idx % width;
+      const y = (idx / width) | 0;
+
+      if (x > 0 && !visited[idx - 1] && isDark[idx - 1]) {
+        visited[idx - 1] = 1;
+        stack[sp++] = idx - 1;
+        members.push(idx - 1);
+      }
+      if (x < width - 1 && !visited[idx + 1] && isDark[idx + 1]) {
+        visited[idx + 1] = 1;
+        stack[sp++] = idx + 1;
+        members.push(idx + 1);
+      }
+      if (y > 0 && !visited[idx - width] && isDark[idx - width]) {
+        visited[idx - width] = 1;
+        stack[sp++] = idx - width;
+        members.push(idx - width);
+      }
+      if (y < height - 1 && !visited[idx + width] && isDark[idx + width]) {
+        visited[idx + width] = 1;
+        stack[sp++] = idx + width;
+        members.push(idx + width);
+      }
+    }
+
+    if (members.length < minComponentSize) {
+      for (const idx of members) gray[idx] = 255;
+    }
+  }
 }
 
 /** عتبة Otsu الكلاسيكية، مطبَّقة على مصفوفة قيم رمادية عائمة (0..255). */
@@ -130,15 +195,32 @@ export function enhanceDocumentCanvas(canvas: HTMLCanvasElement): void {
     normalized[p] = clamp255((gray[p] / localBackground) * 255);
   }
 
-  // 3) عتبة Otsu تلقائية على الناتج المُطبَّع (تتكيّف مع كل مستند على حدة)
-  const threshold = otsuThreshold(normalized);
+  // 3) عتبة Otsu تلقائية على الناتج المُطبَّع (تتكيّف مع كل مستند على حدة)، مع
+  // إزاحتها نحو الأسفل (INK_BIAS): هذا يجعل تصنيف بكسل كـ"حبر أسود" أكثر
+  // صرامة (يتطلب دكانة أوضح)، بينما يصبح تصنيفه كـ"ورقة بيضاء" أكثر تسامحاً
+  // — فيقلّ "الضجيج الأسود" الناتج عن تسرّب خلفية أو تشويش كاميرا بدل تنظيف
+  // الخلفية فعلياً إلى الأبيض النقي المطلوب.
+  const threshold = otsuThreshold(normalized) - SCAN_INK_BIAS;
 
-  // 4) منحنى تباين حاد (Sigmoid) حول العتبة: خلفية بيضاء نقية، نص أسود داكن
-  const steepness = 0.3;
-  for (let p = 0, i = 0; p < pixelCount; p++, i += 4) {
-    const x = (normalized[p] - threshold) * steepness;
+  // 4) منحنى تباين حاد (Sigmoid) حول العتبة المُعدَّلة: خلفية بيضاء نقية،
+  // نص أسود داكن، مع إبقاء درجة تنعيم بسيطة عند الحواف بدل تسطيح صارم يبدو مسنَّناً.
+  const scanGray = new Uint8ClampedArray(pixelCount);
+  for (let p = 0; p < pixelCount; p++) {
+    const x = (normalized[p] - threshold) * SCAN_CONTRAST_STEEPNESS;
     const sigmoid = 1 / (1 + Math.exp(-x));
-    const value = clamp255(Math.round(sigmoid * 255));
+    scanGray[p] = clamp255(Math.round(sigmoid * 255));
+  }
+
+  // 5) تنظيف نهائي: محو أي بقع سوداء صغيرة معزولة (ضجيج/بقايا خلفية) وتحويلها
+  // لأبيض نقي، دون المساس بالنصوص الحقيقية (أكبر بكثير من حجم البقعة الواحدة).
+  const minSpeckleSize = Math.min(
+    SCAN_DESPECKLE_MAX_SIZE,
+    Math.max(SCAN_DESPECKLE_MIN_SIZE, Math.round(pixelCount * SCAN_DESPECKLE_SIZE_RATIO))
+  );
+  despeckleDarkNoise(scanGray, width, height, minSpeckleSize);
+
+  for (let p = 0, i = 0; p < pixelCount; p++, i += 4) {
+    const value = scanGray[p];
     data[i] = value;
     data[i + 1] = value;
     data[i + 2] = value;

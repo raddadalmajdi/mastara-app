@@ -12,7 +12,9 @@ import { canvasToDocumentPdfBlob } from '@/lib/document-scanner/to-pdf';
 import {
   CAPTURE_DETECTION_SAMPLE_WIDTH,
   DETECTION_INTERVAL_MS,
+  MAX_MISSED_DETECTION_STREAK,
   MAX_OUTPUT_DIMENSION,
+  OVERLAY_SMOOTHING_ALPHA,
   SCAN_JPEG_QUALITY,
   STABILITY_FRAME_COUNT,
 } from '@/lib/document-scanner/constants';
@@ -116,6 +118,10 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
   const lastQuadRef = useRef<DetectedQuad | null>(null);
   const historyRef = useRef<Quad[]>([]);
   const autoCapturedRef = useRef(false);
+  /** موضع الإطار التفاعلي بعد التنعيم الزمني (EMA) — يُستخدم للرسم وفحص الثبات فقط، لا لدقة القصّ النهائية. */
+  const smoothedQuadRef = useRef<Quad | null>(null);
+  /** عدّاد محاولات الاكتشاف الفاشلة المتتالية (لإتاحة فترة سماح قبل إخفاء الإطار). */
+  const missStreakRef = useRef(0);
 
   const [phase, setPhase] = useState<Phase>('starting');
   const [detectionStatus, setDetectionStatus] = useState<DetectionStatus>('none');
@@ -263,9 +269,33 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
       const detected = detectDocumentQuad(video, vw, vh, getOrCreateCanvas(workCanvasRef));
       lastQuadRef.current = detected;
 
-      const history = historyRef.current;
+      // تنعيم زمني (Exponential Moving Average) لموضع زوايا الإطار التفاعلي
+      // بين الإطارات المتتالية — يُقلِّل الاهتزاز الناتج عن ضجيج بسيط في
+      // الاكتشاف اللحظي دون التأثير على دقة القصّ النهائي (الذي يعتمد دوماً
+      // على اكتشاف طازج عالي الدقة عند الالتقاط الفعلي، لا على هذا التنعيم).
       if (detected) {
-        history.push(detected.points);
+        missStreakRef.current = 0;
+        const prevSmoothed = smoothedQuadRef.current;
+        smoothedQuadRef.current = !prevSmoothed
+          ? detected.points
+          : (prevSmoothed.map((p, i) => ({
+              x: p.x + (detected.points[i].x - p.x) * OVERLAY_SMOOTHING_ALPHA,
+              y: p.y + (detected.points[i].y - p.y) * OVERLAY_SMOOTHING_ALPHA,
+            })) as Quad);
+      } else {
+        missStreakRef.current += 1;
+        // فترة سماح قصيرة قبل إخفاء الإطار تماماً: يمنع الوميض المزعج عند فشل
+        // الاكتشاف للحظة واحدة (إضاءة ضعيفة/اهتزاز يد بسيط) بدل اعتباره فقداناً فورياً.
+        if (missStreakRef.current > MAX_MISSED_DETECTION_STREAK) {
+          smoothedQuadRef.current = null;
+        }
+      }
+
+      const smoothedQuad = smoothedQuadRef.current;
+
+      const history = historyRef.current;
+      if (smoothedQuad) {
+        history.push(smoothedQuad);
         if (history.length > STABILITY_FRAME_COUNT) history.shift();
       } else {
         history.length = 0;
@@ -276,10 +306,10 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
         history.length >= STABILITY_FRAME_COUNT &&
         history.every((q, i) => i === 0 || quadsAreClose(q, history[i - 1], tolerance));
 
-      setDetectionStatus(detected ? (stable ? 'stable' : 'searching') : 'none');
-      drawOverlayQuad(overlay, vw, vh, detected?.points ?? null, stable);
+      setDetectionStatus(smoothedQuad ? (stable ? 'stable' : 'searching') : 'none');
+      drawOverlayQuad(overlay, vw, vh, smoothedQuad, stable);
 
-      if (stable && detected && !autoCapturedRef.current) {
+      if (stable && smoothedQuad && !autoCapturedRef.current) {
         autoCapturedRef.current = true;
         handleCapture();
       }
@@ -315,6 +345,8 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
     autoCapturedRef.current = false;
     historyRef.current = [];
     lastQuadRef.current = null;
+    smoothedQuadRef.current = null;
+    missStreakRef.current = 0;
     setDetectionStatus('none');
     setErrorMessage(null);
 
@@ -360,6 +392,8 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
   const handleRetryCamera = () => {
     autoCapturedRef.current = false;
     historyRef.current = [];
+    smoothedQuadRef.current = null;
+    missStreakRef.current = 0;
     void startCamera({ cancelled: false });
   };
 

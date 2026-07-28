@@ -4,16 +4,23 @@
  *
  *   1) تصغير الإطار لكانفاس عمل صغير (أداء أسرع بكثير من معالجة الدقة الكاملة).
  *   2) تحويل إلى تدرج رمادي.
- *   3) عتبة Otsu تلقائية لفصل "الورقة" الساطعة عن الخلفية (والعكس احتياطاً
- *      لحالة ورقة داكنة على خلفية فاتحة).
- *   4) (اختياري لحظة الالتقاط فقط) إغلاق مورفولوجي (Dilate ثم Erode) على
- *      القناع الثنائي لسدّ الثغرات الصغيرة (ظلال/انعكاسات/نص داكن داخل
- *      الورقة) قبل البحث عن أكبر منطقة متصلة — يرفع دقة تحديد الحواف
- *      بوضوح مقابل تكلفة حسابية إضافية بسيطة (مقبولة لأنها تُشغَّل مرّة
- *      واحدة فقط عند الالتقاط، لا في كل إطار حي).
- *   5) أكبر منطقة متصلة (Flood Fill تكراري بدون Recursion) تُعامَل كالمستند.
- *   6) تقريب حوافها الأربع عبر أقصى/أدنى قيم (x+y) و(x-y) — حيلة كلاسيكية
- *      خفيفة الحساب لتقدير شبه منحرف محدِّب من مجموعة نقاط دون تتبّع Contour
+ *   3) **تنعيم أولي خفيف جداً** (تمويه شبيه بـ Gaussian بنصف قطر صغير جداً)
+ *      لإزالة الضجيج الرقمي (Sensor Noise) من بث الكاميرا قبل أي تحليل.
+ *   4) **تحسين تباين محلي**: تطبيع كل بكسل بالنسبة لإضاءة محيطه المباشر
+ *      (تمويه صندوقي أكبر نطاقاً يُقدِّر الإضاءة المحلية، ثم القسمة عليه) —
+ *      يجعل حواف الورقة البيضاء أوضح وأكثر تمايزاً عن الخلفية مهما كانت
+ *      الإضاءة غير متساوية.
+ *   5) عتبة Otsu تلقائية على الناتج المُطبَّع لفصل "الورقة" عن الخلفية.
+ *   6) (اختياري لحظة الالتقاط فقط) إغلاق ثم فتح مورفولوجي (Close → Open)
+ *      على القناع الثنائي: الإغلاق يسدّ الثغرات الصغيرة داخل الورقة، والفتح
+ *      يُزيل بقع الضجيج الصغيرة المتناثرة في الخلفية — يرفع دقة الحواف
+ *      بوضوح مقابل تكلفة حسابية إضافية بسيطة مقبولة (تُشغَّل مرّة واحدة فقط).
+ *   7) البحث عن **كل** الكتل المتصلة الكبيرة بما فيه الكفاية (لا كتلة واحدة
+ *      فقط)، ثم اختيار الأفضل بينها بناءً على معيارين معاً: الحجم، و"نسبة
+ *      الامتلاء" (مدى قرب شكلها من مستطيل صلب مقابل بقعة ضجيج متناثرة) —
+ *      هذا يمنع اختيار بقعة ضجيج كبيرة عرضاً بدل الورقة الفعلية.
+ *   8) تقريب حواف الكتلة المختارة الأربع عبر أقصى/أدنى قيم (x+y) و(x-y) —
+ *      حيلة كلاسيكية خفيفة الحساب لتقدير شبه منحرف محدِّب دون تتبّع Contour
  *      كامل.
  *
  * النتيجة: شبه منحرف من 4 نقاط (Quad) بإحداثيات المصدر الأصلي (وليس الكانفاس
@@ -21,7 +28,13 @@
  */
 
 import type { Point, Quad } from './geometry';
-import { DETECTION_SAMPLE_WIDTH, MAX_COVERAGE_RATIO, MIN_COVERAGE_RATIO } from './constants';
+import {
+  DETECTION_SAMPLE_WIDTH,
+  MAX_COVERAGE_RATIO,
+  MIN_BLOB_FILL_RATIO,
+  MIN_CANDIDATE_BLOB_RATIO,
+  MIN_COVERAGE_RATIO,
+} from './constants';
 
 export type DetectedQuad = {
   points: Quad;
@@ -33,27 +46,72 @@ export type DetectDocumentOptions = {
   /** عرض كانفاس العمل المصغّر (كلما زاد، ارتفعت الدقة وزادت التكلفة الحسابية). */
   sampleWidth?: number;
   /**
-   * تفعيل إغلاق مورفولوجي (Morphological Closing) لسدّ الثغرات الصغيرة قبل
-   * البحث عن أكبر منطقة متصلة. يُنصح بتفعيلها فقط عند الالتقاط الفعلي
-   * (مرة واحدة) وليس في حلقة الاكتشاف الحي المتكررة (لأداء أفضل).
+   * تفعيل إغلاق ثم فتح مورفولوجي (Close → Open) لتنظيف القناع الثنائي.
+   * يُنصح بتفعيلها فقط عند الالتقاط الفعلي (مرة واحدة) لا في حلقة الاكتشاف
+   * الحي المتكررة (أداء أفضل، والتنظيف الإضافي أقل أهمية للمعاينة المؤقتة).
    */
   denoise?: boolean;
 };
 
-function toGrayscale(data: Uint8ClampedArray, pixelCount: number): Uint8ClampedArray {
-  const gray = new Uint8ClampedArray(pixelCount);
+function clampByte(v: number): number {
+  return v < 0 ? 0 : v > 255 ? 255 : v;
+}
+
+function toGrayscale(data: Uint8ClampedArray, pixelCount: number): Float32Array {
+  const gray = new Float32Array(pixelCount);
   for (let i = 0, p = 0; p < pixelCount; i += 4, p++) {
-    gray[p] = (data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114) | 0;
+    gray[p] = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
   }
   return gray;
 }
 
-/** عتبة Otsu الكلاسيكية لفصل مستويين (خلفية/مقدّمة) تلقائياً من الهيستوغرام. */
-function otsuThreshold(gray: Uint8ClampedArray): number {
-  const hist = new Array<number>(256).fill(0);
-  for (let i = 0; i < gray.length; i++) hist[gray[i]]++;
+function clampIndex(i: number, len: number): number {
+  if (i < 0) return 0;
+  if (i >= len) return len - 1;
+  return i;
+}
 
-  const total = gray.length;
+/** تمويه صندوقي أحادي البعد بنافذة منزلقة (تكلفة O(n) بغضّ النظر عن نصف القطر). */
+function boxBlur1D(src: Float32Array, width: number, height: number, radius: number, horizontal: boolean): Float32Array {
+  if (radius <= 0) return src;
+  const out = new Float32Array(src.length);
+  const windowSize = radius * 2 + 1;
+
+  if (horizontal) {
+    for (let y = 0; y < height; y++) {
+      const row = y * width;
+      let sum = 0;
+      for (let x = -radius; x <= radius; x++) sum += src[row + clampIndex(x, width)];
+      for (let x = 0; x < width; x++) {
+        out[row + x] = sum / windowSize;
+        sum += src[row + clampIndex(x + radius + 1, width)] - src[row + clampIndex(x - radius, width)];
+      }
+    }
+  } else {
+    for (let x = 0; x < width; x++) {
+      let sum = 0;
+      for (let y = -radius; y <= radius; y++) sum += src[clampIndex(y, height) * width + x];
+      for (let y = 0; y < height; y++) {
+        out[y * width + x] = sum / windowSize;
+        sum += src[clampIndex(y + radius + 1, height) * width + x] - src[clampIndex(y - radius, height) * width + x];
+      }
+    }
+  }
+
+  return out;
+}
+
+function boxBlur2D(src: Float32Array, width: number, height: number, radius: number): Float32Array {
+  if (radius <= 0) return src;
+  return boxBlur1D(boxBlur1D(src, width, height, radius, true), width, height, radius, false);
+}
+
+/** عتبة Otsu الكلاسيكية لفصل مستويين (خلفية/مقدّمة) تلقائياً من الهيستوغرام. */
+function otsuThreshold(values: Float32Array): number {
+  const hist = new Array<number>(256).fill(0);
+  for (let i = 0; i < values.length; i++) hist[clampByte(values[i]) | 0]++;
+
+  const total = values.length;
   let sum = 0;
   for (let t = 0; t < 256; t++) sum += t * hist[t];
 
@@ -82,9 +140,9 @@ function otsuThreshold(gray: Uint8ClampedArray): number {
   return threshold;
 }
 
-function buildMask(gray: Uint8ClampedArray, threshold: number): Uint8Array {
-  const mask = new Uint8Array(gray.length);
-  for (let i = 0; i < gray.length; i++) mask[i] = gray[i] > threshold ? 1 : 0;
+function buildMask(values: Float32Array, threshold: number): Uint8Array {
+  const mask = new Uint8Array(values.length);
+  for (let i = 0; i < values.length; i++) mask[i] = values[i] > threshold ? 1 : 0;
   return mask;
 }
 
@@ -152,9 +210,14 @@ function erode(mask: Uint8Array, width: number, height: number): Uint8Array {
   return out;
 }
 
-/** إغلاق مورفولوجي (Dilate ثم Erode) لسدّ الثغرات الصغيرة داخل منطقة الورقة دون تغيير حجمها الكلي فعلياً. */
+/** إغلاق مورفولوجي (Dilate ثم Erode): يسدّ الثغرات الصغيرة داخل منطقة الورقة. */
 function closeMask(mask: Uint8Array, width: number, height: number): Uint8Array {
   return erode(dilate(mask, width, height), width, height);
+}
+
+/** فتح مورفولوجي (Erode ثم Dilate): يُزيل بقع الضجيج الصغيرة المتناثرة خارج الورقة. */
+function openMask(mask: Uint8Array, width: number, height: number): Uint8Array {
+  return dilate(erode(mask, width, height), width, height);
 }
 
 type BlobCorners = {
@@ -166,17 +229,18 @@ type BlobCorners = {
 };
 
 /**
- * يبحث عن أكبر منطقة متصلة داخل قناع ثنائي عبر Flood Fill تكراري (مصفوفة
- * Stack يدوية بدل استدعاء دوال متداخلة لتفادي حدود عمق التكرار)، ويتتبّع
- * أثناء الزحف 4 نقاط متطرفة تقارب زوايا شبه منحرف محدِّب يحيط بالمنطقة
- * (بدل تتبّع Contour كامل الأثقل حسابياً).
+ * يبحث عن **كل** الكتل المتصلة الكبيرة بما يكفي (لا كتلة واحدة فقط) داخل
+ * قناع ثنائي عبر Flood Fill تكراري (مصفوفة Stack يدوية بدل استدعاء دوال
+ * متداخلة لتفادي حدود عمق التكرار)، ويتتبّع أثناء الزحف 4 نقاط متطرفة
+ * تقارب زوايا شبه منحرف محدِّب يحيط بكل كتلة (بدل تتبّع Contour كامل الأثقل
+ * حسابياً). الكتل الأصغر من `minCountRatio` من مساحة الإطار تُتجاهَل باكراً.
  */
-function findLargestBlob(mask: Uint8Array, width: number, height: number): BlobCorners | null {
+function findCandidateBlobs(mask: Uint8Array, width: number, height: number, minCountRatio: number): BlobCorners[] {
   const total = width * height;
   const visited = new Uint8Array(total);
   const stack = new Int32Array(total);
-
-  let best: BlobCorners | null = null;
+  const minCount = Math.max(4, Math.round(total * minCountRatio));
+  const blobs: BlobCorners[] = [];
 
   for (let start = 0; start < total; start++) {
     if (visited[start] || !mask[start]) continue;
@@ -238,23 +302,53 @@ function findLargestBlob(mask: Uint8Array, width: number, height: number): BlobC
       }
     }
 
-    if (!best || count > best.count) {
-      best = { count, minSum: minSumPt, maxSum: maxSumPt, minDiff: minDiffPt, maxDiff: maxDiffPt };
+    if (count >= minCount) {
+      blobs.push({ count, minSum: minSumPt, maxSum: maxSumPt, minDiff: minDiffPt, maxDiff: maxDiffPt });
     }
   }
 
-  return best;
+  return blobs;
 }
 
-function blobToQuad(blob: BlobCorners, totalPixels: number): DetectedQuad | null {
-  const coverage = blob.count / totalPixels;
-  if (coverage < MIN_COVERAGE_RATIO || coverage > MAX_COVERAGE_RATIO) return null;
-
+function cornersToQuad(blob: BlobCorners): Quad {
   // minSum=أعلى-يسار (أصغر x+y) | maxDiff=أعلى-يمين (أكبر x-y) | maxSum=أسفل-يمين | minDiff=أسفل-يسار
-  return {
-    points: [blob.minSum, blob.maxDiff, blob.maxSum, blob.minDiff],
-    coverage,
-  };
+  return [blob.minSum, blob.maxDiff, blob.maxSum, blob.minDiff];
+}
+
+/** مساحة شبه المنحرف عبر صيغة الحذاء (Shoelace Formula). */
+function quadArea(quad: Quad): number {
+  let area = 0;
+  for (let i = 0; i < 4; i++) {
+    const a = quad[i];
+    const b = quad[(i + 1) % 4];
+    area += a.x * b.y - b.x * a.y;
+  }
+  return Math.abs(area) / 2;
+}
+
+/**
+ * يختار أفضل كتلة مرشَّحة لتمثيل "الورقة" من بين عدة كتل: يُفضِّل الكتل ذات
+ * "نسبة امتلاء" عالية (قريبة الشكل من مستطيل صلب لا بقعة ضجيج متناثرة)، ثم
+ * الأكبر حجماً بينها. إن لم تجتز أي كتلة معيار الامتلاء، يتراجع للأكبر حجماً
+ * على إطلاقه (تدهور تدريجي بدل الفشل الكامل).
+ */
+function pickBestDocumentBlob(blobs: BlobCorners[], totalPixels: number): DetectedQuad | null {
+  const candidates = blobs
+    .map((blob) => {
+      const quad = cornersToQuad(blob);
+      const area = Math.max(1, quadArea(quad));
+      return { blob, quad, coverage: blob.count / totalPixels, fillRatio: blob.count / area };
+    })
+    .filter((c) => c.coverage >= MIN_COVERAGE_RATIO && c.coverage <= MAX_COVERAGE_RATIO);
+
+  if (candidates.length === 0) return null;
+
+  const solid = candidates.filter((c) => c.fillRatio >= MIN_BLOB_FILL_RATIO);
+  const pool = solid.length > 0 ? solid : candidates;
+  pool.sort((a, b) => b.blob.count - a.blob.count);
+
+  const best = pool[0];
+  return { points: best.quad, coverage: best.coverage };
 }
 
 /**
@@ -292,21 +386,34 @@ export function detectDocumentQuad(
     return null;
   }
 
-  const gray = toGrayscale(imageData.data, w * h);
-  const threshold = otsuThreshold(gray);
+  const rawGray = toGrayscale(imageData.data, w * h);
+
+  // 1) تنعيم أولي خفيف جداً (شبيه بـ Gaussian بنصف قطر 1) لإزالة ضجيج الكاميرا الرقمي
+  const denoisedGray = boxBlur2D(rawGray, w, h, 1);
+
+  // 2) تحسين تباين محلي: تطبيع كل بكسل بالنسبة لإضاءة محيطه المباشر (يُبرز حواف الورقة البيضاء عن الخلفية)
+  const contrastRadius = Math.max(6, Math.round(Math.min(w, h) / 6));
+  const localMean = boxBlur2D(denoisedGray, w, h, contrastRadius);
+  const normalized = new Float32Array(w * h);
+  for (let p = 0; p < normalized.length; p++) {
+    const localBackground = localMean[p] > 1 ? localMean[p] : 1;
+    normalized[p] = clampByte((denoisedGray[p] / localBackground) * 255);
+  }
+
+  const threshold = otsuThreshold(normalized);
 
   // الحالة الشائعة: ورقة فاتحة على خلفية أغمق (طاولة/يد/أرضية)
-  let brightMask = buildMask(gray, threshold);
-  if (denoise) brightMask = closeMask(brightMask, w, h);
-  const brightBlob = findLargestBlob(brightMask, w, h);
-  let chosen = brightBlob ? blobToQuad(brightBlob, w * h) : null;
+  let brightMask = buildMask(normalized, threshold);
+  if (denoise) brightMask = openMask(closeMask(brightMask, w, h), w, h);
+  const brightBlobs = findCandidateBlobs(brightMask, w, h, MIN_CANDIDATE_BLOB_RATIO);
+  let chosen = pickBestDocumentBlob(brightBlobs, w * h);
 
   // احتياط: مستند/خلفية معكوسة (نادر لكن وارد)
   if (!chosen) {
     let darkMask = invertMask(brightMask);
-    if (denoise) darkMask = closeMask(darkMask, w, h);
-    const darkBlob = findLargestBlob(darkMask, w, h);
-    chosen = darkBlob ? blobToQuad(darkBlob, w * h) : null;
+    if (denoise) darkMask = openMask(closeMask(darkMask, w, h), w, h);
+    const darkBlobs = findCandidateBlobs(darkMask, w, h, MIN_CANDIDATE_BLOB_RATIO);
+    chosen = pickBestDocumentBlob(darkBlobs, w * h);
   }
 
   if (!chosen) return null;
