@@ -314,7 +314,20 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
     correctedCanvasRef.current = null;
     autoCapturedRef.current = false;
     historyRef.current = [];
+    lastQuadRef.current = null;
+    setDetectionStatus('none');
     setErrorMessage(null);
+
+    // نظّف أي إطار متبقٍّ مرسوماً من قبل على الكانفاس التفاعلي قبل العودة
+    // للبث الحي، كي لا يظهر إطار قديم للحظة قبل أن تلتقط الحلقة الحية إطاراً جديداً.
+    const overlay = overlayCanvasRef.current;
+    if (overlay) {
+      overlay.getContext('2d')?.clearRect(0, 0, overlay.width, overlay.height);
+    }
+
+    // الفيديو والبث (stream) يبقيان متصلين طوال الوقت (لم يُوقَفا أو يُفصَلا)
+    // لأن عنصر <video> لم يُزَل من الشجرة أصلاً؛ إعادة الحالة إلى 'live' تكفي
+    // لعودة المعاينة الحية فوراً وبسلاسة دون أي تجميد.
     setPhase(streamRef.current ? 'live' : 'error');
   };
 
@@ -393,18 +406,27 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
         role={phase === 'live' ? 'button' : undefined}
         aria-label={phase === 'live' ? 'اضغط في أي مكان لالتقاط المستند' : undefined}
       >
-        {(phase === 'starting' || phase === 'live' || phase === 'processing') && (
-          <>
-            <video
-              ref={videoRef}
-              playsInline
-              muted
-              autoPlay
-              className="absolute inset-0 w-full h-full object-cover"
-            />
-            <canvas ref={overlayCanvasRef} className="absolute inset-0 w-full h-full object-cover pointer-events-none" />
-          </>
-        )}
+        {/*
+          الفيديو وكانفاس الإطار التفاعلي يبقيان مثبَّتين (Mounted) دائماً طوال
+          حياة المكوّن — لا نزيلهما من الشجرة عند الانتقال لمرحلة المعاينة/الخطأ،
+          بل نُخفيهما بصرياً فقط (invisible). هذا يمنع مشكلة "الشاشة المجمّدة"
+          عند الضغط على "إعادة الالتقاط": فرصة إعادة تركيب <video> جديد كلياً
+          بلا `srcObject` (لأن العنصر القديم أُزيل من الشجرة) كانت تجعل البث لا
+          يظهر أبداً رغم أن الكاميرا لا تزال تعمل فعلياً في الخلفية.
+        */}
+        <video
+          ref={videoRef}
+          playsInline
+          muted
+          autoPlay
+          className={`absolute inset-0 w-full h-full object-cover ${
+            phase === 'starting' || phase === 'live' || phase === 'processing' ? '' : 'invisible'
+          }`}
+        />
+        <canvas
+          ref={overlayCanvasRef}
+          className={`absolute inset-0 w-full h-full object-cover pointer-events-none ${phase === 'live' ? '' : 'invisible'}`}
+        />
 
         {phase === 'starting' && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-slate-950/70">
