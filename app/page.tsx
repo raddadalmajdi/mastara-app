@@ -34,8 +34,13 @@ import {
   uploadScannedInvoiceFiles,
 } from '@/lib/upload-scanned-invoice';
 import { DocumentScannerModal } from '@/components/scanner/DocumentScannerModal';
-import type { DocumentScanResult, InvoiceExtractedFields } from '@/lib/invoice-ocr/types';
-import { applyExtractedFieldsToForm, suggestedCustomerLocalPhone } from '@/lib/invoice-ocr/apply-extracted-to-form';
+import type { DocumentScanResult } from '@/lib/document-scanner/scan-result';
+import { lookupTailorCustomerByPhone, upsertTailorCustomer } from '@/lib/tailor-customers';
+import {
+  loadLocalTailorProfile,
+  saveLocalTailorProfile,
+  upsertTailorProfile,
+} from '@/lib/tailor-profile';
 
 type AuthFeedback = { type: 'success' | 'error'; message: string } | null;
 
@@ -72,6 +77,7 @@ export default function Home() {
   // ملف الخياط والإعدادات
   const [tailorCountryCode, setTailorCountryCode] = useState('965');
   const [tailorLocalPhone, setTailorLocalPhone] = useState('');
+  const [tailorShopName, setTailorShopName] = useState('');
   const [cloudNotes, setCloudNotes] = useState('');
   const [isTailorRegistered, setIsTailorRegistered] = useState(false);
   const [checkingTailor, setCheckingTailor] = useState(false);
@@ -85,9 +91,14 @@ export default function Home() {
   // الزبون والفواتير
   const [customerCountryCode, setCustomerCountryCode] = useState('965');
   const [customerLocalPhone, setCustomerLocalPhone] = useState('');
+  const [customerDisplayName, setCustomerDisplayName] = useState('');
+  const [customerBookStatus, setCustomerBookStatus] = useState<
+    'idle' | 'searching' | 'known' | 'new'
+  >('idle');
   const [customerInvoices, setCustomerInvoices] = useState<any[]>([]);
-  /** حقول فاتورة مستخرجة/قابلة للتعديل (OCR + يدوي) قبل/بعد المسح. */
-  const [invoiceFormDraft, setInvoiceFormDraft] = useState<InvoiceExtractedFields>({});
+  const customerLookupTimerRef = useRef<number | null>(null);
+  const profileOnboardingShownRef = useRef(false);
+  const [isSearchingInvoices, setIsSearchingInvoices] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [showDocumentScanner, setShowDocumentScanner] = useState(false);
 
@@ -164,6 +175,7 @@ export default function Home() {
         setUser(null);
         setIsTailorRegistered(false);
         setCloudNotes('');
+        setTailorShopName('');
         setCheckingTailor(false);
         setLoading(false);
         setAuthBootstrapping(false);
@@ -186,6 +198,7 @@ export default function Home() {
       } else {
         setIsTailorRegistered(false);
         setCloudNotes('');
+        setTailorShopName('');
         setCheckingTailor(false);
         setLoading(false);
         setAuthBootstrapping(false);
@@ -221,8 +234,51 @@ export default function Home() {
     return () => window.clearInterval(timer);
   }, [otpResendCooldown]);
 
+  useEffect(() => {
+    return () => {
+      if (customerLookupTimerRef.current !== null) {
+        window.clearTimeout(customerLookupTimerRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!user || checkingTailor || authBootstrapping) return;
+    const needsProfile = !isTailorRegistered;
+    if (!needsProfile || profileOnboardingShownRef.current) return;
+    profileOnboardingShownRef.current = true;
+    setShowTailorProfileModal(true);
+  }, [user, checkingTailor, authBootstrapping, isTailorRegistered]);
+
+  const applyTailorPhoneFromStorage = (phoneStr: string) => {
+    let matched = false;
+    COUNTRY_CODES.forEach((c) => {
+      if (phoneStr.startsWith(c.code)) {
+        setTailorCountryCode(c.code);
+        setTailorLocalPhone(phoneStr.replace(c.code, ''));
+        matched = true;
+      }
+    });
+    if (!matched && phoneStr) {
+      setTailorLocalPhone(phoneStr.replace(/\D/g, ''));
+    }
+  };
+
   const checkTailorAndFetchData = async (userId: string) => {
     if (!supabase) {
+      const local = loadLocalTailorProfile();
+      if (local?.shop_name) {
+        setTailorShopName(local.shop_name);
+      }
+      if (local?.cloud_notes) {
+        setCloudNotes(local.cloud_notes);
+      }
+      if (local?.phone) {
+        applyTailorPhoneFromStorage(local.phone);
+        setIsTailorRegistered(true);
+      } else {
+        setIsTailorRegistered(false);
+      }
       setCheckingTailor(false);
       setLoading(false);
       return;
@@ -239,22 +295,19 @@ export default function Home() {
       if (data && !error) {
         if (data.phone) {
           setIsTailorRegistered(true);
-          let phoneStr = data.phone;
-          COUNTRY_CODES.forEach((c) => {
-            if (phoneStr.startsWith(c.code)) {
-              setTailorCountryCode(c.code);
-              setTailorLocalPhone(phoneStr.replace(c.code, ''));
-            }
-          });
-          if (!tailorLocalPhone && phoneStr) {
-            setTailorLocalPhone(phoneStr);
-          }
+          applyTailorPhoneFromStorage(String(data.phone));
+        }
+        if (data.shop_name) {
+          setTailorShopName(String(data.shop_name));
+        } else {
+          setTailorShopName('');
         }
         if (data.cloud_notes) {
           setCloudNotes(data.cloud_notes);
         }
       } else {
         setIsTailorRegistered(false);
+        setTailorShopName('');
       }
     } catch (fetchError) {
       if (process.env.NODE_ENV === 'development') {
@@ -280,8 +333,14 @@ export default function Home() {
     setSavingSettings(true);
     setSettingsFeedback(null);
     const fullPhone = `${tailorCountryCode}${tailorLocalPhone}`;
+    const shopName = tailorShopName.trim();
 
     if (!supabase) {
+      saveLocalTailorProfile({
+        phone: fullPhone,
+        cloud_notes: cloudNotes,
+        shop_name: shopName,
+      });
       setIsTailorRegistered(true);
       setSettingsFeedback({
         type: 'success',
@@ -295,28 +354,27 @@ export default function Home() {
       return;
     }
 
-    const { error } = await supabase
-      .from('tailor_profiles')
-      .upsert(
-        { user_id: user.id, phone: fullPhone, cloud_notes: cloudNotes },
-        { onConflict: 'user_id' }
-      );
-
-    if (error) {
-      setSettingsFeedback({
-        type: 'error',
-        message: `فشل الحفظ: ${error.message}`,
+    try {
+      await upsertTailorProfile(supabase, {
+        user_id: user.id,
+        phone: fullPhone,
+        cloud_notes: cloudNotes,
+        shop_name: shopName,
       });
-    } else {
       setIsTailorRegistered(true);
       setSettingsFeedback({
         type: 'success',
-        message: 'تم حفظ بيانات الخياط والملاحظات بنجاح.',
+        message: 'تم حفظ اسم المحل ورقم الخياط والملاحظات بنجاح.',
       });
       window.setTimeout(() => {
         setShowTailorProfileModal(false);
         setSettingsFeedback(null);
       }, 1400);
+    } catch (saveError) {
+      setSettingsFeedback({
+        type: 'error',
+        message: saveError instanceof Error ? saveError.message : 'فشل الحفظ.',
+      });
     }
     setSavingSettings(false);
   };
@@ -702,56 +760,113 @@ export default function Home() {
     }
     setUser(null);
     setIsTailorRegistered(false);
+    setTailorShopName('');
     setCloudNotes('');
+    profileOnboardingShownRef.current = false;
     setShowMenu(false);
+  };
+
+  const scheduleCustomerDirectoryLookup = (localPhone: string, cCode: string) => {
+    if (customerLookupTimerRef.current !== null) {
+      window.clearTimeout(customerLookupTimerRef.current);
+    }
+    if (localPhone.length < 3) {
+      setCustomerBookStatus('idle');
+      return;
+    }
+    customerLookupTimerRef.current = window.setTimeout(() => {
+      void (async () => {
+        setCustomerBookStatus('searching');
+        const fullPhone = `${cCode}${localPhone}`;
+        try {
+          const hit = await lookupTailorCustomerByPhone(
+            supabase,
+            user?.id ?? 'guest-local-user',
+            fullPhone
+          );
+          if (hit) {
+            setCustomerDisplayName(hit.customer_name);
+            setCustomerBookStatus('known');
+          } else {
+            setCustomerDisplayName('');
+            setCustomerBookStatus('new');
+          }
+        } catch (lookupError) {
+          if (process.env.NODE_ENV === 'development') {
+            console.warn('[tailor_customers] lookup failed', lookupError);
+          }
+          setCustomerBookStatus('new');
+        }
+      })();
+    }, 320);
   };
 
   const handleCustomerPhoneInput = (val: string) => {
     const cleanVal = val.replace(/\D/g, '');
     setCustomerLocalPhone(cleanVal);
+    setCustomerDisplayName('');
+    setCustomerBookStatus('idle');
     if (cleanVal.length >= 1) {
-      searchInvoices(cleanVal, customerCountryCode);
+      void searchInvoices(cleanVal, customerCountryCode);
+      scheduleCustomerDirectoryLookup(cleanVal, customerCountryCode);
     } else {
       setCustomerInvoices([]);
+      setWhatsappMessages({});
     }
   };
 
   const handleCountryCodeChange = (newCode: string) => {
     setCustomerCountryCode(newCode);
+    setCustomerDisplayName('');
+    setCustomerBookStatus('idle');
     if (customerLocalPhone.length >= 1) {
-      searchInvoices(customerLocalPhone, newCode);
+      void searchInvoices(customerLocalPhone, newCode);
+      scheduleCustomerDirectoryLookup(customerLocalPhone, newCode);
     }
   };
 
   const searchInvoices = async (localPhone: string, cCode: string) => {
-    const fullSearch = `${cCode}${localPhone}`;
+    const fullSearch = `${cCode}${localPhone}`.replace(/\D/g, '');
+    const fullSearchWithCode = `${cCode}${localPhone}`;
 
-    if (!supabase) {
-      const savedInvoices = JSON.parse(localStorage.getItem('mistarh_local_invoices') || '[]');
-      const filtered = savedInvoices.filter((inv: any) => inv.customer_phone === fullSearch);
-      setCustomerInvoices(filtered);
-      const initialMessages: { [key: string]: string } = {};
-      filtered.forEach((inv: any) => {
-        initialMessages[inv.id] = `تم! شكراً لتعاملك معنا، نسعد بخدمتك. رابط مستندك (PDF): ${invoiceShareDocumentUrl(inv)}`;
-      });
-      setWhatsappMessages(initialMessages);
-      return;
-    }
+    setIsSearchingInvoices(true);
+    try {
+      if (!supabase) {
+        const savedInvoices = JSON.parse(localStorage.getItem('mistarh_local_invoices') || '[]');
+        const filtered = savedInvoices.filter(
+          (inv: { customer_phone?: string }) =>
+            String(inv.customer_phone ?? '').replace(/\D/g, '') === fullSearch ||
+            inv.customer_phone === fullSearchWithCode
+        );
+        setCustomerInvoices(filtered);
+        const initialMessages: { [key: string]: string } = {};
+        filtered.forEach((inv: { id: string; image_url: string; pdf_url?: string | null }) => {
+          initialMessages[inv.id] = `تم! شكراً لتعاملك معنا، نسعد بخدمتك. رابط مستندك (PDF): ${invoiceShareDocumentUrl(inv)}`;
+        });
+        setWhatsappMessages(initialMessages);
+        return;
+      }
 
-    const { data, error } = await supabase
-      .from('invoices')
-      .select('*')
-      .eq('user_id', user.id)
-      .ilike('customer_phone', `%${fullSearch}%`)
-      .order('created_at', { ascending: false });
+      const { data, error } = await supabase
+        .from('invoices')
+        .select('*')
+        .eq('user_id', user.id)
+        .in('customer_phone', [fullSearchWithCode, fullSearch])
+        .order('created_at', { ascending: false });
 
-    if (!error && data) {
-      setCustomerInvoices(data);
-      const initialMessages: { [key: string]: string } = {};
-      data.forEach((inv) => {
-        initialMessages[inv.id] = `تم! شكراً لتعاملك معنا، نسعد بخدمتك. رابط مستندك (PDF): ${invoiceShareDocumentUrl(inv)}`;
-      });
-      setWhatsappMessages(initialMessages);
+      if (!error && data) {
+        setCustomerInvoices(data);
+        const initialMessages: { [key: string]: string } = {};
+        data.forEach((inv) => {
+          initialMessages[inv.id] = `تم! شكراً لتعاملك معنا، نسعد بخدمتك. رابط مستندك (PDF): ${invoiceShareDocumentUrl(inv)}`;
+        });
+        setWhatsappMessages(initialMessages);
+      } else if (!error) {
+        setCustomerInvoices([]);
+        setWhatsappMessages({});
+      }
+    } finally {
+      setIsSearchingInvoices(false);
     }
   };
 
@@ -768,28 +883,36 @@ export default function Home() {
    * بعد الماسح: PDF مُولَّد في الواجهة الأمامية → رفع PDF إلى Storage → حفظ
    * `pdf_url` (+ صورة JPEG للمعاينة) في جدول `invoices`.
    */
-  const handleDocumentCaptured = async ({ jpegBlob, pdfBlob, extracted }: DocumentScanResult) => {
-    if (!customerLocalPhone.trim() && !extracted?.customerPhoneLocal) {
+  const handleDocumentCaptured = async ({ jpegBlob, pdfBlob }: DocumentScanResult) => {
+    if (!customerLocalPhone.trim()) {
       throw new Error('يرجى كتابة رقم جوال العميل أولاً.');
     }
 
-    let localPhone = customerLocalPhone;
-    if (extracted) {
-      localPhone = suggestedCustomerLocalPhone(extracted, localPhone);
-      setCustomerLocalPhone(localPhone);
-      setInvoiceFormDraft((prev) => applyExtractedFieldsToForm(extracted, prev, { overwrite: true }));
+    const localPhone = customerLocalPhone;
+    const fullCustomerPhone = `${customerCountryCode}${localPhone}`;
+
+    let nameToSave = customerDisplayName.trim();
+    if (!nameToSave) {
+      try {
+        const hit = await lookupTailorCustomerByPhone(
+          supabase,
+          user?.id ?? 'guest-local-user',
+          fullCustomerPhone
+        );
+        if (hit) {
+          nameToSave = hit.customer_name;
+          setCustomerDisplayName(hit.customer_name);
+          setCustomerBookStatus('known');
+        }
+      } catch {
+        /* ignore lookup errors before save */
+      }
+    }
+    if (!nameToSave) {
+      throw new Error('يرجى إدخال اسم العميل لحفظه في قائمة عملائك.');
     }
 
-    const fullCustomerPhone = `${customerCountryCode}${localPhone}`;
     setIsUploading(true);
-
-    const extractedForSave = extracted ?? invoiceFormDraft;
-    const hasExtractedFields = Boolean(
-      extractedForSave.supplierName ||
-        extractedForSave.documentDate ||
-        extractedForSave.amount ||
-        extractedForSave.invoiceNumber
-    );
 
     try {
       if (!supabase) {
@@ -803,15 +926,21 @@ export default function Home() {
           image_url: imageUrl,
           pdf_url: pdfUrl,
           created_at: new Date().toISOString(),
-          ...(hasExtractedFields ? { extracted_fields: extractedForSave } : {}),
         };
 
         const savedInvoices = JSON.parse(localStorage.getItem('mistarh_local_invoices') || '[]');
         const updatedInvoices = [newInvoice, ...savedInvoices];
         localStorage.setItem('mistarh_local_invoices', JSON.stringify(updatedInvoices));
 
+        await upsertTailorCustomer(
+          supabase,
+          user?.id ?? 'guest-local-user',
+          fullCustomerPhone,
+          nameToSave
+        );
+
         searchInvoices(localPhone, customerCountryCode);
-        alert('تم مسح المستند وحفظ PDF محلياً بنجاح!');
+        alert('تم حفظ PDF المستند محلياً بنجاح!');
       } else {
         const { imageUrl, pdfUrl } = await uploadScannedInvoiceFiles(supabase, user.id, {
           jpegBlob,
@@ -823,8 +952,10 @@ export default function Home() {
           customer_phone: fullCustomerPhone,
           image_url: imageUrl,
           pdf_url: pdfUrl,
-          ...(hasExtractedFields ? { extracted_fields: extractedForSave } : {}),
         });
+
+        await upsertTailorCustomer(supabase, user.id, fullCustomerPhone, nameToSave);
+        setCustomerBookStatus('known');
 
         await searchInvoices(localPhone, customerCountryCode);
         alert('تم رفع ملف PDF وحفظ رابطه في السجل بنجاح!');
@@ -1195,11 +1326,14 @@ export default function Home() {
               <div className="border-b border-slate-800 pb-2">
                 <span className="text-sm text-cyan-400">الحساب:</span>
                 <p className="text-sm text-white truncate">{user?.email || 'ضيف'}</p>
+                {tailorShopName.trim() ? (
+                  <p className="text-xs text-slate-300 mt-1 truncate">{tailorShopName.trim()}</p>
+                ) : null}
               </div>
-              <div className="border-b border-slate-800 pb-2 flex justify-between items-center">
-                <div>
+              <div className="border-b border-slate-800 pb-2 flex justify-between items-center gap-2">
+                <div className="min-w-0">
                   <span className="text-sm text-cyan-400">هاتف الخياط:</span>
-                  <p className="text-sm text-white font-bold tnum" dir="ltr">
+                  <p className="text-sm text-white font-bold tnum truncate" dir="ltr">
                     {isTailorRegistered ? `+${tailorCountryCode}${tailorLocalPhone}` : 'غير مسجل'}
                   </p>
                 </div>
@@ -1231,6 +1365,9 @@ export default function Home() {
         <div className="bg-slate-900 border border-cyan-500/20 p-4 rounded-2xl flex items-center justify-between gap-3">
           <div className="min-w-0">
             <span className="text-sm text-cyan-400 font-bold">لوحة الخياط</span>
+            {tailorShopName.trim() ? (
+              <p className="text-sm text-white font-bold truncate">{tailorShopName.trim()}</p>
+            ) : null}
             <p className="text-sm text-white font-bold tnum truncate" dir="ltr">
               {isTailorRegistered ? `+${tailorCountryCode}${tailorLocalPhone}` : '⚠️ أضف رقم هاتفك'}
             </p>
@@ -1247,79 +1384,56 @@ export default function Home() {
         <section className="bg-slate-900 border border-cyan-500/40 p-4 rounded-3xl space-y-3 shadow-xl">
           <div className="space-y-1.5">
             <label className="text-sm text-cyan-400 font-bold block">رقم هاتف العميل</label>
-            <div className="flex gap-2 items-center">
-              <input
-                type="tel"
-                value={customerLocalPhone}
-                onChange={(e) => handleCustomerPhoneInput(e.target.value)}
-                placeholder="أدخل رقم الجوال..."
-                className="flex-1 min-w-0 rounded-xl bg-slate-950 border border-slate-800 p-3.5 text-lg font-bold text-white font-mono tnum text-right"
-                dir="ltr"
-              />
-              <select
-                value={customerCountryCode}
-                onChange={(e) => handleCountryCodeChange(e.target.value)}
-                className="bg-slate-950 border border-slate-800 text-sm text-cyan-300 rounded-xl p-3.5 font-mono tnum w-28 text-center"
-              >
-                {COUNTRY_CODES.map((c) => (
-                  <option key={c.code} value={c.code}>+{c.code}</option>
-                ))}
-              </select>
+            <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+              <div className="flex gap-2 items-center flex-1 min-w-0">
+                <input
+                  type="tel"
+                  value={customerLocalPhone}
+                  onChange={(e) => handleCustomerPhoneInput(e.target.value)}
+                  placeholder="أدخل رقم الجوال..."
+                  className="flex-1 min-w-0 rounded-xl bg-slate-950 border border-slate-800 p-3.5 text-lg font-bold text-white font-mono tnum text-right"
+                  dir="ltr"
+                />
+                <select
+                  value={customerCountryCode}
+                  onChange={(e) => handleCountryCodeChange(e.target.value)}
+                  className="bg-slate-950 border border-slate-800 text-sm text-cyan-300 rounded-xl p-3.5 font-mono tnum w-28 text-center shrink-0"
+                >
+                  {COUNTRY_CODES.map((c) => (
+                    <option key={c.code} value={c.code}>+{c.code}</option>
+                  ))}
+                </select>
+              </div>
+              {customerBookStatus === 'searching' && customerLocalPhone.length >= 1 ? (
+                <span className="text-xs text-slate-500 font-bold shrink-0">جاري البحث...</span>
+              ) : customerBookStatus === 'known' && customerDisplayName ? (
+                <p className="text-base font-bold text-white truncate sm:max-w-[40%] sm:text-right">
+                  {customerDisplayName}
+                </p>
+              ) : null}
             </div>
           </div>
-        </section>
-
-        {/* بيانات الفاتورة — تُعبَّأ تلقائياً من OCR بعد المسح (قابلة للتعديل يدوياً). */}
-        <section className="bg-slate-900 border border-slate-800 p-4 rounded-3xl space-y-3 shadow-lg sm:col-span-2">
-          <div className="flex items-center justify-between gap-2">
-            <h3 className="text-sm text-cyan-400 font-bold">بيانات الفاتورة (OCR)</h3>
-            <span className="text-[11px] text-slate-500 font-bold">تعبئة تلقائية بعد مسح المستند</span>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <label className="space-y-1.5 sm:col-span-2">
-              <span className="text-xs text-slate-400 font-bold">اسم المورد / الجهة</span>
+          {customerBookStatus === 'new' && customerLocalPhone.length >= 3 && (
+            <div className="space-y-1.5">
+              <label className="text-sm text-cyan-400 font-bold block">اسم العميل (جديد)</label>
               <input
                 type="text"
-                value={invoiceFormDraft.supplierName ?? ''}
-                onChange={(e) => setInvoiceFormDraft((d) => ({ ...d, supplierName: e.target.value }))}
-                className="w-full rounded-xl bg-slate-950 border border-slate-800 p-3 text-sm text-white"
-                placeholder="يظهر تلقائياً بعد المسح..."
+                value={customerDisplayName}
+                onChange={(e) => setCustomerDisplayName(e.target.value)}
+                placeholder=""
+                className="w-full rounded-xl bg-slate-950 border border-slate-800 p-3.5 text-base font-bold text-white"
               />
-            </label>
-            <label className="space-y-1.5">
-              <span className="text-xs text-slate-400 font-bold">تاريخ المستند</span>
-              <input
-                type="text"
-                value={invoiceFormDraft.documentDate ?? ''}
-                onChange={(e) => setInvoiceFormDraft((d) => ({ ...d, documentDate: e.target.value }))}
-                className="w-full rounded-xl bg-slate-950 border border-slate-800 p-3 text-sm text-white tnum"
-                dir="ltr"
-                placeholder="—"
-              />
-            </label>
-            <label className="space-y-1.5">
-              <span className="text-xs text-slate-400 font-bold">المبلغ</span>
-              <input
-                type="text"
-                value={invoiceFormDraft.amount ?? ''}
-                onChange={(e) => setInvoiceFormDraft((d) => ({ ...d, amount: e.target.value }))}
-                className="w-full rounded-xl bg-slate-950 border border-slate-800 p-3 text-sm text-white tnum"
-                dir="ltr"
-                placeholder="—"
-              />
-            </label>
-            <label className="space-y-1.5 sm:col-span-2">
-              <span className="text-xs text-slate-400 font-bold">رقم الفاتورة</span>
-              <input
-                type="text"
-                value={invoiceFormDraft.invoiceNumber ?? ''}
-                onChange={(e) => setInvoiceFormDraft((d) => ({ ...d, invoiceNumber: e.target.value }))}
-                className="w-full rounded-xl bg-slate-950 border border-slate-800 p-3 text-sm text-white tnum"
-                dir="ltr"
-                placeholder="—"
-              />
-            </label>
-          </div>
+            </div>
+          )}
+          {customerLocalPhone.length >= 1 && (
+            <p className="text-[11px] text-slate-500 font-bold">
+              {isSearchingInvoices
+                ? 'جاري تحميل فواتير هذا الرقم...'
+                : customerInvoices.length > 0
+                  ? `تم العثور على ${customerInvoices.length} مستند/فاتورة سابقة.`
+                  : 'لا توجد فواتير سابقة مسجّلة لهذا الرقم بعد.'}
+            </p>
+          )}
         </section>
         </div>
 
@@ -1344,14 +1458,6 @@ export default function Home() {
                         ⭐ الفاتورة الأحدث (فاتورة #<span className="tnum">{latestInvoiceNumber}</span>)
                       </span>
                       <span className="text-xs text-slate-400 font-bold font-mono tnum block" dir="ltr">{formatDate(latestInvoice.created_at)}</span>
-                      {latestInvoice.extracted_fields?.supplierName && (
-                        <span className="text-xs text-slate-500 font-bold block truncate">
-                          {latestInvoice.extracted_fields.supplierName}
-                          {latestInvoice.extracted_fields.amount ? (
-                            <span className="tnum"> · {latestInvoice.extracted_fields.amount}</span>
-                          ) : null}
-                        </span>
-                      )}
                     </div>
                   </div>
 
@@ -1512,7 +1618,7 @@ export default function Home() {
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-slate-900 border border-cyan-500/40 rounded-3xl p-6 w-full max-w-sm sm:max-w-md space-y-4 shadow-2xl">
             <div className="flex justify-between items-center border-b border-slate-800 pb-2">
-              <h3 className="font-bold text-white text-base">إعدادات الخياط</h3>
+              <h3 className="font-bold text-white text-base">الإعدادات الشخصية</h3>
               <button onClick={() => { setShowTailorProfileModal(false); setSettingsFeedback(null); }} className="text-cyan-400 text-lg">✕</button>
             </div>
             
@@ -1557,6 +1663,16 @@ export default function Home() {
                   <p>{settingsFeedback.message}</p>
                 </div>
               )}
+              <div>
+                <label className="block text-sm font-bold text-cyan-400 mb-1">اسم المحل</label>
+                <input
+                  type="text"
+                  value={tailorShopName}
+                  onChange={(e) => setTailorShopName(e.target.value)}
+                  placeholder="اسم محل الخياطة (اختياري)"
+                  className="w-full rounded-xl bg-slate-950 border border-slate-800 p-3 text-base font-bold text-white"
+                />
+              </div>
               <div>
                 <label className="block text-sm font-bold text-cyan-400 mb-1">رقم هاتف الخياط</label>
                 <div className="flex gap-2 items-center">

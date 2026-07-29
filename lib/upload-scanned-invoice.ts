@@ -1,7 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-import type { InvoiceExtractedFields } from '@/lib/invoice-ocr/types';
-
 const STORAGE_BUCKET = 'invoices-images';
 
 export type ScannedUploadInput = {
@@ -67,42 +65,28 @@ export type InvoiceInsertPayload = {
   customer_phone: string;
   image_url: string;
   pdf_url: string;
-  extracted_fields?: InvoiceExtractedFields | null;
 };
 
 /**
  * يُدرج سجل فاتورة/مستند في جدول `invoices` مع رابط PDF الرسمي وصورة المعاينة.
- * إن لم يكن عمود `pdf_url` أو `extracted_fields` موجوداً بعد في Supabase، يُعاد
- * المحاولة بدون العمود الناقص (مع رسالة واضحة عند غياب `pdf_url` الإلزامي).
+ * إن لم يكن عمود `pdf_url` موجوداً بعد في Supabase، تُعرض رسالة تنفيذ migration.
  */
 export async function insertInvoiceRecord(
   supabase: SupabaseClient,
   payload: InvoiceInsertPayload
 ): Promise<void> {
-  const base = {
+  const row = {
     user_id: payload.user_id,
     customer_phone: payload.customer_phone,
     image_url: payload.image_url,
     pdf_url: payload.pdf_url,
   };
 
-  const withMeta = {
-    ...base,
-    ...(payload.extracted_fields ? { extracted_fields: payload.extracted_fields } : {}),
-  };
-
-  let result = await supabase.from('invoices').insert([withMeta]);
+  const result = await supabase.from('invoices').insert([row]);
 
   if (!result.error) return;
 
-  let msg = result.error.message ?? '';
-
-  if (payload.extracted_fields && (msg.includes('extracted_fields') || result.error.code === 'PGRST204')) {
-    result = await supabase.from('invoices').insert([base]);
-    if (!result.error) return;
-    msg = result.error.message ?? msg;
-  }
-
+  const msg = result.error.message ?? '';
   const missingPdfColumn =
     msg.includes('pdf_url') ||
     (msg.includes('column') && msg.includes('pdf')) ||

@@ -159,7 +159,7 @@ export function CornerAdjuster({ imageSrc, naturalWidth, naturalHeight, quad, on
   return (
     <div
       ref={containerRef}
-      className="absolute inset-0 touch-none select-none"
+      className="absolute inset-0 touch-none select-none pt-1"
       onPointerMove={handlePointerMove}
       onPointerUp={endDrag}
       onPointerCancel={endDrag}

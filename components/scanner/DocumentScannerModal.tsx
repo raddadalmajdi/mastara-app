@@ -6,10 +6,9 @@ import { enhanceDocumentCanvas } from '@/lib/document-scanner/enhance';
 import { canvasToDocumentPdfBlob } from '@/lib/document-scanner/to-pdf';
 import { CornerAdjuster, detectDocumentEdgesAuto } from './CornerAdjuster';
 import { CAMERA_START_TIMEOUT_MS, MAX_OUTPUT_DIMENSION, SCAN_JPEG_QUALITY } from '@/lib/document-scanner/constants';
-import { recognizeInvoiceFromCanvas } from '@/lib/invoice-ocr/run-invoice-ocr';
-import type { DocumentScanResult, InvoiceExtractedFields } from '@/lib/invoice-ocr/types';
+import type { DocumentScanResult } from '@/lib/document-scanner/scan-result';
 
-export type { DocumentScanResult } from '@/lib/invoice-ocr/types';
+export type { DocumentScanResult } from '@/lib/document-scanner/scan-result';
 
 type DocumentScannerModalProps = {
   onClose: () => void;
@@ -29,7 +28,9 @@ type DocumentScannerModalProps = {
  */
 type Phase = 'starting' | 'live' | 'capturing' | 'edges' | 'processing' | 'preview' | 'uploading' | 'error';
 type EdgesMode = 'auto' | 'full' | 'manual';
-type OcrPhase = 'idle' | 'running' | 'done' | 'error';
+/** ارتفاع محجوز أسفل شريط العنوان وآخر الشاشة في مرحلة كشف الحواف (px تقريباً). */
+const EDGES_SAFE_TOP_PX = 68;
+const EDGES_SAFE_BOTTOM_PX = 128;
 
 function readFileAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -117,12 +118,6 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
   const [isAutoDetecting, setIsAutoDetecting] = useState(false);
   /** رسالة تنبيه قصيرة (تختفي تلقائياً) عند فشل الاكتشاف التلقائي — يبقى شبه المنحرف الحالي كما هو دون تغيير. */
   const [edgesToast, setEdgesToast] = useState<string | null>(null);
-
-  /** OCR: حقول مستخرجة قابلة للتعديل في شاشة المعاينة قبل الحفظ. */
-  const [extractedDraft, setExtractedDraft] = useState<InvoiceExtractedFields>({});
-  const [ocrPhase, setOcrPhase] = useState<OcrPhase>('idle');
-  const [ocrError, setOcrError] = useState<string | null>(null);
-  const ocrRunIdRef = useRef(0);
 
   // إخفاء تلقائي لتنبيه فشل الاكتشاف بعد مدة قصيرة كي لا يبقى معلَّقاً على الشاشة.
   useEffect(() => {
@@ -222,30 +217,6 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
     };
   }, [startCamera, stopStream]);
 
-  // OCR على الصورة المُحسَّنة فور دخول شاشة المعاينة — يملأ الحقول تلقائياً (قابلة للتعديل).
-  useEffect(() => {
-    if (phase !== 'preview') return;
-    const canvas = correctedCanvasRef.current;
-    if (!canvas) return;
-
-    const runId = ++ocrRunIdRef.current;
-    setOcrPhase('running');
-    setOcrError(null);
-
-    void recognizeInvoiceFromCanvas(canvas)
-      .then((result) => {
-        if (isClosingRef.current || ocrRunIdRef.current !== runId) return;
-        setExtractedDraft(result.fields);
-        setOcrPhase('done');
-      })
-      .catch((err) => {
-        if (isClosingRef.current || ocrRunIdRef.current !== runId) return;
-        console.warn('[scanner] OCR failed', err);
-        setOcrPhase('error');
-        setOcrError(err instanceof Error ? err.message : 'تعذّر قراءة النص من المستند.');
-      });
-  }, [phase, previewDataUrl]);
-
   const resetEdgesState = useCallback(() => {
     rawCaptureCanvasRef.current = null;
     setRawPreviewUrl(null);
@@ -254,10 +225,6 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
     setEdgesMode('auto');
     setIsAutoDetecting(false);
     setEdgesToast(null);
-    setExtractedDraft({});
-    setOcrPhase('idle');
-    setOcrError(null);
-    ocrRunIdRef.current += 1;
   }, []);
 
   /** ينتقل لشاشة "كشف الحواف" من إطار خام (كاميرا أو صورة من المعرض): اكتشاف أولي سريع لتحديد شبه منحرف بادئ، ثم عرض الصورة كاملة الدقة قابلة للتعديل اليدوي. */
@@ -439,18 +406,9 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
       // الحواف الصريحة — لا حاجة بعد الآن لمسار "غير واثق" منفصل.
       const pdfBlob = await canvasToDocumentPdfBlob(canvas, { preferPng: true, highQuality: true });
 
-      const hasExtracted = Boolean(
-        extractedDraft.supplierName ||
-          extractedDraft.documentDate ||
-          extractedDraft.amount ||
-          extractedDraft.invoiceNumber ||
-          extractedDraft.customerPhoneLocal
-      );
-
       await onConfirm({
         jpegBlob,
         pdfBlob,
-        ...(hasExtracted ? { extracted: extractedDraft } : {}),
       });
       stopStream();
       onClose();
@@ -579,15 +537,23 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
 
         {phase === 'edges' && rawPreviewUrl && rawDims && edgesQuad && (
           <>
-            <CornerAdjuster
-              imageSrc={rawPreviewUrl}
-              naturalWidth={rawDims.width}
-              naturalHeight={rawDims.height}
-              quad={edgesQuad}
-              onQuadChange={handleEdgesQuadChange}
-            />
+            <div
+              className="absolute inset-x-2 z-0"
+              style={{ top: EDGES_SAFE_TOP_PX, bottom: EDGES_SAFE_BOTTOM_PX }}
+            >
+              <CornerAdjuster
+                imageSrc={rawPreviewUrl}
+                naturalWidth={rawDims.width}
+                naturalHeight={rawDims.height}
+                quad={edgesQuad}
+                onQuadChange={handleEdgesQuadChange}
+              />
+            </div>
             {edgesToast && (
-              <div className="absolute top-20 inset-x-4 flex justify-center pointer-events-none z-10">
+              <div
+                className="absolute inset-x-4 flex justify-center pointer-events-none z-10"
+                style={{ top: EDGES_SAFE_TOP_PX + 8 }}
+              >
                 <div className="pointer-events-auto max-w-sm rounded-2xl border border-amber-400/40 bg-amber-500/15 backdrop-blur px-3.5 py-2.5 text-center shadow-lg">
                   <p className="text-xs sm:text-sm font-bold text-amber-100">⚠️ {edgesToast}</p>
                 </div>
@@ -631,79 +597,14 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
         )}
 
         {phase === 'preview' && previewDataUrl && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 p-4 bg-slate-950 overflow-y-auto">
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 p-4 pt-20 bg-slate-950">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={previewDataUrl}
               alt="معاينة المستند الممسوح"
-              className="max-h-[42vh] w-auto max-w-full rounded-2xl border-2 border-cyan-400/60 shadow-[0_25px_70px_-15px_rgba(8,145,178,0.5)] object-contain bg-white"
+              className="max-h-[70vh] w-auto max-w-full rounded-2xl border-2 border-cyan-400/60 shadow-[0_25px_70px_-15px_rgba(8,145,178,0.5)] object-contain bg-white"
             />
-
-            <div className="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-900/90 p-3.5 space-y-2.5">
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-sm font-bold text-cyan-300">قراءة تلقائية للنص (OCR)</p>
-                {ocrPhase === 'running' && (
-                  <span className="text-xs font-bold text-slate-400 flex items-center gap-1.5">
-                    <span className="h-3 w-3 rounded-full border-2 border-slate-500 border-t-cyan-400 animate-spin" />
-                    جارِ القراءة...
-                  </span>
-                )}
-                {ocrPhase === 'done' && extractedDraft.confidence && (
-                  <span className="text-[11px] font-bold text-emerald-400/90">ثقة: {extractedDraft.confidence}</span>
-                )}
-              </div>
-              {ocrPhase === 'error' && ocrError && (
-                <p className="text-xs font-bold text-amber-200/90">{ocrError}</p>
-              )}
-
-              <label className="block space-y-1">
-                <span className="text-xs text-slate-400 font-bold">اسم المورد / الجهة</span>
-                <input
-                  type="text"
-                  value={extractedDraft.supplierName ?? ''}
-                  onChange={(e) => setExtractedDraft((d) => ({ ...d, supplierName: e.target.value }))}
-                  className="w-full rounded-xl bg-slate-950 border border-slate-800 px-3 py-2 text-sm text-white"
-                  placeholder="—"
-                />
-              </label>
-              <div className="grid grid-cols-2 gap-2">
-                <label className="block space-y-1">
-                  <span className="text-xs text-slate-400 font-bold">التاريخ</span>
-                  <input
-                    type="text"
-                    value={extractedDraft.documentDate ?? ''}
-                    onChange={(e) => setExtractedDraft((d) => ({ ...d, documentDate: e.target.value }))}
-                    className="w-full rounded-xl bg-slate-950 border border-slate-800 px-3 py-2 text-sm text-white tnum"
-                    dir="ltr"
-                    placeholder="—"
-                  />
-                </label>
-                <label className="block space-y-1">
-                  <span className="text-xs text-slate-400 font-bold">المبلغ</span>
-                  <input
-                    type="text"
-                    value={extractedDraft.amount ?? ''}
-                    onChange={(e) => setExtractedDraft((d) => ({ ...d, amount: e.target.value }))}
-                    className="w-full rounded-xl bg-slate-950 border border-slate-800 px-3 py-2 text-sm text-white tnum"
-                    dir="ltr"
-                    placeholder="—"
-                  />
-                </label>
-              </div>
-              <label className="block space-y-1">
-                <span className="text-xs text-slate-400 font-bold">رقم الفاتورة (إن وُجد)</span>
-                <input
-                  type="text"
-                  value={extractedDraft.invoiceNumber ?? ''}
-                  onChange={(e) => setExtractedDraft((d) => ({ ...d, invoiceNumber: e.target.value }))}
-                  className="w-full rounded-xl bg-slate-950 border border-slate-800 px-3 py-2 text-sm text-white tnum"
-                  dir="ltr"
-                  placeholder="—"
-                />
-              </label>
-            </div>
-
-            <p className="text-sm text-slate-300 text-center font-bold">راجع المستند والحقول أعلاه قبل الاعتماد</p>
+            <p className="text-sm text-slate-300 text-center font-bold">تأكد من وضوح المستند قبل الاعتماد</p>
           </div>
         )}
 
