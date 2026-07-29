@@ -1,4 +1,4 @@
-import type { SupabaseClient } from '@supabase/supabase-js';
+import type { PostgrestError, SupabaseClient } from '@supabase/supabase-js';
 
 export type TailorProfileRecord = {
   user_id: string;
@@ -15,6 +15,15 @@ export type TailorProfileUpsert = {
 };
 
 const LOCAL_PROFILE_KEY = 'mistarh_tailor_profile';
+
+/** أعمدة اختيارية قد تغيب في Supabase القديم أو في Schema Cache قبل التحديث. */
+const OPTIONAL_TAILOR_PROFILE_COLUMNS = ['updated_at', 'created_at', 'shop_name'] as const;
+
+export function isMissingSchemaColumn(error: PostgrestError, column: string): boolean {
+  const msg = (error.message ?? '').toLowerCase();
+  const col = column.toLowerCase();
+  return msg.includes(col) || (error.code === 'PGRST204' && msg.includes(col));
+}
 
 export function loadLocalTailorProfile(): Partial<TailorProfileUpsert> | null {
   if (typeof window === 'undefined') return null;
@@ -38,57 +47,72 @@ export async function fetchTailorProfile(
   supabase: SupabaseClient,
   userId: string
 ): Promise<TailorProfileRecord | null> {
-  const { data, error } = await supabase
+  const fullSelect = await supabase
     .from('tailor_profiles')
     .select('user_id, phone, cloud_notes, shop_name')
     .eq('user_id', userId)
     .maybeSingle();
 
-  if (error) {
-    throw new Error(error.message);
+  if (!fullSelect.error) {
+    return fullSelect.data as TailorProfileRecord | null;
   }
-  return data as TailorProfileRecord | null;
+
+  if (isMissingSchemaColumn(fullSelect.error, 'shop_name')) {
+    const legacy = await supabase
+      .from('tailor_profiles')
+      .select('user_id, phone, cloud_notes')
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (legacy.error) {
+      throw new Error(legacy.error.message);
+    }
+    return legacy.data
+      ? { ...(legacy.data as TailorProfileRecord), shop_name: null }
+      : null;
+  }
+
+  throw new Error(fullSelect.error.message);
 }
 
+/**
+ * يحفظ ملف الخياط — الحقول الزمنية (`updated_at` / `created_at`) لا تُرسَل افتراضياً
+ * (تُدار في DB عبر DEFAULT/TRIGGER). عند PGRST204 يُعاد المحاولة بدون الأعمدة غير المعروفة.
+ */
 export async function upsertTailorProfile(
   supabase: SupabaseClient,
   payload: TailorProfileUpsert
 ): Promise<void> {
-  const row: Record<string, string> = {
+  const core: Record<string, string> = {
     user_id: payload.user_id,
     phone: payload.phone,
     cloud_notes: payload.cloud_notes,
     shop_name: payload.shop_name,
-    updated_at: new Date().toISOString(),
   };
 
-  const { error } = await supabase.from('tailor_profiles').upsert(row, { onConflict: 'user_id' });
+  let row: Record<string, string> = { ...core };
 
-  if (error) {
-    const missingUpdatedAt =
-      error.message.includes('updated_at') ||
-      (error.code === 'PGRST204' && error.message.includes('updated_at'));
-    if (missingUpdatedAt) {
-      const { updated_at: _u, ...withoutUpdated } = row;
-      const retry = await supabase.from('tailor_profiles').upsert(withoutUpdated, {
-        onConflict: 'user_id',
-      });
-      if (!retry.error) return;
+  for (let attempt = 0; attempt < OPTIONAL_TAILOR_PROFILE_COLUMNS.length + 2; attempt++) {
+    const { error } = await supabase.from('tailor_profiles').upsert(row, { onConflict: 'user_id' });
+
+    if (!error) {
+      return;
     }
 
-    const missingShopColumn =
-      error.message.includes('shop_name') ||
-      (error.code === 'PGRST204' && error.message.includes('shop_name'));
-    if (missingShopColumn) {
-      const { shop_name: _removed, ...legacyRow } = row;
-      const retry = await supabase.from('tailor_profiles').upsert(legacyRow, { onConflict: 'user_id' });
-      if (retry.error) {
-        throw new Error(retry.error.message);
+    let stripped = false;
+    for (const col of OPTIONAL_TAILOR_PROFILE_COLUMNS) {
+      if (col in row && isMissingSchemaColumn(error, col)) {
+        const next = { ...row };
+        delete next[col];
+        row = next;
+        stripped = true;
+        break;
       }
-      throw new Error(
-        'تم حفظ الهاتف والملاحظات، لكن عمود shop_name غير موجود. نفّذ migration من supabase/migrations/20260729190000_tailor_shop_name_and_customers.sql.'
-      );
     }
-    throw new Error(error.message);
+
+    if (!stripped) {
+      throw new Error(error.message);
+    }
   }
+
+  throw new Error('تعذّر حفظ إعدادات الخياط بعد عدة محاولات.');
 }
