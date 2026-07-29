@@ -10,6 +10,8 @@
     "dev:delete-user": "node --env-file=.env.local scripts/delete-auth-user.mjs"
   },
   "dependencies": {
+    "@simplewebauthn/browser": "^13.3.0",
+    "@simplewebauthn/server": "^13.3.2",
     "@supabase/supabase-js": "^2.110.8",
     "jspdf": "^4.2.1",
     "next": "16.2.11",

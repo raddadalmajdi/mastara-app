@@ -35,6 +35,12 @@ import {
 } from '@/lib/upload-scanned-invoice';
 import { DocumentScannerModal } from '@/components/scanner/DocumentScannerModal';
 import type { DocumentScanResult } from '@/lib/document-scanner/scan-result';
+import { PasskeySignInButton, RegisterPasskeyButton } from '@/components/auth/PasskeyAuthButtons';
+import {
+  InvoiceSaveProgressRing,
+  type InvoiceSaveUiPhase,
+} from '@/components/invoices/InvoiceSaveProgressRing';
+import { useIdleLogout } from '@/lib/use-idle-logout';
 import { lookupTailorCustomerByPhone, upsertTailorCustomer } from '@/lib/tailor-customers';
 import {
   loadLocalTailorProfile,
@@ -100,6 +106,8 @@ export default function Home() {
   const profileOnboardingShownRef = useRef(false);
   const [isSearchingInvoices, setIsSearchingInvoices] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadSavePhase, setUploadSavePhase] = useState<InvoiceSaveUiPhase>('idle');
+  const [uploadSaveError, setUploadSaveError] = useState<string | null>(null);
   const [showDocumentScanner, setShowDocumentScanner] = useState(false);
 
   // حفظ رسائل الواتساب المخصصة لكل فاتورة
@@ -249,6 +257,29 @@ export default function Home() {
     profileOnboardingShownRef.current = true;
     setShowTailorProfileModal(true);
   }, [user, checkingTailor, authBootstrapping, isTailorRegistered]);
+
+  const performLogout = async (idleReason?: boolean) => {
+    if (supabase) {
+      await supabase.auth.signOut();
+    }
+    setUser(null);
+    setIsTailorRegistered(false);
+    setTailorShopName('');
+    setCloudNotes('');
+    profileOnboardingShownRef.current = false;
+    setShowMenu(false);
+    if (idleReason) {
+      setAuthFeedback({
+        type: 'error',
+        message: 'انتهت الجلسة لعدم النشاط (5 دقائق). يرجى تسجيل الدخول مجدداً.',
+      });
+      setAuthPhase('form');
+    }
+  };
+
+  useIdleLogout(Boolean(user && supabase), () => {
+    void performLogout(true);
+  });
 
   const applyTailorPhoneFromStorage = (phoneStr: string) => {
     let matched = false;
@@ -755,15 +786,7 @@ export default function Home() {
   };
 
   const handleLogout = async () => {
-    if (supabase) {
-      await supabase.auth.signOut();
-    }
-    setUser(null);
-    setIsTailorRegistered(false);
-    setTailorShopName('');
-    setCloudNotes('');
-    profileOnboardingShownRef.current = false;
-    setShowMenu(false);
+    await performLogout(false);
   };
 
   const scheduleCustomerDirectoryLookup = (localPhone: string, cCode: string) => {
@@ -912,10 +935,13 @@ export default function Home() {
       throw new Error('يرجى إدخال اسم العميل لحفظه في قائمة عملائك.');
     }
 
+    setUploadSavePhase('preparing');
+    setUploadSaveError(null);
     setIsUploading(true);
 
     try {
       if (!supabase) {
+        setUploadSavePhase('uploading');
         const imageUrl = await blobToDataUrl(jpegBlob);
         const pdfUrl = await blobToDataUrl(pdfBlob);
 
@@ -940,8 +966,10 @@ export default function Home() {
         );
 
         searchInvoices(localPhone, customerCountryCode);
-        alert('تم حفظ PDF المستند محلياً بنجاح!');
+        setUploadSavePhase('success');
+        window.setTimeout(() => setUploadSavePhase('idle'), 2800);
       } else {
+        setUploadSavePhase('uploading');
         const { imageUrl, pdfUrl } = await uploadScannedInvoiceFiles(supabase, user.id, {
           jpegBlob,
           pdfBlob,
@@ -958,8 +986,19 @@ export default function Home() {
         setCustomerBookStatus('known');
 
         await searchInvoices(localPhone, customerCountryCode);
-        alert('تم رفع ملف PDF وحفظ رابطه في السجل بنجاح!');
+        setUploadSavePhase('success');
+        setShowDocumentScanner(false);
+        window.setTimeout(() => setUploadSavePhase('idle'), 2800);
       }
+    } catch (saveErr) {
+      const msg = saveErr instanceof Error ? saveErr.message : 'تعذّر حفظ الفاتورة.';
+      setUploadSaveError(msg);
+      setUploadSavePhase('error');
+      window.setTimeout(() => {
+        setUploadSavePhase('idle');
+        setUploadSaveError(null);
+      }, 4000);
+      throw saveErr;
     } finally {
       setIsUploading(false);
     }
@@ -1220,6 +1259,19 @@ export default function Home() {
                   <p className="text-xs text-slate-400 leading-relaxed bg-slate-950/50 border border-slate-800 rounded-xl p-2.5">
                     سنرسل رمز تحقق مكوّناً من 6 أرقام إلى بريدك لتسجيل الدخول دون كلمة مرور.
                   </p>
+                )}
+                {!isSignUp && loginMethod === 'password' && (
+                  <PasskeySignInButton
+                    email={email}
+                    disabled={authSubmitting}
+                    onSuccess={() => {
+                      setAuthFeedback({
+                        type: 'success',
+                        message: 'تم تسجيل الدخول بالبصمة بنجاح.',
+                      });
+                    }}
+                    onError={(message) => setAuthFeedback({ type: 'error', message })}
+                  />
                 )}
                 <button
                   type="submit"
@@ -1585,24 +1637,22 @@ export default function Home() {
       {/* زر الكاميرا / الماسح في منتصف أسفل الشاشة — يفتح ماسح المستندات بأربع زوايا (شبيه HP Smart) */}
       {customerLocalPhone.trim().length >= 1 && (
         <div className="fixed bottom-4 left-0 right-0 z-40 flex justify-center items-center pointer-events-none">
-          <button
-            type="button"
-            onClick={() => setShowDocumentScanner(true)}
-            disabled={isUploading}
-            className="pointer-events-auto w-24 h-24 rounded-full bg-gradient-to-tr from-emerald-500 via-teal-400 to-cyan-400 text-slate-950 font-black shadow-[0_0_40px_rgba(16,185,129,0.8)] border-4 border-slate-950 flex flex-col items-center justify-center cursor-pointer transition-transform transform active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
-            title="فتح الكاميرا ومسح فاتورة أو مستند (تحديد الحواف تلقائياً)"
-          >
-            {isUploading ? (
-              <span className="h-7 w-7 rounded-full border-2 border-slate-950/30 border-t-slate-950 animate-spin" />
-            ) : (
-              <>
-                <span className="text-4xl leading-none mb-0.5" aria-hidden>
-                  📷
-                </span>
-                <span className="text-xs font-black tracking-tight text-slate-950">كاميرا</span>
-              </>
-            )}
-          </button>
+          {uploadSavePhase !== 'idle' ? (
+            <InvoiceSaveProgressRing phase={uploadSavePhase} errorMessage={uploadSaveError} />
+          ) : (
+            <button
+              type="button"
+              onClick={() => setShowDocumentScanner(true)}
+              disabled={isUploading}
+              className="pointer-events-auto w-24 h-24 rounded-full bg-gradient-to-tr from-emerald-500 via-teal-400 to-cyan-400 text-slate-950 font-black shadow-[0_0_40px_rgba(16,185,129,0.8)] border-4 border-slate-950 flex flex-col items-center justify-center cursor-pointer transition-transform transform active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
+              title="فتح الكاميرا ومسح فاتورة أو مستند"
+            >
+              <span className="text-4xl leading-none mb-0.5" aria-hidden>
+                📷
+              </span>
+              <span className="text-xs font-black tracking-tight text-slate-950">كاميرا</span>
+            </button>
+          )}
         </div>
       )}
 
@@ -1707,6 +1757,19 @@ export default function Home() {
                   className="w-full rounded-xl bg-slate-950 border border-slate-800 p-3 text-sm text-white focus:border-cyan-500 focus:outline-none resize-none"
                 />
               </div>
+
+              {supabase && (
+                <RegisterPasskeyButton
+                  disabled={savingSettings}
+                  getAccessToken={async () => {
+                    const {
+                      data: { session },
+                    } = await supabase.auth.getSession();
+                    return session?.access_token ?? null;
+                  }}
+                  onFeedback={(type, message) => setSettingsFeedback({ type, message })}
+                />
+              )}
 
               <div className="flex gap-2 pt-2">
                 <button
