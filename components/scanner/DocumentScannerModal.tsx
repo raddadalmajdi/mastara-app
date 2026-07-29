@@ -2,11 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { computeOutputSize, warpPerspective, type Quad } from '@/lib/document-scanner/geometry';
-import { detectDocumentQuad } from '@/lib/document-scanner/detect-document';
 import { enhanceDocumentCanvas } from '@/lib/document-scanner/enhance';
 import { canvasToDocumentPdfBlob } from '@/lib/document-scanner/to-pdf';
-import { CornerAdjuster } from './CornerAdjuster';
-import { CAMERA_START_TIMEOUT_MS, CAPTURE_DETECTION_SAMPLE_WIDTH, MAX_OUTPUT_DIMENSION, SCAN_JPEG_QUALITY } from '@/lib/document-scanner/constants';
+import { CornerAdjuster, detectDocumentEdgesAuto } from './CornerAdjuster';
+import { CAMERA_START_TIMEOUT_MS, MAX_OUTPUT_DIMENSION, SCAN_JPEG_QUALITY } from '@/lib/document-scanner/constants';
 
 export type DocumentScanResult = { jpegBlob: Blob; pdfBlob: Blob };
 
@@ -111,6 +110,17 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
   const [rawDims, setRawDims] = useState<{ width: number; height: number } | null>(null);
   const [edgesQuad, setEdgesQuad] = useState<Quad | null>(null);
   const [edgesMode, setEdgesMode] = useState<EdgesMode>('auto');
+  /** مؤشر تحميل بسيط أثناء تشغيل زر «Auto» صراحةً في شاشة كشف الحواف. */
+  const [isAutoDetecting, setIsAutoDetecting] = useState(false);
+  /** رسالة تنبيه قصيرة (تختفي تلقائياً) عند فشل الاكتشاف التلقائي — يبقى شبه المنحرف الحالي كما هو دون تغيير. */
+  const [edgesToast, setEdgesToast] = useState<string | null>(null);
+
+  // إخفاء تلقائي لتنبيه فشل الاكتشاف بعد مدة قصيرة كي لا يبقى معلَّقاً على الشاشة.
+  useEffect(() => {
+    if (!edgesToast) return;
+    const id = window.setTimeout(() => setEdgesToast(null), 3800);
+    return () => window.clearTimeout(id);
+  }, [edgesToast]);
 
   const stopStream = useCallback(() => {
     streamRef.current?.getTracks().forEach((track) => track.stop());
@@ -209,6 +219,8 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
     setRawDims(null);
     setEdgesQuad(null);
     setEdgesMode('auto');
+    setIsAutoDetecting(false);
+    setEdgesToast(null);
   }, []);
 
   /** ينتقل لشاشة "كشف الحواف" من إطار خام (كاميرا أو صورة من المعرض): اكتشاف أولي سريع لتحديد شبه منحرف بادئ، ثم عرض الصورة كاملة الدقة قابلة للتعديل اليدوي. */
@@ -219,13 +231,11 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
 
     rawCaptureCanvasRef.current = rawCanvas;
 
-    const detected = detectDocumentQuad(rawCanvas, vw, vh, getOrCreateCanvas(workCanvasRef), {
-      sampleWidth: CAPTURE_DETECTION_SAMPLE_WIDTH,
-      denoise: true,
-    });
+    const result = detectDocumentEdgesAuto(rawCanvas, vw, vh, getOrCreateCanvas(workCanvasRef));
 
-    setEdgesMode(detected ? 'auto' : 'full');
-    setEdgesQuad(detected?.points ?? fullFrameQuad(vw, vh));
+    setEdgesMode(result ? 'auto' : 'full');
+    setEdgesQuad(result?.quad ?? fullFrameQuad(vw, vh));
+    setEdgesToast(result ? null : 'تعذّر العثور على حواف واضحة تلقائياً — تم اعتماد الصورة كاملة، اضبط الزوايا يدوياً أو اضغط Auto مجدداً.');
     setRawDims({ width: vw, height: vh });
     setRawPreviewUrl(rawCanvas.toDataURL('image/jpeg', 0.92));
 
@@ -277,17 +287,36 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
     }
   };
 
-  /** زر «Auto» في شاشة كشف الحواف: يعيد تشغيل الاكتشاف التلقائي على الصورة الخام كاملة الدقة. */
+  /**
+   * زر «Auto» في شاشة كشف الحواف: يعيد تشغيل الاكتشاف التلقائي على الصورة
+   * الخام كاملة الدقة. يعرض مؤشر تحميل بسيط على الزر أثناء التشغيل (مهلة
+   * قصيرة صريحة تضمن ظهوره فعلياً ولو للحظة، فالاكتشاف نفسه سريع جداً)،
+   * ويُحدِّث المقابض الزرقاء فوراً عند النجاح. عند الفشل: يبقى شبه المنحرف
+   * الحالي كما هو دون أي تغيير (لا يُستبدَل بالصورة كاملة تلقائياً)، مع
+   * إشعار قصير يوجّه المستخدم للتعديل اليدوي أو إعادة المحاولة.
+   */
   const handleAutoDetectEdges = useCallback(() => {
     const rawCanvas = rawCaptureCanvasRef.current;
-    if (!rawCanvas) return;
-    const detected = detectDocumentQuad(rawCanvas, rawCanvas.width, rawCanvas.height, getOrCreateCanvas(workCanvasRef), {
-      sampleWidth: CAPTURE_DETECTION_SAMPLE_WIDTH,
-      denoise: true,
-    });
-    setEdgesMode('auto');
-    setEdgesQuad(detected?.points ?? fullFrameQuad(rawCanvas.width, rawCanvas.height));
-  }, []);
+    if (!rawCanvas || isAutoDetecting) return;
+
+    setIsAutoDetecting(true);
+    setEdgesToast(null);
+
+    window.setTimeout(() => {
+      try {
+        if (isClosingRef.current) return;
+        const result = detectDocumentEdgesAuto(rawCanvas, rawCanvas.width, rawCanvas.height, getOrCreateCanvas(workCanvasRef));
+        if (result) {
+          setEdgesMode('auto');
+          setEdgesQuad(result.quad);
+        } else {
+          setEdgesToast('تعذّر العثور على حواف واضحة تلقائياً. جرّب إضاءة أفضل أو خلفية داكنة موحّدة، أو اضبط الزوايا يدوياً.');
+        }
+      } finally {
+        if (!isClosingRef.current) setIsAutoDetecting(false);
+      }
+    }, 250);
+  }, [isAutoDetecting]);
 
   /** زر «Full» في شاشة كشف الحواف: يعتمد الصورة بالكامل حافة-إلى-حافة بلا أي اكتشاف. */
   const handleFullFrameEdges = useCallback(() => {
@@ -295,12 +324,14 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
     if (!rawCanvas) return;
     setEdgesMode('full');
     setEdgesQuad(fullFrameQuad(rawCanvas.width, rawCanvas.height));
+    setEdgesToast(null);
   }, []);
 
   /** أي سحب يدوي لأحد المقابض الأربعة يُحوِّل الوضع إلى «يدوي» (يُلغي تحديد Auto/Full بصرياً). */
   const handleEdgesQuadChange = useCallback((next: Quad) => {
     setEdgesQuad(next);
     setEdgesMode('manual');
+    setEdgesToast(null);
   }, []);
 
   /** زر الرجوع من شاشة كشف الحواف: تجاهل الالتقاط الحالي والعودة للكاميرا الحية مباشرة. */
@@ -498,13 +529,22 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
         )}
 
         {phase === 'edges' && rawPreviewUrl && rawDims && edgesQuad && (
-          <CornerAdjuster
-            imageSrc={rawPreviewUrl}
-            naturalWidth={rawDims.width}
-            naturalHeight={rawDims.height}
-            quad={edgesQuad}
-            onQuadChange={handleEdgesQuadChange}
-          />
+          <>
+            <CornerAdjuster
+              imageSrc={rawPreviewUrl}
+              naturalWidth={rawDims.width}
+              naturalHeight={rawDims.height}
+              quad={edgesQuad}
+              onQuadChange={handleEdgesQuadChange}
+            />
+            {edgesToast && (
+              <div className="absolute top-20 inset-x-4 flex justify-center pointer-events-none z-10">
+                <div className="pointer-events-auto max-w-sm rounded-2xl border border-amber-400/40 bg-amber-500/15 backdrop-blur px-3.5 py-2.5 text-center shadow-lg">
+                  <p className="text-xs sm:text-sm font-bold text-amber-100">⚠️ {edgesToast}</p>
+                </div>
+              </div>
+            )}
+          </>
         )}
 
         {phase === 'processing' && (
@@ -594,21 +634,28 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
             <button
               type="button"
               onClick={handleAutoDetectEdges}
-              className={`flex flex-col items-center gap-1.5 rounded-2xl px-5 py-2.5 border transition-colors ${
+              disabled={isAutoDetecting}
+              aria-busy={isAutoDetecting}
+              className={`flex flex-col items-center gap-1.5 rounded-2xl px-5 py-2.5 border transition-colors disabled:opacity-70 ${
                 edgesMode === 'auto'
                   ? 'bg-blue-500/20 border-blue-400/60 text-blue-200'
                   : 'bg-slate-900/70 border-white/10 text-white/80'
               }`}
             >
-              <span className="text-lg" aria-hidden>
-                ✨
-              </span>
-              <span className="text-xs font-bold">Auto</span>
+              {isAutoDetecting ? (
+                <span className="h-4 w-4 rounded-full border-2 border-blue-300/40 border-t-blue-300 animate-spin" aria-hidden />
+              ) : (
+                <span className="text-lg" aria-hidden>
+                  ✨
+                </span>
+              )}
+              <span className="text-xs font-bold">{isAutoDetecting ? '...جارِ الاكتشاف' : 'Auto'}</span>
             </button>
             <button
               type="button"
               onClick={handleFullFrameEdges}
-              className={`flex flex-col items-center gap-1.5 rounded-2xl px-5 py-2.5 border transition-colors ${
+              disabled={isAutoDetecting}
+              className={`flex flex-col items-center gap-1.5 rounded-2xl px-5 py-2.5 border transition-colors disabled:opacity-70 ${
                 edgesMode === 'full'
                   ? 'bg-blue-500/20 border-blue-400/60 text-blue-200'
                   : 'bg-slate-900/70 border-white/10 text-white/80'

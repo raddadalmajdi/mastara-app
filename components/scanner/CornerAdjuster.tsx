@@ -2,6 +2,38 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Quad } from '@/lib/document-scanner/geometry';
+import { detectDocumentQuad } from '@/lib/document-scanner/detect-document';
+import { CAPTURE_DETECTION_SAMPLE_WIDTH } from '@/lib/document-scanner/constants';
+
+export type AutoDetectResult = { quad: Quad; coverage: number } | null;
+
+/**
+ * خوارزمية الاكتشاف التلقائي (Auto-Detect) لحواف المستند — نقطة الدخول
+ * الموحَّدة التي يستدعيها زر «Auto» (سواء عند الالتقاط الأولي أو عند إعادة
+ * الضغط عليه صراحةً في شاشة كشف الحواف). تحلّل الصورة الخام الملتقطة كاملة
+ * الدقة (كانفاس أو عنصر صورة/فيديو) بحثاً عن أكبر شبه منحرف رباعي محتمل أن
+ * يمثّل ورقة/مستنداً: تدرّج رمادي، تحسين تباين محلي، عتبة Otsu تكيّفية،
+ * تنظيف مورفولوجي (Close→Open)، ثم اختيار أفضل كتلة متصلة وفق حجمها ونسبة
+ * امتلائها ونسيجها الداخلي (`lib/document-scanner/detect-document.ts`) —
+ * خوارزمية Canvas 2D خفيفة بلا أي مكتبة رؤية حاسوبية خارجية، مُعايَرة خصيصاً
+ * لأداء دقيق على خلفيات متباينة (إضاءة/ألوان مختلفة) مثل Auto في HP Smart.
+ *
+ * تُعيد `null` صراحةً عند تعذّر العثور على حواف واثقة (بدل تخمين خاطئ) كي
+ * يتمكّن المستدعي من إشعار المستخدم والإبقاء على الوضع الحالي دون تغيير.
+ */
+export function detectDocumentEdgesAuto(
+  source: CanvasImageSource,
+  sourceWidth: number,
+  sourceHeight: number,
+  workCanvas: HTMLCanvasElement
+): AutoDetectResult {
+  if (!sourceWidth || !sourceHeight) return null;
+  const detected = detectDocumentQuad(source, sourceWidth, sourceHeight, workCanvas, {
+    sampleWidth: CAPTURE_DETECTION_SAMPLE_WIDTH,
+    denoise: true,
+  });
+  return detected ? { quad: detected.points, coverage: detected.coverage } : null;
+}
 
 type ContainRect = { renderW: number; renderH: number; offsetX: number; offsetY: number };
 
