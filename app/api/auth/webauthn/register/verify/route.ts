@@ -3,6 +3,7 @@ import { verifyRegistrationResponse } from '@simplewebauthn/server';
 import { createClient } from '@supabase/supabase-js';
 import { getSupabasePublicConfig, normalizeSupabaseProjectUrl } from '@/lib/supabase/env';
 import { getWebAuthnRpConfig } from '@/lib/webauthn/rp-config';
+import { IOS_PREFERRED_TRANSPORTS } from '@/lib/webauthn/authenticator-selection';
 import { consumeWebAuthnChallenge, insertPasskey } from '@/lib/webauthn/server-store';
 
 export async function POST(request: Request) {
@@ -64,12 +65,16 @@ export async function POST(request: Request) {
 
     const { credential } = verification.registrationInfo;
 
+    const rawTransports = (body.response.transports ?? []) as string[];
+    const transports =
+      rawTransports.length > 0 ? rawTransports : [...IOS_PREFERRED_TRANSPORTS];
+
     await insertPasskey({
       user_id: user.id,
       credential_id: credential.id,
       public_key: Buffer.from(credential.publicKey).toString('base64url'),
       counter: credential.counter,
-      transports: body.response.transports ?? [],
+      transports,
     });
 
     return NextResponse.json({ ok: true });

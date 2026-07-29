@@ -43,7 +43,8 @@ export async function POST(request: Request) {
         id: passkey.credential_id,
         publicKey: Buffer.from(passkey.public_key, 'base64url'),
         counter: passkey.counter,
-        transports: (passkey.transports ?? []) as AuthenticatorTransport[],
+        transports: ((passkey.transports?.length ? passkey.transports : ['internal']) ??
+          []) as AuthenticatorTransport[],
       },
     });
 

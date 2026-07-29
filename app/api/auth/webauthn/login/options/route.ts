@@ -1,42 +1,20 @@
 import { NextResponse } from 'next/server';
 import { generateAuthenticationOptions } from '@simplewebauthn/server';
 import { getWebAuthnRpConfig } from '@/lib/webauthn/rp-config';
-import {
-  listPasskeysByEmail,
-  resolveUserIdByEmail,
-  saveWebAuthnChallenge,
-} from '@/lib/webauthn/server-store';
+import { resolveUserIdByEmail, saveWebAuthnChallenge } from '@/lib/webauthn/server-store';
 
 export async function POST(request: Request) {
   try {
     const body = (await request.json().catch(() => ({}))) as { email?: string };
-    const email = body.email?.trim().toLowerCase();
+    const email = body.email?.trim().toLowerCase() || undefined;
 
     const { rpID } = getWebAuthnRpConfig();
 
-    const passkeys = email ? await listPasskeysByEmail(email) : [];
-
-    if (email && !passkeys.length) {
-      return NextResponse.json(
-        {
-          ok: false,
-          message:
-            'لا يوجد Passkey مسجّل لهذا البريد. سجّل الدخول بالكلمة المرور ثم فعّل البصمة من الإعدادات.',
-        },
-        { status: 404 }
-      );
-    }
-
+    // iOS / Safari: مفاتيح سكنية (residentKey: required) — لا نمرّر allowCredentials
+    // ليظهر Face ID مباشرة ويختار iCloud Keychain / Passkey المناسب للموقع.
     const options = await generateAuthenticationOptions({
       rpID,
       userVerification: 'required',
-      allowCredentials:
-        passkeys.length > 0
-          ? passkeys.map((pk) => ({
-              id: pk.credential_id,
-              transports: (pk.transports ?? []) as AuthenticatorTransport[],
-            }))
-          : undefined,
     });
 
     const userId = email ? await resolveUserIdByEmail(email) : null;

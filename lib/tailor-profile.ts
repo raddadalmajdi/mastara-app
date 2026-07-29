@@ -65,6 +65,17 @@ export async function upsertTailorProfile(
   const { error } = await supabase.from('tailor_profiles').upsert(row, { onConflict: 'user_id' });
 
   if (error) {
+    const missingUpdatedAt =
+      error.message.includes('updated_at') ||
+      (error.code === 'PGRST204' && error.message.includes('updated_at'));
+    if (missingUpdatedAt) {
+      const { updated_at: _u, ...withoutUpdated } = row;
+      const retry = await supabase.from('tailor_profiles').upsert(withoutUpdated, {
+        onConflict: 'user_id',
+      });
+      if (!retry.error) return;
+    }
+
     const missingShopColumn =
       error.message.includes('shop_name') ||
       (error.code === 'PGRST204' && error.message.includes('shop_name'));

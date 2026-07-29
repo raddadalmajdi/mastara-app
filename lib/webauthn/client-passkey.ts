@@ -2,6 +2,10 @@ import { createClient } from '@supabase/supabase-js';
 import { getSupabasePublicConfig } from '@/lib/supabase/env';
 import { startRegistration, startAuthentication } from '@simplewebauthn/browser';
 import type { PublicKeyCredentialCreationOptionsJSON } from '@simplewebauthn/server';
+import {
+  assertWebAuthnPlatformReady,
+  isPublicKeyCredentialAvailable,
+} from '@/lib/webauthn/platform-support';
 
 async function authFetch(path: string, init?: RequestInit): Promise<Response> {
   return fetch(path, {
@@ -13,11 +17,16 @@ async function authFetch(path: string, init?: RequestInit): Promise<Response> {
   });
 }
 
+export { isPublicKeyCredentialAvailable, assertWebAuthnPlatformReady };
+
+/** @deprecated استخدم isPublicKeyCredentialAvailable */
 export function isWebAuthnSupported(): boolean {
-  return typeof window !== 'undefined' && Boolean(window.PublicKeyCredential);
+  return isPublicKeyCredentialAvailable();
 }
 
 export async function registerPasskeyForCurrentUser(accessToken: string): Promise<void> {
+  await assertWebAuthnPlatformReady();
+
   const optionsRes = await authFetch('/api/auth/webauthn/register/options', {
     method: 'POST',
     headers: { Authorization: `Bearer ${accessToken}` },
@@ -48,6 +57,8 @@ export async function signInWithPasskey(email?: string): Promise<{
   email: string;
   tokenHash: string;
 }> {
+  await assertWebAuthnPlatformReady();
+
   const optionsRes = await authFetch('/api/auth/webauthn/login/options', {
     method: 'POST',
     body: JSON.stringify({ email: email?.trim().toLowerCase() || undefined }),
@@ -58,7 +69,7 @@ export async function signInWithPasskey(email?: string): Promise<{
     message?: string;
   };
   if (!optionsRes.ok || !optionsJson.options) {
-    throw new Error(optionsJson.message ?? 'لا يوجد Passkey مسجّل لهذا الحساب أو المتصفح لا يدعم البصمة.');
+    throw new Error(optionsJson.message ?? 'لا يوجد Passkey مسجّل أو المتصفح لا يدعم Face ID.');
   }
 
   const assertion = await startAuthentication({ optionsJSON: optionsJson.options });

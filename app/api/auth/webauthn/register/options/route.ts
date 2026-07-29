@@ -3,6 +3,7 @@ import { generateRegistrationOptions } from '@simplewebauthn/server';
 import { createClient } from '@supabase/supabase-js';
 import { getSupabasePublicConfig, normalizeSupabaseProjectUrl } from '@/lib/supabase/env';
 import { getWebAuthnRpConfig } from '@/lib/webauthn/rp-config';
+import { IOS_PLATFORM_AUTHENTICATOR_SELECTION } from '@/lib/webauthn/authenticator-selection';
 import { listPasskeysForUser, saveWebAuthnChallenge } from '@/lib/webauthn/server-store';
 
 export async function POST(request: Request) {
@@ -46,13 +47,11 @@ export async function POST(request: Request) {
       attestationType: 'none',
       excludeCredentials: existing.map((pk) => ({
         id: pk.credential_id,
-        transports: (pk.transports ?? []) as AuthenticatorTransport[],
+        transports: (pk.transports?.length
+          ? pk.transports
+          : ['internal']) as AuthenticatorTransport[],
       })),
-      authenticatorSelection: {
-        residentKey: 'preferred',
-        userVerification: 'required',
-        authenticatorAttachment: 'platform',
-      },
+      authenticatorSelection: IOS_PLATFORM_AUTHENTICATOR_SELECTION,
     });
 
     await saveWebAuthnChallenge({

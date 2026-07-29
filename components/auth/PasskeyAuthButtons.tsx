@@ -2,8 +2,10 @@
 
 import { useState } from 'react';
 import {
+  assertWebAuthnPlatformReady,
   completePasskeySession,
-  isWebAuthnSupported,
+  isPublicKeyCredentialAvailable,
+  registerPasskeyForCurrentUser,
   signInWithPasskey,
 } from '@/lib/webauthn/client-passkey';
 
@@ -22,17 +24,16 @@ export function PasskeySignInButton({
 }: PasskeySignInButtonProps) {
   const [loading, setLoading] = useState(false);
 
-  if (!isWebAuthnSupported()) return null;
+  if (!isPublicKeyCredentialAvailable()) return null;
 
   const handleClick = async () => {
     setLoading(true);
     try {
+      await assertWebAuthnPlatformReady();
       const trimmed = email.trim();
-      if (!trimmed) {
-        onError('أدخل البريد الإلكتروني أولاً لتسجيل الدخول بالبصمة.');
-        return;
-      }
-      const { email: resolvedEmail, tokenHash } = await signInWithPasskey(trimmed);
+      const { email: resolvedEmail, tokenHash } = await signInWithPasskey(
+        trimmed || undefined
+      );
       await completePasskeySession(resolvedEmail, tokenHash);
       onSuccess();
     } catch (err) {
@@ -49,7 +50,7 @@ export function PasskeySignInButton({
       onClick={() => void handleClick()}
       className="w-full rounded-2xl border border-cyan-500/40 bg-cyan-500/10 text-cyan-100 text-sm font-bold py-3.5 disabled:opacity-50"
     >
-      {loading ? 'جاري التحقق بالبصمة...' : '🔐 دخول بالبصمة / Face ID (Passkey)'}
+      {loading ? 'جاري التحقق بالبصمة...' : '🔐 Face ID / Touch ID (Passkey)'}
     </button>
   );
 }
@@ -67,17 +68,17 @@ export function RegisterPasskeyButton({
 }: RegisterPasskeyButtonProps) {
   const [loading, setLoading] = useState(false);
 
-  if (!isWebAuthnSupported()) return null;
+  if (!isPublicKeyCredentialAvailable()) return null;
 
   const handleClick = async () => {
     setLoading(true);
     try {
+      await assertWebAuthnPlatformReady();
       const token = await getAccessToken();
       if (!token) {
         onFeedback('error', 'يجب تسجيل الدخول لتفعيل Passkey.');
         return;
       }
-      const { registerPasskeyForCurrentUser } = await import('@/lib/webauthn/client-passkey');
       await registerPasskeyForCurrentUser(token);
       onFeedback('success', 'تم تفعيل الدخول بالبصمة / Face ID على هذا الجهاز.');
     } catch (err) {
