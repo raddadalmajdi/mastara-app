@@ -43,6 +43,7 @@ import {
 import { useIdleLogout } from '@/lib/use-idle-logout';
 import { lookupTailorCustomerByPhone, upsertTailorCustomer } from '@/lib/tailor-customers';
 import {
+  fetchTailorProfile,
   loadLocalTailorProfile,
   saveLocalTailorProfile,
   upsertTailorProfile,
@@ -317,13 +318,13 @@ export default function Home() {
 
     setCheckingTailor(true);
     try {
-      const { data, error } = await withTimeout(
-        supabase.from('tailor_profiles').select('*').eq('user_id', userId).maybeSingle(),
+      const data = await withTimeout(
+        fetchTailorProfile(supabase, userId),
         12_000,
         'تحميل ملف الخياط'
       );
 
-      if (data && !error) {
+      if (data) {
         if (data.phone) {
           setIsTailorRegistered(true);
           applyTailorPhoneFromStorage(String(data.phone));
