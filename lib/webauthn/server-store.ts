@@ -1,3 +1,4 @@
+import type { PostgrestError } from '@supabase/supabase-js';
 import { createSupabaseAdminClient } from '@/lib/delete-auth-user-admin';
 
 export type StoredPasskey = {
@@ -9,6 +10,14 @@ export type StoredPasskey = {
   transports: string[] | null;
 };
 
+function isMissingSchemaColumn(error: PostgrestError, column: string): boolean {
+  const msg = error.message ?? '';
+  return (
+    msg.includes(column) ||
+    (error.code === 'PGRST204' && msg.toLowerCase().includes(column.toLowerCase()))
+  );
+}
+
 export async function saveWebAuthnChallenge(params: {
   challenge: string;
   purpose: 'register' | 'login';
@@ -17,15 +26,23 @@ export async function saveWebAuthnChallenge(params: {
 }): Promise<void> {
   const admin = createSupabaseAdminClient();
   const expires = new Date(Date.now() + 5 * 60 * 1000).toISOString();
-  const { error } = await admin.from('webauthn_challenges').insert({
+  const fullRow = {
     challenge: params.challenge,
     purpose: params.purpose,
     user_id: params.userId ?? null,
     email: params.email?.trim().toLowerCase() ?? null,
     expires_at: expires,
-  });
-  if (error) {
-    throw new Error(error.message);
+  };
+
+  let result = await admin.from('webauthn_challenges').insert(fullRow);
+
+  if (result.error && isMissingSchemaColumn(result.error, 'email')) {
+    const { email: _removed, ...legacyRow } = fullRow;
+    result = await admin.from('webauthn_challenges').insert(legacyRow);
+  }
+
+  if (result.error) {
+    throw new Error(result.error.message);
   }
 }
 
@@ -34,12 +51,32 @@ export async function consumeWebAuthnChallenge(
   purpose: 'register' | 'login'
 ): Promise<{ user_id: string | null; email: string | null } | null> {
   const admin = createSupabaseAdminClient();
-  const { data, error } = await admin
+
+  let data: { user_id: string | null; email?: string | null; expires_at: string } | null = null;
+  let error: PostgrestError | null = null;
+
+  const withEmail = await admin
     .from('webauthn_challenges')
     .select('user_id, email, expires_at')
     .eq('challenge', challenge)
     .eq('purpose', purpose)
     .maybeSingle();
+
+  if (withEmail.error && isMissingSchemaColumn(withEmail.error, 'email')) {
+    const legacy = await admin
+      .from('webauthn_challenges')
+      .select('user_id, expires_at')
+      .eq('challenge', challenge)
+      .eq('purpose', purpose)
+      .maybeSingle();
+    data = legacy.data
+      ? { user_id: legacy.data.user_id, email: null, expires_at: legacy.data.expires_at }
+      : null;
+    error = legacy.error;
+  } else {
+    data = withEmail.data;
+    error = withEmail.error;
+  }
 
   if (error || !data) return null;
   if (new Date(data.expires_at).getTime() < Date.now()) {
@@ -48,7 +85,7 @@ export async function consumeWebAuthnChallenge(
   }
 
   await admin.from('webauthn_challenges').delete().eq('challenge', challenge);
-  return { user_id: data.user_id, email: data.email };
+  return { user_id: data.user_id, email: data.email ?? null };
 }
 
 export async function listPasskeysForUser(userId: string): Promise<StoredPasskey[]> {
@@ -92,10 +129,14 @@ export async function insertPasskey(row: {
 
 export async function updatePasskeyCounter(id: string, counter: number): Promise<void> {
   const admin = createSupabaseAdminClient();
-  await admin
-    .from('user_passkeys')
-    .update({ counter, last_used_at: new Date().toISOString() })
-    .eq('id', id);
+  const patch = { counter, last_used_at: new Date().toISOString() };
+  let { error } = await admin.from('user_passkeys').update(patch).eq('id', id);
+  if (error && isMissingSchemaColumn(error, 'last_used_at')) {
+    ({ error } = await admin.from('user_passkeys').update({ counter }).eq('id', id));
+  }
+  if (error && isMissingSchemaColumn(error, 'updated_at')) {
+    ({ error } = await admin.from('user_passkeys').update({ counter }).eq('id', id));
+  }
 }
 
 export async function resolveUserIdByEmail(email: string): Promise<string | null> {
