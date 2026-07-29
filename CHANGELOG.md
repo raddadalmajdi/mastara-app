@@ -4,7 +4,20 @@
 
 ---
 
-## [Removal] إزالة OCR وتعبئة الفاتورة التلقائية
+## [Security] عزل بيانات المحلات (RLS) + دفتر عملاء لكل خياط
+
+**التاريخ:** 29 يوليو 2026
+
+- Migration `20260729200000_multi_tenant_rls_invoices_storage.sql`: سياسات RLS على
+  `invoices` (SELECT/INSERT/UPDATE/DELETE حيث `user_id = auth.uid()`)، وسياسات
+  Storage لمجلد `{user_id}/` في `invoices-images`، وحذف own-row لـ `tailor_profiles`
+  و`tailor_customers`.
+- التطبيق يتحقق أن `user_id` في الرفع/الحفظ يطابق جلسة Supabase الحالية.
+- **⚠️ Supabase:** نفّذ بالترتيب في SQL Editor:
+  `20260729190000_tailor_shop_name_and_customers.sql` ثم
+  `20260729200000_multi_tenant_rls_invoices_storage.sql`.
+
+---
 
 **التاريخ:** 29 يوليو 2026
 

@@ -2,6 +2,19 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 const STORAGE_BUCKET = 'invoices-images';
 
+async function assertSessionMatchesUser(supabase: SupabaseClient, userId: string): Promise<void> {
+  const {
+    data: { user },
+    error,
+  } = await supabase.auth.getUser();
+  if (error || !user) {
+    throw new Error('يجب تسجيل الدخول لرفع أو حفظ المستندات.');
+  }
+  if (user.id !== userId) {
+    throw new Error('لا يمكن حفظ المستند إلا في حساب المحل الحالي.');
+  }
+}
+
 export type ScannedUploadInput = {
   jpegBlob: Blob;
   pdfBlob: Blob;
@@ -22,6 +35,8 @@ export async function uploadScannedInvoiceFiles(
   userId: string,
   { jpegBlob, pdfBlob }: ScannedUploadInput
 ): Promise<ScannedUploadResult> {
+  await assertSessionMatchesUser(supabase, userId);
+
   const storagePath = `${userId}/${Date.now()}`;
   const pdfObjectPath = `${storagePath}.pdf`;
   const jpegObjectPath = `${storagePath}.jpg`;
@@ -75,6 +90,8 @@ export async function insertInvoiceRecord(
   supabase: SupabaseClient,
   payload: InvoiceInsertPayload
 ): Promise<void> {
+  await assertSessionMatchesUser(supabase, payload.user_id);
+
   const row = {
     user_id: payload.user_id,
     customer_phone: payload.customer_phone,

@@ -29,6 +29,18 @@ function normalizeStoredPhone(fullPhone: string): string {
   return fullPhone.replace(/\D/g, '');
 }
 
+async function assertTailorOwnsSession(
+  supabase: SupabaseClient,
+  tailorUserId: string
+): Promise<void> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user || user.id !== tailorUserId) {
+    throw new Error('جهات الاتصال متاحة فقط لصاحب المحل المسجّل دخوله.');
+  }
+}
+
 export async function lookupTailorCustomerByPhone(
   supabase: SupabaseClient | null,
   tailorUserId: string,
@@ -48,6 +60,8 @@ export async function lookupTailorCustomerByPhone(
         }
       : null;
   }
+
+  await assertTailorOwnsSession(supabase, tailorUserId);
 
   const { data, error } = await supabase
     .from('tailor_customers')
@@ -82,6 +96,8 @@ export async function upsertTailorCustomer(
     writeLocalCustomers(list);
     return;
   }
+
+  await assertTailorOwnsSession(supabase, tailorUserId);
 
   const { error } = await supabase.from('tailor_customers').upsert(
     {
