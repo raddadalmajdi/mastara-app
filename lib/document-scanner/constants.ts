@@ -68,8 +68,8 @@ export const MAX_INTERIOR_TEXTURE = 30;
 export const FALLBACK_MARGIN_X_RATIO = 0.1;
 export const FALLBACK_MARGIN_Y_RATIO = 0.07;
 
-/** أعلى بُعد (طول الضلع الأطول بالبكسل) للمستند النهائي بعد تصحيح المنظور، لضبط حجم الملف والأداء. */
-export const MAX_OUTPUT_DIMENSION = 1700;
+/** أعلى بُعد (طول الضلع الأطول بالبكسل) للمستند النهائي بعد تصحيح المنظور — مرتفع لـ PDF واضح. */
+export const MAX_OUTPUT_DIMENSION = 2400;
 
 /** جودة ضغط JPEG المستخدمة لمعاينة المستند الممسوح فقط (المعاينة داخل الماسح، وليست ملف PDF النهائي). */
 export const SCAN_JPEG_QUALITY = 0.92;

@@ -155,26 +155,35 @@ function drawOverlayQuad(
   ctx.clearRect(0, 0, frameW, frameH);
   if (!quad) return;
 
-  const color =
+  const accent =
     style === 'stable'
-      ? 'rgba(16,185,129,0.95)'
+      ? '#10b981'
       : style === 'manual'
-        ? 'rgba(251,191,36,0.95)'
+        ? '#fbbf24'
         : style === 'fallback'
-          ? 'rgba(148,163,184,0.85)'
-          : 'rgba(34,211,238,0.9)';
-  const fill =
-    style === 'stable'
-      ? 'rgba(16,185,129,0.14)'
-      : style === 'fallback'
-        ? 'rgba(148,163,184,0.08)'
-        : 'rgba(34,211,238,0.1)';
+          ? '#94a3b8'
+          : '#22d3ee';
 
+  // تعتيم المنطقة خارج المستند (مثل HP Smart) لإبراز الورقة والزوايا الأربع
+  ctx.save();
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.62)';
+  ctx.beginPath();
+  ctx.rect(0, 0, frameW, frameH);
+  ctx.moveTo(quad[0].x, quad[0].y);
+  ctx.lineTo(quad[1].x, quad[1].y);
+  ctx.lineTo(quad[2].x, quad[2].y);
+  ctx.lineTo(quad[3].x, quad[3].y);
+  ctx.closePath();
+  ctx.fill('evenodd');
+  ctx.restore();
+
+  const edgeWidth = Math.max(3, frameW * 0.005);
   ctx.lineJoin = 'round';
-  ctx.setLineDash(style === 'fallback' ? [frameW * 0.02, frameW * 0.012] : []);
-  ctx.lineWidth = Math.max(2, frameW * 0.004);
-  ctx.strokeStyle = color;
-  ctx.fillStyle = fill;
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.95)';
+  ctx.lineWidth = edgeWidth;
+  ctx.shadowColor = accent;
+  ctx.shadowBlur = Math.max(8, frameW * 0.012);
 
   ctx.beginPath();
   ctx.moveTo(quad[0].x, quad[0].y);
@@ -182,27 +191,30 @@ function drawOverlayQuad(
   ctx.lineTo(quad[2].x, quad[2].y);
   ctx.lineTo(quad[3].x, quad[3].y);
   ctx.closePath();
-  ctx.fill();
   ctx.stroke();
-  ctx.setLineDash([]);
+  ctx.shadowBlur = 0;
 
-  const bracketLen = Math.max(28, frameW * 0.07);
-  drawCornerBrackets(ctx, quad, frameW, color, bracketLen);
+  const bracketLen = Math.max(36, frameW * 0.085);
+  drawCornerBrackets(ctx, quad, frameW, '#ffffff', bracketLen);
+  drawCornerBrackets(ctx, quad, frameW, accent, bracketLen * 0.72);
 
-  const r = Math.max(14, frameW * 0.022);
-  for (const pt of quad) {
+  const handleR = Math.max(18, frameW * 0.028);
+  const labels = ['1', '2', '3', '4'];
+  quad.forEach((pt, i) => {
     ctx.beginPath();
-    ctx.arc(pt.x, pt.y, r, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(15,23,42,0.55)';
+    ctx.arc(pt.x, pt.y, handleR, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.96)';
     ctx.fill();
-    ctx.strokeStyle = color;
-    ctx.lineWidth = Math.max(3, frameW * 0.005);
+    ctx.strokeStyle = accent;
+    ctx.lineWidth = Math.max(4, frameW * 0.006);
     ctx.stroke();
-    ctx.beginPath();
-    ctx.arc(pt.x, pt.y, r * 0.35, 0, Math.PI * 2);
-    ctx.fillStyle = color;
-    ctx.fill();
-  }
+
+    ctx.fillStyle = '#0f172a';
+    ctx.font = `bold ${Math.max(11, handleR * 0.75)}px system-ui, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(labels[i], pt.x, pt.y);
+  });
 }
 
 /**
@@ -336,14 +348,47 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
     };
   }, [startCamera, stopStream]);
 
-  const finishCapture = useCallback(async (fullCanvas: HTMLCanvasElement, liveQuad?: Quad | null) => {
+  const saveProcessedDocument = useCallback(async () => {
+    const canvas = correctedCanvasRef.current;
+    if (!canvas) return;
+
+    setPhase('uploading');
+    setErrorMessage(null);
+
+    const jpegBlob = await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob(
+        (b) => (b ? resolve(b) : reject(new Error('تعذّر إنشاء صورة المستند.'))),
+        'image/jpeg',
+        SCAN_JPEG_QUALITY
+      );
+    });
+
+    const pdfBlob = await canvasToDocumentPdfBlob(canvas, {
+      preferPng: confidentCaptureRef.current,
+      highQuality: true,
+    });
+
+    await onConfirm({ jpegBlob, pdfBlob });
+    stopStream();
+    onClose();
+  }, [onConfirm, onClose, stopStream]);
+
+  const finishCapture = useCallback(
+    async (
+      fullCanvas: HTMLCanvasElement,
+      liveQuad?: Quad | null,
+      options?: { useLiveFrame?: boolean; frameConfident?: boolean }
+    ) => {
     const vw = fullCanvas.width;
     const vh = fullCanvas.height;
 
     let confident: boolean;
     let quad: Quad;
 
-    if (userAdjustedQuadRef.current && liveQuad) {
+    if (options?.useLiveFrame && liveQuad) {
+      quad = liveQuad;
+      confident = Boolean(options.frameConfident);
+    } else if (userAdjustedQuadRef.current && liveQuad) {
       quad = liveQuad;
       confident = true;
     } else {
@@ -377,8 +422,22 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
 
     correctedCanvasRef.current = corrected;
     setPreviewDataUrl(corrected.toDataURL('image/jpeg', SCAN_JPEG_QUALITY));
-    setPhase(confident ? 'preview' : 'preview-uncertain');
-  }, []);
+
+    const needsManualReview = !confident && !userAdjustedQuadRef.current;
+    if (needsManualReview) {
+      setPhase('preview-uncertain');
+      return;
+    }
+
+    try {
+      await saveProcessedDocument();
+    } catch (err) {
+      if (isClosingRef.current) return;
+      console.error('[scanner] auto PDF save failed', err);
+      setErrorMessage(err instanceof Error ? err.message : 'تعذّر حفظ ملف PDF. حاول مجدداً.');
+      setPhase(confident ? 'preview' : 'preview-uncertain');
+    }
+  }, [saveProcessedDocument]);
 
   const handleCapture = useCallback(() => {
     const video = videoRef.current;
@@ -399,7 +458,13 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
             manualQuadRef.current ??
             smoothedQuadRef.current ??
             centeredFallbackQuad(vw, vh);
-          await finishCapture(fullCanvas, liveQuad);
+          const frameConfident =
+            userAdjustedQuadRef.current ||
+            Boolean(smoothedQuadRef.current && missStreakRef.current <= MAX_MISSED_DETECTION_STREAK);
+          await finishCapture(fullCanvas, liveQuad, {
+            useLiveFrame: true,
+            frameConfident,
+          });
         } catch (err) {
           if (isClosingRef.current) return;
           console.error('[scanner] capture failed', err);
@@ -425,7 +490,7 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
         manualQuadRef.current ??
         smoothedQuadRef.current ??
         centeredFallbackQuad(vw, vh);
-      const hitRadius = Math.max(40, vw * 0.065);
+      const hitRadius = Math.max(52, vw * 0.078);
 
       let bestIndex = -1;
       let bestDist = hitRadius;
@@ -627,31 +692,12 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
   };
 
   const handleConfirm = async () => {
-    const canvas = correctedCanvasRef.current;
-    if (!canvas) return;
-    setPhase('uploading');
-    setErrorMessage(null);
-
     try {
-      const jpegBlob = await new Promise<Blob>((resolve, reject) => {
-        canvas.toBlob(
-          (b) => (b ? resolve(b) : reject(new Error('تعذّر إنشاء صورة المستند.'))),
-          'image/jpeg',
-          SCAN_JPEG_QUALITY
-        );
-      });
-      // PNG (ضغط بلا فقد) فقط للمسح الثنائي المُحسَّن (مناطق مسطّحة واسعة
-      // تضغط ممتازاً وبلا تشويش حواف)؛ JPEG للمعاينة اللطيفة الاحترازية
-      // (صورة فوتوغرافية عادية الألوان) حيث يبقى أصغر حجماً بكثير من PNG.
-      const pdfBlob = await canvasToDocumentPdfBlob(canvas, { preferPng: confidentCaptureRef.current });
-
-      await onConfirm({ jpegBlob, pdfBlob });
-      stopStream();
-      onClose();
+      await saveProcessedDocument();
     } catch (err) {
       console.error('[scanner] confirm/upload failed', err);
-      setErrorMessage(err instanceof Error ? err.message : 'تعذّر رفع المستند. حاول مجدداً.');
-      setPhase('preview');
+      setErrorMessage(err instanceof Error ? err.message : 'تعذّر حفظ ملف PDF. حاول مجدداً.');
+      setPhase('preview-uncertain');
     }
   };
 
@@ -681,12 +727,12 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
 
   const statusHint =
     detectionStatus === 'manual'
-      ? '✋ تم تعديل الزوايا — اضغط زر الالتقاط عند الجاهزية'
+      ? '✋ اسحب الزوايا الأربع على حواف الورقة ثم التقط'
       : detectionStatus === 'stable'
-        ? '✅ حواف المستند ثابتة — اضغط زر الالتقاط أو منتصف الشاشة'
+        ? '✅ الحواف على المستند — عدّل الزوايا أو التقط لحفظ PDF'
         : detectionStatus === 'searching'
-          ? '🔍 جارٍ تحديد حواف المستند (اسحب الزوايا للتعديل)'
-          : '📄 وجّه الكاميرا نحو المستند — ستظهر أربع زوايا للإطار';
+          ? '🔍 جارٍ تحديد حواف المستند — اسحب الزوايا البيضاء للتعديل'
+          : '📄 وجّه الكاميرا — اسحب الزوايا 1–4 على أطراف المستند';
 
   return (
     <div className="fixed inset-0 z-[70] bg-slate-950 flex flex-col" dir="rtl">
@@ -713,7 +759,7 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
         >
           ✕
         </button>
-        <span className="text-sm sm:text-base font-bold text-white/90">ماسح المستندات الذكي</span>
+        <span className="text-sm sm:text-base font-bold text-white/90">مسح مستند (HP Smart)</span>
         <span className="w-11" aria-hidden />
       </div>
 
@@ -759,7 +805,7 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
         {phase === 'processing' && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-slate-950/80">
             <span className="h-10 w-10 rounded-full border-2 border-emerald-500/30 border-t-emerald-400 animate-spin" />
-            <p className="text-sm text-emerald-300 font-bold">جاري تحسين ومعالجة المستند...</p>
+            <p className="text-sm text-emerald-300 font-bold">جاري المعالجة وإنشاء PDF...</p>
           </div>
         )}
 
@@ -808,7 +854,9 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
               </div>
             )}
             <p className="text-sm text-slate-300 text-center font-bold">
-              راجع وضوح المستند والحواف قبل الاعتماد النهائي — لن يُحفظ أو يُرسل تلقائياً
+              {phase === 'preview-uncertain'
+                ? 'راجع المستند ثم احفظه كـ PDF، أو أعد الالتقاط'
+                : 'تمت المعالجة — اضغط حفظ PDF إن لم يكتمل الرفع تلقائياً'}
             </p>
           </div>
         )}
@@ -875,7 +923,7 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
                 onClick={handleConfirm}
                 className="flex-1 rounded-2xl bg-gradient-to-l from-cyan-400 to-cyan-500 py-3.5 text-slate-950 font-black text-sm shadow-lg shadow-cyan-500/20"
               >
-                💾 حفظ المستند
+                💾 حفظ PDF
               </button>
             </div>
           </div>
@@ -884,7 +932,7 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
         {phase === 'uploading' && (
           <div className="flex items-center justify-center gap-3 py-3">
             <span className="h-5 w-5 rounded-full border-2 border-cyan-500/30 border-t-cyan-400 animate-spin" />
-            <p className="text-sm font-bold text-cyan-300">جاري رفع وحفظ المستند...</p>
+            <p className="text-sm font-bold text-cyan-300">جاري إنشاء PDF وحفظ المستند...</p>
           </div>
         )}
       </div>

@@ -15,6 +15,8 @@ export type PdfExportOptions = {
    * JPEG الخيار الأنسب حجماً، لذا هذا الخيار اختياري ولا يُفعَّل افتراضياً.
    */
   preferPng?: boolean;
+  /** دقة أعلى لصفحة PDF (~200ppi بدل ~150ppi) — مناسب لمسح المستندات. */
+  highQuality?: boolean;
 };
 
 /**
@@ -34,8 +36,8 @@ export async function canvasToDocumentPdfBlob(canvas: HTMLCanvasElement, options
   const heightPx = canvas.height;
   const orientation = widthPx >= heightPx ? 'landscape' : 'portrait';
 
-  // تحويل بكسل → مم بافتراض دقة ~150ppi لحفظ نسبة أبعاد المستند الممسوح كما هي
-  const PX_PER_MM = 150 / 25.4;
+  const ppi = options?.highQuality ? 200 : 150;
+  const PX_PER_MM = ppi / 25.4;
   const widthMm = widthPx / PX_PER_MM;
   const heightMm = heightPx / PX_PER_MM;
 
