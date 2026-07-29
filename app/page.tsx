@@ -27,7 +27,12 @@ import {
   AUTH_OTP_INCOMPLETE,
   AUTH_UNCONFIRMED_LOGIN,
 } from '@/lib/auth-confirmation-copy';
-import { downloadInvoiceAsPdf, openInvoicePdfForPrint } from '@/lib/pdf-export';
+import { downloadInvoiceAsPdf, openInvoicePdfForPrint, downloadStoredPdf, openStoredPdfForPrint } from '@/lib/pdf-export';
+import {
+  insertInvoiceRecord,
+  invoiceShareDocumentUrl,
+  uploadScannedInvoiceFiles,
+} from '@/lib/upload-scanned-invoice';
 import { DocumentScannerModal } from '@/components/scanner/DocumentScannerModal';
 
 type AuthFeedback = { type: 'success' | 'error'; message: string } | null;
@@ -723,7 +728,7 @@ export default function Home() {
       setCustomerInvoices(filtered);
       const initialMessages: { [key: string]: string } = {};
       filtered.forEach((inv: any) => {
-        initialMessages[inv.id] = `تم! شكراً لتعاملك معنا، نسعد بخدمتك. رابط فاتورتك: ${inv.image_url}`;
+        initialMessages[inv.id] = `تم! شكراً لتعاملك معنا، نسعد بخدمتك. رابط مستندك (PDF): ${invoiceShareDocumentUrl(inv)}`;
       });
       setWhatsappMessages(initialMessages);
       return;
@@ -740,7 +745,7 @@ export default function Home() {
       setCustomerInvoices(data);
       const initialMessages: { [key: string]: string } = {};
       data.forEach((inv) => {
-        initialMessages[inv.id] = `تم! شكراً لتعاملك معنا، نسعد بخدمتك. رابط فاتورتك: ${inv.image_url}`;
+        initialMessages[inv.id] = `تم! شكراً لتعاملك معنا، نسعد بخدمتك. رابط مستندك (PDF): ${invoiceShareDocumentUrl(inv)}`;
       });
       setWhatsappMessages(initialMessages);
     }
@@ -756,9 +761,8 @@ export default function Home() {
     });
 
   /**
-   * يُستدعى بعد أن يلتقط الماسح الضوئي الذكي (DocumentScannerModal) المستند
-   * ويصحّح منظوره ويحوّله إلى صورة JPEG نظيفة + ملف PDF جاهزين. يرمي خطأً
-   * عند الفشل كي تعرضه نافذة الماسح مباشرةً للمستخدم مع خيار إعادة المحاولة.
+   * بعد الماسح: PDF مُولَّد في الواجهة الأمامية → رفع PDF إلى Storage → حفظ
+   * `pdf_url` (+ صورة JPEG للمعاينة) في جدول `invoices`.
    */
   const handleDocumentCaptured = async ({ jpegBlob, pdfBlob }: { jpegBlob: Blob; pdfBlob: Blob }) => {
     if (!customerLocalPhone.trim()) {
@@ -770,14 +774,16 @@ export default function Home() {
 
     try {
       if (!supabase) {
-        const publicUrl = await blobToDataUrl(jpegBlob);
+        const imageUrl = await blobToDataUrl(jpegBlob);
+        const pdfUrl = await blobToDataUrl(pdfBlob);
 
         const newInvoice = {
           id: 'local-' + Date.now(),
           user_id: 'guest-local-user',
           customer_phone: fullCustomerPhone,
-          image_url: publicUrl,
-          created_at: new Date().toISOString()
+          image_url: imageUrl,
+          pdf_url: pdfUrl,
+          created_at: new Date().toISOString(),
         };
 
         const savedInvoices = JSON.parse(localStorage.getItem('mistarh_local_invoices') || '[]');
@@ -785,39 +791,22 @@ export default function Home() {
         localStorage.setItem('mistarh_local_invoices', JSON.stringify(updatedInvoices));
 
         searchInvoices(customerLocalPhone, customerCountryCode);
-        alert('تم مسح وحفظ المستند محلياً بنجاح!');
+        alert('تم مسح المستند وحفظ PDF محلياً بنجاح!');
       } else {
-        const basePath = `${user.id}/${Date.now()}`;
+        const { imageUrl, pdfUrl } = await uploadScannedInvoiceFiles(supabase, user.id, {
+          jpegBlob,
+          pdfBlob,
+        });
 
-        const { error: uploadError } = await supabase.storage
-          .from('invoices-images')
-          .upload(`${basePath}.jpg`, jpegBlob, { contentType: 'image/jpeg', upsert: true });
-
-        if (uploadError) throw uploadError;
-
-        // رفع نسخة PDF الرسمية للمستند الممسوح إلى نفس مسار Storage للأرشفة.
-        // فشل هذه الخطوة تحديداً غير حرج: زرا "تنزيل/طباعة PDF" في الواجهة
-        // يعيدان توليد نفس الملف عند الطلب مباشرةً من الصورة المصحَّحة.
-        const { error: pdfUploadError } = await supabase.storage
-          .from('invoices-images')
-          .upload(`${basePath}.pdf`, pdfBlob, { contentType: 'application/pdf', upsert: true });
-
-        if (pdfUploadError) {
-          console.warn('[scanner] فشل رفع نسخة PDF الأرشيفية (غير حرج):', pdfUploadError.message);
-        }
-
-        const { data: { publicUrl: s3Url } } = supabase.storage
-          .from('invoices-images')
-          .getPublicUrl(`${basePath}.jpg`);
-
-        const { error: dbError } = await supabase
-          .from('invoices')
-          .insert([{ user_id: user.id, customer_phone: fullCustomerPhone, image_url: s3Url }]);
-
-        if (dbError) throw dbError;
+        await insertInvoiceRecord(supabase, {
+          user_id: user.id,
+          customer_phone: fullCustomerPhone,
+          image_url: imageUrl,
+          pdf_url: pdfUrl,
+        });
 
         await searchInvoices(customerLocalPhone, customerCountryCode);
-        alert('تم مسح ورفع المستند بنجاح!');
+        alert('تم رفع ملف PDF وحفظ رابطه في السجل بنجاح!');
       }
     } finally {
       setIsUploading(false);
@@ -842,13 +831,17 @@ export default function Home() {
 
   /** تنزيل الفاتورة كملف PDF (بديل تنزيل/فتح الصورة الخام مباشرة). */
   const handleDownloadInvoicePdf = async (invoice: any, invoiceNumber: number) => {
-    if (!invoice?.image_url || exportingPdfId) return;
+    if ((!invoice?.image_url && !invoice?.pdf_url) || exportingPdfId) return;
     setExportingPdfId(invoice.id);
     try {
       const { fileName, meta } = buildInvoicePdfLabel(invoice, invoiceNumber);
+      if (invoice.pdf_url) {
+        await downloadStoredPdf(invoice.pdf_url, fileName);
+        return;
+      }
       await downloadInvoiceAsPdf(invoice.image_url, fileName, meta);
     } catch (error: any) {
-      alert(`تعذّر إنشاء ملف PDF: ${error?.message || 'خطأ غير متوقع'}`);
+      alert(`تعذّر تنزيل PDF: ${error?.message || 'خطأ غير متوقع'}`);
     } finally {
       setExportingPdfId(null);
     }
@@ -856,9 +849,13 @@ export default function Home() {
 
   /** فتح معاينة PDF للفاتورة في تبويب جديد جاهزة للطباعة مباشرة. */
   const handlePrintInvoicePdf = async (invoice: any, invoiceNumber: number) => {
-    if (!invoice?.image_url || exportingPdfId) return;
+    if ((!invoice?.image_url && !invoice?.pdf_url) || exportingPdfId) return;
     setExportingPdfId(invoice.id);
     try {
+      if (invoice.pdf_url) {
+        openStoredPdfForPrint(invoice.pdf_url);
+        return;
+      }
       const { meta } = buildInvoicePdfLabel(invoice, invoiceNumber);
       await openInvoicePdfForPrint(invoice.image_url, meta);
     } catch (error: any) {

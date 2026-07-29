@@ -126,3 +126,27 @@ export async function openInvoicePdfForPrint(
     throw error;
   }
 }
+
+function triggerBlobDownload(blob: Blob, fileName: string) {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = fileName.endsWith('.pdf') ? fileName : `${fileName}.pdf`;
+  anchor.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
+/** تنزيل ملف PDF مخزّن مسبقاً (رابط Supabase Storage مثلاً). */
+export async function downloadStoredPdf(pdfUrl: string, fileName: string): Promise<void> {
+  const res = await fetch(pdfUrl);
+  if (!res.ok) {
+    throw new Error('تعذّر تحميل ملف PDF من التخزين.');
+  }
+  const blob = await res.blob();
+  triggerBlobDownload(blob, fileName);
+}
+
+/** فتح PDF مخزّن في تبويب للمعاينة/الطباعة. */
+export function openStoredPdfForPrint(pdfUrl: string): void {
+  window.open(pdfUrl, '_blank', 'noopener,noreferrer');
+}
