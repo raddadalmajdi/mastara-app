@@ -1,29 +1,12 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  computeOutputSize,
-  warpPerspective,
-  type Point,
-  type Quad,
-} from '@/lib/document-scanner/geometry';
-import { detectDocumentQuad, quadsAreClose } from '@/lib/document-scanner/detect-document';
-import { enhanceDocumentCanvas, softEnhanceCanvas } from '@/lib/document-scanner/enhance';
+import { computeOutputSize, warpPerspective, type Quad } from '@/lib/document-scanner/geometry';
+import { detectDocumentQuad } from '@/lib/document-scanner/detect-document';
+import { enhanceDocumentCanvas } from '@/lib/document-scanner/enhance';
 import { canvasToDocumentPdfBlob } from '@/lib/document-scanner/to-pdf';
-import {
-  CAMERA_START_TIMEOUT_MS,
-  CAPTURE_DETECTION_SAMPLE_WIDTH,
-  DETECTION_INTERVAL_MS,
-  DETECTION_SAMPLE_WIDTH,
-  FALLBACK_MARGIN_X_RATIO,
-  FALLBACK_MARGIN_Y_RATIO,
-  MAX_MISSED_DETECTION_STREAK,
-  MAX_OUTPUT_DIMENSION,
-  OVERLAY_SMOOTHING_ALPHA,
-  SCAN_JPEG_QUALITY,
-  STABILITY_FRAME_COUNT,
-  ENABLE_AUTO_CAPTURE,
-} from '@/lib/document-scanner/constants';
+import { CornerAdjuster } from './CornerAdjuster';
+import { CAMERA_START_TIMEOUT_MS, CAPTURE_DETECTION_SAMPLE_WIDTH, MAX_OUTPUT_DIMENSION, SCAN_JPEG_QUALITY } from '@/lib/document-scanner/constants';
 
 export type DocumentScanResult = { jpegBlob: Blob; pdfBlob: Blob };
 
@@ -33,8 +16,18 @@ type DocumentScannerModalProps = {
   onConfirm: (result: DocumentScanResult) => Promise<void>;
 };
 
-type Phase = 'starting' | 'live' | 'processing' | 'preview' | 'preview-uncertain' | 'uploading' | 'error';
-type DetectionStatus = 'none' | 'searching' | 'stable' | 'manual';
+/**
+ * مراحل الماسح — تجربة من خطوتين مطابقة لتطبيق HP Smart:
+ *   live      → كاميرا حية بإطار إرشادي ثابت (بلا تتبّع حي)، زر التقاط واحد واضح.
+ *   capturing → لحظة قصيرة فور الالتقاط (شارة "Processing..." فوق المعاينة الحية).
+ *   edges     → شاشة "كشف الحواف" الثابتة: صورة عالية الدقة + شبه منحرف أزرق
+ *               قابل للسحب بحرية + أزرار Auto/Full + زر التالي.
+ *   processing→ القصّ الهندسي (Perspective) والتحويل لأبيض/أسود بعد "التالي".
+ *   preview   → مراجعة نهائية قبل الحفظ (اعتماد/إعادة الالتقاط).
+ *   uploading → رفع PDF + JPEG وحفظ السجل.
+ */
+type Phase = 'starting' | 'live' | 'capturing' | 'edges' | 'processing' | 'preview' | 'uploading' | 'error';
+type EdgesMode = 'auto' | 'full' | 'manual';
 
 function readFileAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -59,20 +52,13 @@ function getOrCreateCanvas(ref: React.MutableRefObject<HTMLCanvasElement | null>
   return ref.current;
 }
 
-/**
- * إطار احتياطي مركزي آمن يُستخدم فقط حين يتعذّر اكتشاف حواف المستند بثقة.
- * بدل استخدام إطار الكاميرا كاملاً حرفياً (حواف-إلى-حواف) — وما قد يظهر
- * فيه من أرضية/أثاث/أطراف جسم عند تصوير مستند بالطول على خلفية غير محايدة —
- * نقتصّ هامشاً آمناً من كل جهة، فنقلّل احتمال ظهور خلفية واضحة في الناتج.
- */
-function centeredFallbackQuad(width: number, height: number): Quad {
-  const marginX = width * FALLBACK_MARGIN_X_RATIO;
-  const marginY = height * FALLBACK_MARGIN_Y_RATIO;
+/** شبه منحرف يغطي الصورة كاملةً حافة-إلى-حافة — يقابل زر «Full» وأيضاً الإطار الافتراضي عند تعذّر الاكتشاف التلقائي. */
+function fullFrameQuad(width: number, height: number): Quad {
   return [
-    { x: marginX, y: marginY },
-    { x: width - marginX, y: marginY },
-    { x: width - marginX, y: height - marginY },
-    { x: marginX, y: height - marginY },
+    { x: 0, y: 0 },
+    { x: width, y: 0 },
+    { x: width, y: height },
+    { x: 0, y: height },
   ];
 }
 
@@ -85,173 +71,46 @@ function drawFullFrame(source: CanvasImageSource, width: number, height: number)
   return canvas;
 }
 
-type OverlayStyle = 'detecting' | 'stable' | 'manual' | 'fallback';
-
-/** يحوّل إحداثيات المؤشر/اللمس على عنصر `<video>` (object-cover) إلى بكسلات إطار الفيديو الأصلي. */
-function mapClientToVideoCoords(
-  clientX: number,
-  clientY: number,
-  videoEl: HTMLVideoElement,
-  frameW: number,
-  frameH: number
-): { x: number; y: number } {
-  const rect = videoEl.getBoundingClientRect();
-  const scale = Math.max(rect.width / frameW, rect.height / frameH);
-  const dispW = frameW * scale;
-  const dispH = frameH * scale;
-  const ox = (rect.width - dispW) / 2;
-  const oy = (rect.height - dispH) / 2;
-  return {
-    x: Math.max(0, Math.min(frameW, (clientX - rect.left - ox) / scale)),
-    y: Math.max(0, Math.min(frameH, (clientY - rect.top - oy) / scale)),
+/** زاوية إرشادية ثابتة (شكل "L") — إطار توجيهي بصري بسيط فوق الكاميرا الحية، بلا أي تتبّع أو تفاعل، تماماً كما في HP Smart. */
+function CornerGuide({ position }: { position: 'tl' | 'tr' | 'bl' | 'br' }) {
+  const base = 'absolute w-10 h-10 sm:w-14 sm:h-14 border-white/95';
+  const styles: Record<typeof position, string> = {
+    tl: 'top-0 left-0 border-t-[3px] border-l-[3px] rounded-tl-2xl',
+    tr: 'top-0 right-0 border-t-[3px] border-r-[3px] rounded-tr-2xl',
+    bl: 'bottom-0 left-0 border-b-[3px] border-l-[3px] rounded-bl-2xl',
+    br: 'bottom-0 right-0 border-b-[3px] border-r-[3px] rounded-br-2xl',
   };
-}
-
-function drawCornerBrackets(
-  ctx: CanvasRenderingContext2D,
-  quad: Quad,
-  frameW: number,
-  color: string,
-  len: number
-) {
-  const lw = Math.max(4, frameW * 0.008);
-  ctx.strokeStyle = color;
-  ctx.lineWidth = lw;
-  ctx.lineCap = 'round';
-
-  const corners: [Point, Point, Point][] = [
-    [quad[0], quad[1], quad[3]],
-    [quad[1], quad[0], quad[2]],
-    [quad[2], quad[3], quad[1]],
-    [quad[3], quad[2], quad[0]],
-  ];
-
-  for (const [corner, a, b] of corners) {
-    const toA = { x: a.x - corner.x, y: a.y - corner.y };
-    const toB = { x: b.x - corner.x, y: b.y - corner.y };
-    const lenA = Math.hypot(toA.x, toA.y) || 1;
-    const lenB = Math.hypot(toB.x, toB.y) || 1;
-    ctx.beginPath();
-    ctx.moveTo(corner.x + (toA.x / lenA) * len, corner.y + (toA.y / lenA) * len);
-    ctx.lineTo(corner.x, corner.y);
-    ctx.lineTo(corner.x + (toB.x / lenB) * len, corner.y + (toB.y / lenB) * len);
-    ctx.stroke();
-  }
-}
-
-function drawOverlayQuad(
-  canvas: HTMLCanvasElement,
-  frameW: number,
-  frameH: number,
-  quad: Quad | null,
-  style: OverlayStyle
-) {
-  if (canvas.width !== frameW || canvas.height !== frameH) {
-    canvas.width = frameW;
-    canvas.height = frameH;
-  }
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return;
-  ctx.clearRect(0, 0, frameW, frameH);
-  if (!quad) return;
-
-  const accent =
-    style === 'stable'
-      ? '#10b981'
-      : style === 'manual'
-        ? '#fbbf24'
-        : style === 'fallback'
-          ? '#94a3b8'
-          : '#22d3ee';
-
-  // تعتيم المنطقة خارج المستند (مثل HP Smart) لإبراز الورقة والزوايا الأربع
-  ctx.save();
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.62)';
-  ctx.beginPath();
-  ctx.rect(0, 0, frameW, frameH);
-  ctx.moveTo(quad[0].x, quad[0].y);
-  ctx.lineTo(quad[1].x, quad[1].y);
-  ctx.lineTo(quad[2].x, quad[2].y);
-  ctx.lineTo(quad[3].x, quad[3].y);
-  ctx.closePath();
-  ctx.fill('evenodd');
-  ctx.restore();
-
-  const edgeWidth = Math.max(3, frameW * 0.005);
-  ctx.lineJoin = 'round';
-  ctx.lineCap = 'round';
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.95)';
-  ctx.lineWidth = edgeWidth;
-  ctx.shadowColor = accent;
-  ctx.shadowBlur = Math.max(8, frameW * 0.012);
-
-  ctx.beginPath();
-  ctx.moveTo(quad[0].x, quad[0].y);
-  ctx.lineTo(quad[1].x, quad[1].y);
-  ctx.lineTo(quad[2].x, quad[2].y);
-  ctx.lineTo(quad[3].x, quad[3].y);
-  ctx.closePath();
-  ctx.stroke();
-  ctx.shadowBlur = 0;
-
-  const bracketLen = Math.max(36, frameW * 0.085);
-  drawCornerBrackets(ctx, quad, frameW, '#ffffff', bracketLen);
-  drawCornerBrackets(ctx, quad, frameW, accent, bracketLen * 0.72);
-
-  const handleR = Math.max(18, frameW * 0.028);
-  const labels = ['1', '2', '3', '4'];
-  quad.forEach((pt, i) => {
-    ctx.beginPath();
-    ctx.arc(pt.x, pt.y, handleR, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.96)';
-    ctx.fill();
-    ctx.strokeStyle = accent;
-    ctx.lineWidth = Math.max(4, frameW * 0.006);
-    ctx.stroke();
-
-    ctx.fillStyle = '#0f172a';
-    ctx.font = `bold ${Math.max(11, handleR * 0.75)}px system-ui, sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(labels[i], pt.x, pt.y);
-  });
+  return <div className={`${base} ${styles[position]} drop-shadow-[0_0_6px_rgba(0,0,0,0.6)]`} aria-hidden />;
 }
 
 /**
- * ماسح ضوئي ذكي للمستندات/الفواتير: كاميرا حية + اكتشاف حواف تلقائي مع إطار
- * تفاعلي متوهّج، التقاط تلقائي عند الثبات أو زر التقاط يدوي، تصحيح منظور
- * وتحسين تلقائي للنتيجة، ثم تحويلها إلى PDF جاهز للرفع — تجربة شبيهة بماسح
- * المستندات في واتساب.
+ * ماسح ضوئي ذكي للمستندات/الفواتير بتجربة مطابقة لتطبيق HP Smart: التقاط
+ * سريع بإطار إرشادي ثابت، فشاشة "كشف حواف" مخصَّصة لضبط شبه منحرف أزرق
+ * بأربع مقابض قابلة للسحب بدقة فوق صورة ثابتة عالية الدقة، ثم قصّ هندسي
+ * وتحويل أبيض/أسود، فمعاينة نهائية واعتماد، فرفع PDF+JPEG إلى Supabase.
  */
 export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModalProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const overlayCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const workCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const rawCaptureCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const correctedCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const galleryInputRef = useRef<HTMLInputElement | null>(null);
 
-  const historyRef = useRef<Quad[]>([]);
-  const autoCapturedRef = useRef(false);
-  /** موضع الإطار التفاعلي بعد التنعيم الزمني (EMA) — يُستخدم للرسم وفحص الثبات فقط، لا لدقة القصّ النهائية. */
-  const smoothedQuadRef = useRef<Quad | null>(null);
-  /** عدّاد محاولات الاكتشاف الفاشلة المتتالية (لإتاحة فترة سماح قبل إخفاء الإطار). */
-  const missStreakRef = useRef(0);
-  /** هل نتج الالتقاط الحالي عن اكتشاف حواف واثق (يُستخدم لاختيار صيغة تصدير PDF الأنسب لاحقاً — PNG للمسح الثنائي المُحسَّن، JPEG للمعاينة اللطيفة الاحترازية). */
-  const confidentCaptureRef = useRef(false);
-  /** يُضبَط فوراً عند ضغط زر الإغلاق (X) — يمنع أي متابعة لعمليات غير متزامنة قيد التنفيذ (بدء الكاميرا، معالجة الالتقاط...) من تحديث الحالة بعد إغلاق المستخدم للماسح صراحة. */
+  /** يُضبَط فوراً عند ضغط زر الإغلاق (X) — يمنع أي متابعة لعمليات غير متزامنة قيد التنفيذ من تحديث الحالة بعد إغلاق المستخدم للماسح صراحة. */
   const isClosingRef = useRef(false);
   /** معرِّف مؤقّت انتهاء مهلة تشغيل الكاميرا — يُلغى فوراً عند الإغلاق اليدوي كي لا يُفعَّل بعد فوات الأوان. */
   const cameraTimeoutIdRef = useRef<number | null>(null);
-  /** إطار الزوايا الأربع الذي عدّله المستخدم يدوياً (سحب الزوايا) — يُستخدم عند الالتقاط بدل إعادة الاكتشاف. */
-  const manualQuadRef = useRef<Quad | null>(null);
-  const userAdjustedQuadRef = useRef(false);
-  const draggingCornerRef = useRef<number | null>(null);
 
   const [phase, setPhase] = useState<Phase>('starting');
-  const [detectionStatus, setDetectionStatus] = useState<DetectionStatus>('none');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [previewDataUrl, setPreviewDataUrl] = useState<string | null>(null);
+
+  // حالة شاشة "كشف الحواف": صورة ثابتة عالية الدقة + شبه منحرف قابل للتعديل.
+  const [rawPreviewUrl, setRawPreviewUrl] = useState<string | null>(null);
+  const [rawDims, setRawDims] = useState<{ width: number; height: number } | null>(null);
+  const [edgesQuad, setEdgesQuad] = useState<Quad | null>(null);
+  const [edgesMode, setEdgesMode] = useState<EdgesMode>('auto');
 
   const stopStream = useCallback(() => {
     streamRef.current?.getTracks().forEach((track) => track.stop());
@@ -271,8 +130,7 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
     }
 
     // مهلة زمنية قصوى صريحة: إن لم تُحلّ نافذة إذن الكاميرا أو تبدأ الكاميرا
-    // فعلياً خلالها (نافذة إذن متأخرة الاستجابة، أو أي عائق آخر يحجب
-    // استكمال الـ Promise)، نفكّ التعليق تلقائياً بدل ترك المستخدم أمام شاشة
+    // فعلياً خلالها، نفكّ التعليق تلقائياً بدل ترك المستخدم أمام شاشة
     // "جاري تشغيل الكاميرا..." إلى ما لا نهاية.
     let timedOut = false;
     cameraTimeoutIdRef.current = window.setTimeout(() => {
@@ -301,9 +159,6 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
       });
       clearCameraTimeout();
 
-      // إمّا أُغلق الماسح صراحة، أو سبق أن انتهت المهلة وعُرض خطأ للمستخدم
-      // بالفعل — في الحالتين نُحرِّر الكاميرا فوراً بدل تركها مشغَّلة (مؤشر
-      // الكاميرا مضاء) دون أي استخدام فعلي لبثّها.
       if (signal.cancelled || isClosingRef.current || timedOut) {
         stream.getTracks().forEach((t) => t.stop());
         return;
@@ -348,302 +203,59 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
     };
   }, [startCamera, stopStream]);
 
-  const saveProcessedDocument = useCallback(async () => {
-    const canvas = correctedCanvasRef.current;
-    if (!canvas) return;
+  const resetEdgesState = useCallback(() => {
+    rawCaptureCanvasRef.current = null;
+    setRawPreviewUrl(null);
+    setRawDims(null);
+    setEdgesQuad(null);
+    setEdgesMode('auto');
+  }, []);
 
-    setPhase('uploading');
-    setErrorMessage(null);
+  /** ينتقل لشاشة "كشف الحواف" من إطار خام (كاميرا أو صورة من المعرض): اكتشاف أولي سريع لتحديد شبه منحرف بادئ، ثم عرض الصورة كاملة الدقة قابلة للتعديل اليدوي. */
+  const beginEdgesFromRawCanvas = useCallback((rawCanvas: HTMLCanvasElement) => {
+    if (isClosingRef.current) return;
+    const vw = rawCanvas.width;
+    const vh = rawCanvas.height;
 
-    const jpegBlob = await new Promise<Blob>((resolve, reject) => {
-      canvas.toBlob(
-        (b) => (b ? resolve(b) : reject(new Error('تعذّر إنشاء صورة المستند.'))),
-        'image/jpeg',
-        SCAN_JPEG_QUALITY
-      );
+    rawCaptureCanvasRef.current = rawCanvas;
+
+    const detected = detectDocumentQuad(rawCanvas, vw, vh, getOrCreateCanvas(workCanvasRef), {
+      sampleWidth: CAPTURE_DETECTION_SAMPLE_WIDTH,
+      denoise: true,
     });
 
-    const pdfBlob = await canvasToDocumentPdfBlob(canvas, {
-      preferPng: confidentCaptureRef.current,
-      highQuality: true,
-    });
-
-    await onConfirm({ jpegBlob, pdfBlob });
-    stopStream();
-    onClose();
-  }, [onConfirm, onClose, stopStream]);
-
-  const finishCapture = useCallback(
-    async (
-      fullCanvas: HTMLCanvasElement,
-      liveQuad?: Quad | null,
-      options?: { useLiveFrame?: boolean; frameConfident?: boolean }
-    ) => {
-    const vw = fullCanvas.width;
-    const vh = fullCanvas.height;
-
-    let confident: boolean;
-    let quad: Quad;
-
-    if (options?.useLiveFrame && liveQuad) {
-      quad = liveQuad;
-      confident = Boolean(options.frameConfident);
-    } else if (userAdjustedQuadRef.current && liveQuad) {
-      quad = liveQuad;
-      confident = true;
-    } else {
-      const precise = detectDocumentQuad(fullCanvas, vw, vh, getOrCreateCanvas(workCanvasRef), {
-        sampleWidth: CAPTURE_DETECTION_SAMPLE_WIDTH,
-        denoise: true,
-      });
-
-      confident = Boolean(precise);
-      quad = precise?.points ?? liveQuad ?? centeredFallbackQuad(vw, vh);
-    }
+    setEdgesMode(detected ? 'auto' : 'full');
+    setEdgesQuad(detected?.points ?? fullFrameQuad(vw, vh));
+    setRawDims({ width: vw, height: vh });
+    setRawPreviewUrl(rawCanvas.toDataURL('image/jpeg', 0.92));
 
     if (isClosingRef.current) return;
-
-    confidentCaptureRef.current = confident;
-
-    const { width, height } = computeOutputSize(quad);
-    const scaleDown = Math.min(1, MAX_OUTPUT_DIMENSION / Math.max(width, height));
-    const outW = Math.max(1, Math.round(width * scaleDown));
-    const outH = Math.max(1, Math.round(height * scaleDown));
-
-    const corrected = warpPerspective(fullCanvas, quad, outW, outH);
-
-    if (confident) {
-      enhanceDocumentCanvas(corrected);
-    } else {
-      softEnhanceCanvas(corrected);
-    }
-
-    if (isClosingRef.current) return;
-
-    correctedCanvasRef.current = corrected;
-    setPreviewDataUrl(corrected.toDataURL('image/jpeg', SCAN_JPEG_QUALITY));
-
-    const needsManualReview = !confident && !userAdjustedQuadRef.current;
-    if (needsManualReview) {
-      setPhase('preview-uncertain');
-      return;
-    }
-
-    try {
-      await saveProcessedDocument();
-    } catch (err) {
-      if (isClosingRef.current) return;
-      console.error('[scanner] auto PDF save failed', err);
-      setErrorMessage(err instanceof Error ? err.message : 'تعذّر حفظ ملف PDF. حاول مجدداً.');
-      setPhase(confident ? 'preview' : 'preview-uncertain');
-    }
-  }, [saveProcessedDocument]);
+    setPhase('edges');
+  }, []);
 
   const handleCapture = useCallback(() => {
     const video = videoRef.current;
     if (!video || phase !== 'live') return;
-    setPhase('processing');
+    setPhase('capturing');
 
-    // مهلة قصيرة جداً كي تُعاد رسم الواجهة (سبينر "جاري المعالجة") قبل حساب
-    // تصحيح المنظور نسبياً الثقيل على الخيط الرئيسي.
+    // مهلة قصيرة جداً كي تُعاد رسم الواجهة (شارة "Processing...") قبل قراءة
+    // إطار الفيديو وتشغيل اكتشاف الحواف الأولي.
     window.setTimeout(() => {
-      void (async () => {
-        try {
-          if (isClosingRef.current) return;
-          const vw = video.videoWidth;
-          const vh = video.videoHeight;
-          if (!vw || !vh) throw new Error('تعذّر قراءة إطار الكاميرا.');
-          const fullCanvas = drawFullFrame(video, vw, vh);
-          const liveQuad =
-            manualQuadRef.current ??
-            smoothedQuadRef.current ??
-            centeredFallbackQuad(vw, vh);
-          const frameConfident =
-            userAdjustedQuadRef.current ||
-            Boolean(smoothedQuadRef.current && missStreakRef.current <= MAX_MISSED_DETECTION_STREAK);
-          await finishCapture(fullCanvas, liveQuad, {
-            useLiveFrame: true,
-            frameConfident,
-          });
-        } catch (err) {
-          if (isClosingRef.current) return;
-          console.error('[scanner] capture failed', err);
-          setErrorMessage('تعذّرت معالجة المستند. حاول مجدداً بإضاءة أفضل وثبات أكبر.');
-          setPhase('live');
-        }
-      })();
+      try {
+        if (isClosingRef.current) return;
+        const vw = video.videoWidth;
+        const vh = video.videoHeight;
+        if (!vw || !vh) throw new Error('تعذّر قراءة إطار الكاميرا.');
+        const rawCanvas = drawFullFrame(video, vw, vh);
+        beginEdgesFromRawCanvas(rawCanvas);
+      } catch (err) {
+        if (isClosingRef.current) return;
+        console.error('[scanner] capture failed', err);
+        setErrorMessage('تعذّرت قراءة إطار الكاميرا. حاول مجدداً بإضاءة أفضل وثبات أكبر.');
+        setPhase('live');
+      }
     }, 30);
-  }, [phase, finishCapture]);
-
-  const handleOverlayPointerDown = useCallback(
-    (e: React.PointerEvent<HTMLCanvasElement>) => {
-      e.stopPropagation();
-      const video = videoRef.current;
-      if (!video || phase !== 'live') return;
-
-      const vw = video.videoWidth;
-      const vh = video.videoHeight;
-      if (!vw || !vh) return;
-
-      const pt = mapClientToVideoCoords(e.clientX, e.clientY, video, vw, vh);
-      const quad =
-        manualQuadRef.current ??
-        smoothedQuadRef.current ??
-        centeredFallbackQuad(vw, vh);
-      const hitRadius = Math.max(52, vw * 0.078);
-
-      let bestIndex = -1;
-      let bestDist = hitRadius;
-      quad.forEach((p, i) => {
-        const d = Math.hypot(p.x - pt.x, p.y - pt.y);
-        if (d < bestDist) {
-          bestDist = d;
-          bestIndex = i;
-        }
-      });
-
-      if (bestIndex < 0) return;
-
-      draggingCornerRef.current = bestIndex;
-      manualQuadRef.current = quad.map((p) => ({ ...p })) as Quad;
-      userAdjustedQuadRef.current = true;
-      setDetectionStatus('manual');
-      e.currentTarget.setPointerCapture(e.pointerId);
-    },
-    [phase]
-  );
-
-  useEffect(() => {
-    if (phase !== 'live') return;
-
-    const onMove = (e: PointerEvent) => {
-      if (draggingCornerRef.current === null) return;
-      const video = videoRef.current;
-      const overlay = overlayCanvasRef.current;
-      if (!video || !overlay) return;
-
-      const vw = video.videoWidth;
-      const vh = video.videoHeight;
-      if (!vw || !vh || !manualQuadRef.current) return;
-
-      const pt = mapClientToVideoCoords(e.clientX, e.clientY, video, vw, vh);
-      const idx = draggingCornerRef.current;
-      const next = manualQuadRef.current.map((p, i) => (i === idx ? pt : p)) as Quad;
-      manualQuadRef.current = next;
-      drawOverlayQuad(overlay, vw, vh, next, 'manual');
-    };
-
-    const endDrag = () => {
-      draggingCornerRef.current = null;
-    };
-
-    window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', endDrag);
-    window.addEventListener('pointercancel', endDrag);
-    return () => {
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', endDrag);
-      window.removeEventListener('pointercancel', endDrag);
-    };
-  }, [phase]);
-
-  // حلقة الاكتشاف الحي (Edge Detection) + رسم الإطار التفاعلي بأربع زوايا
-  useEffect(() => {
-    if (phase !== 'live') return;
-
-    let rafId = 0;
-    let lastRun = 0;
-
-    const loop = (ts: number) => {
-      rafId = requestAnimationFrame(loop);
-      const video = videoRef.current;
-      const overlay = overlayCanvasRef.current;
-      if (!video || !overlay || video.readyState < 2) return;
-      if (ts - lastRun < DETECTION_INTERVAL_MS) return;
-      lastRun = ts;
-
-      const vw = video.videoWidth;
-      const vh = video.videoHeight;
-      if (!vw || !vh) return;
-
-      const detected = detectDocumentQuad(video, vw, vh, getOrCreateCanvas(workCanvasRef), {
-        sampleWidth: DETECTION_SAMPLE_WIDTH,
-      });
-
-      // تنعيم زمني (Exponential Moving Average) لموضع زوايا الإطار التفاعلي
-      // بين الإطارات المتتالية — يُقلِّل الاهتزاز الناتج عن ضجيج بسيط في
-      // الاكتشاف اللحظي دون التأثير على دقة القصّ النهائي (الذي يعتمد دوماً
-      // على اكتشاف طازج عالي الدقة عند الالتقاط الفعلي، لا على هذا التنعيم).
-      if (detected && draggingCornerRef.current === null && !userAdjustedQuadRef.current) {
-        missStreakRef.current = 0;
-        const prevSmoothed = smoothedQuadRef.current;
-        smoothedQuadRef.current = !prevSmoothed
-          ? detected.points
-          : (prevSmoothed.map((p, i) => ({
-              x: p.x + (detected.points[i].x - p.x) * OVERLAY_SMOOTHING_ALPHA,
-              y: p.y + (detected.points[i].y - p.y) * OVERLAY_SMOOTHING_ALPHA,
-            })) as Quad);
-      } else {
-        missStreakRef.current += 1;
-        // فترة سماح قصيرة قبل إخفاء الإطار تماماً: يمنع الوميض المزعج عند فشل
-        // الاكتشاف للحظة واحدة (إضاءة ضعيفة/اهتزاز يد بسيط) بدل اعتباره فقداناً فورياً.
-        if (missStreakRef.current > MAX_MISSED_DETECTION_STREAK) {
-          smoothedQuadRef.current = null;
-        }
-      }
-
-      const smoothedQuad = smoothedQuadRef.current;
-      const fallbackQuad = centeredFallbackQuad(vw, vh);
-      const displayQuad =
-        manualQuadRef.current ?? smoothedQuad ?? fallbackQuad;
-
-      const history = historyRef.current;
-      if (smoothedQuad) {
-        history.push(smoothedQuad);
-        if (history.length > STABILITY_FRAME_COUNT) history.shift();
-      } else {
-        history.length = 0;
-      }
-
-      const tolerance = Math.min(vw, vh) * 0.025;
-      const stable =
-        history.length >= STABILITY_FRAME_COUNT &&
-        history.every((q, i) => i === 0 || quadsAreClose(q, history[i - 1], tolerance));
-
-      setDetectionStatus(
-        userAdjustedQuadRef.current
-          ? 'manual'
-          : smoothedQuad
-            ? stable
-              ? 'stable'
-              : 'searching'
-            : 'none'
-      );
-
-      const overlayStyle: OverlayStyle = userAdjustedQuadRef.current
-        ? 'manual'
-        : smoothedQuad
-          ? stable
-            ? 'stable'
-            : 'detecting'
-          : 'fallback';
-
-      drawOverlayQuad(overlay, vw, vh, displayQuad, overlayStyle);
-
-      if (
-        ENABLE_AUTO_CAPTURE &&
-        stable &&
-        smoothedQuad &&
-        !autoCapturedRef.current
-      ) {
-        autoCapturedRef.current = true;
-        handleCapture();
-      }
-    };
-
-    rafId = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(rafId);
-  }, [phase, handleCapture]);
+  }, [phase, beginEdgesFromRawCanvas]);
 
   const handleGalleryPick = () => galleryInputRef.current?.click();
 
@@ -652,12 +264,12 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
     e.target.value = '';
     if (!file) return;
 
-    setPhase('processing');
+    setPhase('capturing');
     try {
       const dataUrl = await readFileAsDataUrl(file);
       const img = await loadImageElement(dataUrl);
-      const fullCanvas = drawFullFrame(img, img.naturalWidth || img.width, img.naturalHeight || img.height);
-      await finishCapture(fullCanvas);
+      const rawCanvas = drawFullFrame(img, img.naturalWidth || img.width, img.naturalHeight || img.height);
+      beginEdgesFromRawCanvas(rawCanvas);
     } catch (err) {
       console.error('[scanner] gallery import failed', err);
       setErrorMessage('تعذّر تحميل الصورة المختارة. جرّب صورة أخرى.');
@@ -665,57 +277,119 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
     }
   };
 
+  /** زر «Auto» في شاشة كشف الحواف: يعيد تشغيل الاكتشاف التلقائي على الصورة الخام كاملة الدقة. */
+  const handleAutoDetectEdges = useCallback(() => {
+    const rawCanvas = rawCaptureCanvasRef.current;
+    if (!rawCanvas) return;
+    const detected = detectDocumentQuad(rawCanvas, rawCanvas.width, rawCanvas.height, getOrCreateCanvas(workCanvasRef), {
+      sampleWidth: CAPTURE_DETECTION_SAMPLE_WIDTH,
+      denoise: true,
+    });
+    setEdgesMode('auto');
+    setEdgesQuad(detected?.points ?? fullFrameQuad(rawCanvas.width, rawCanvas.height));
+  }, []);
+
+  /** زر «Full» في شاشة كشف الحواف: يعتمد الصورة بالكامل حافة-إلى-حافة بلا أي اكتشاف. */
+  const handleFullFrameEdges = useCallback(() => {
+    const rawCanvas = rawCaptureCanvasRef.current;
+    if (!rawCanvas) return;
+    setEdgesMode('full');
+    setEdgesQuad(fullFrameQuad(rawCanvas.width, rawCanvas.height));
+  }, []);
+
+  /** أي سحب يدوي لأحد المقابض الأربعة يُحوِّل الوضع إلى «يدوي» (يُلغي تحديد Auto/Full بصرياً). */
+  const handleEdgesQuadChange = useCallback((next: Quad) => {
+    setEdgesQuad(next);
+    setEdgesMode('manual');
+  }, []);
+
+  /** زر الرجوع من شاشة كشف الحواف: تجاهل الالتقاط الحالي والعودة للكاميرا الحية مباشرة. */
+  const handleBackFromEdges = useCallback(() => {
+    resetEdgesState();
+    setErrorMessage(null);
+    setPhase(streamRef.current ? 'live' : 'error');
+  }, [resetEdgesState]);
+
+  /** زر «التالي»: قصّ هندسي حقيقي (Perspective Correction) وفق شبه المنحرف المضبوط فعلياً، ثم تحويل أبيض/أسود عالي التباين. */
+  const handleConfirmEdges = useCallback(() => {
+    const rawCanvas = rawCaptureCanvasRef.current;
+    const quad = edgesQuad;
+    if (!rawCanvas || !quad) return;
+
+    setPhase('processing');
+
+    window.setTimeout(() => {
+      try {
+        if (isClosingRef.current) return;
+
+        const { width, height } = computeOutputSize(quad);
+        const scaleDown = Math.min(1, MAX_OUTPUT_DIMENSION / Math.max(width, height));
+        const outW = Math.max(1, Math.round(width * scaleDown));
+        const outH = Math.max(1, Math.round(height * scaleDown));
+
+        const corrected = warpPerspective(rawCanvas, quad, outW, outH);
+        enhanceDocumentCanvas(corrected);
+
+        if (isClosingRef.current) return;
+
+        correctedCanvasRef.current = corrected;
+        setPreviewDataUrl(corrected.toDataURL('image/jpeg', SCAN_JPEG_QUALITY));
+        setPhase('preview');
+      } catch (err) {
+        if (isClosingRef.current) return;
+        console.error('[scanner] perspective correction failed', err);
+        setErrorMessage('تعذّرت معالجة المستند. حاول ضبط الزوايا مجدداً.');
+        setPhase('edges');
+      }
+    }, 30);
+  }, [edgesQuad]);
+
   const handleRetake = () => {
     setPreviewDataUrl(null);
     correctedCanvasRef.current = null;
-    autoCapturedRef.current = false;
-    historyRef.current = [];
-    smoothedQuadRef.current = null;
-    missStreakRef.current = 0;
-    manualQuadRef.current = null;
-    userAdjustedQuadRef.current = false;
-    draggingCornerRef.current = null;
-    setDetectionStatus('none');
+    resetEdgesState();
     setErrorMessage(null);
-
-    // نظّف أي إطار متبقٍّ مرسوماً من قبل على الكانفاس التفاعلي قبل العودة
-    // للبث الحي، كي لا يظهر إطار قديم للحظة قبل أن تلتقط الحلقة الحية إطاراً جديداً.
-    const overlay = overlayCanvasRef.current;
-    if (overlay) {
-      overlay.getContext('2d')?.clearRect(0, 0, overlay.width, overlay.height);
-    }
-
-    // الفيديو والبث (stream) يبقيان متصلين طوال الوقت (لم يُوقَفا أو يُفصَلا)
-    // لأن عنصر <video> لم يُزَل من الشجرة أصلاً؛ إعادة الحالة إلى 'live' تكفي
-    // لعودة المعاينة الحية فوراً وبسلاسة دون أي تجميد.
     setPhase(streamRef.current ? 'live' : 'error');
   };
 
   const handleConfirm = async () => {
+    const canvas = correctedCanvasRef.current;
+    if (!canvas) return;
+    setPhase('uploading');
+    setErrorMessage(null);
+
     try {
-      await saveProcessedDocument();
+      const jpegBlob = await new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob(
+          (b) => (b ? resolve(b) : reject(new Error('تعذّر إنشاء صورة المستند.'))),
+          'image/jpeg',
+          SCAN_JPEG_QUALITY
+        );
+      });
+      // PNG (ضغط بلا فقد) دائماً هنا: المستند دوماً محوَّل فعلياً لأبيض/أسود
+      // (مناطق مسطّحة واسعة تضغط ممتازاً وبلا تشويش حواف) بعد شاشة كشف
+      // الحواف الصريحة — لا حاجة بعد الآن لمسار "غير واثق" منفصل.
+      const pdfBlob = await canvasToDocumentPdfBlob(canvas, { preferPng: true, highQuality: true });
+
+      await onConfirm({ jpegBlob, pdfBlob });
+      stopStream();
+      onClose();
     } catch (err) {
       console.error('[scanner] confirm/upload failed', err);
-      setErrorMessage(err instanceof Error ? err.message : 'تعذّر حفظ ملف PDF. حاول مجدداً.');
-      setPhase('preview-uncertain');
+      setErrorMessage(err instanceof Error ? err.message : 'تعذّر رفع المستند. حاول مجدداً.');
+      setPhase('preview');
     }
   };
 
   const handleRetryCamera = () => {
-    autoCapturedRef.current = false;
-    historyRef.current = [];
-    smoothedQuadRef.current = null;
-    missStreakRef.current = 0;
-    manualQuadRef.current = null;
-    userAdjustedQuadRef.current = false;
-    draggingCornerRef.current = null;
+    resetEdgesState();
     void startCamera({ cancelled: false });
   };
 
   const handleClose = () => {
     // يُضبَط أولاً وفوراً — قبل أي عملية أخرى — كي تتوقف كل العمليات غير
-    // المتزامنة الجارية (بدء الكاميرا، مهلتها، الاكتشاف/الالتقاط) عن تحديث
-    // حالة هذا المكوّن بمجرّد اكتمالها لاحقاً، مهما كانت المرحلة الحالية.
+    // المتزامنة الجارية عن تحديث حالة هذا المكوّن بمجرّد اكتمالها لاحقاً،
+    // مهما كانت المرحلة الحالية.
     isClosingRef.current = true;
     if (cameraTimeoutIdRef.current !== null) {
       window.clearTimeout(cameraTimeoutIdRef.current);
@@ -725,45 +399,55 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
     onClose();
   };
 
-  const statusHint =
-    detectionStatus === 'manual'
-      ? '✋ اسحب الزوايا الأربع على حواف الورقة ثم التقط'
-      : detectionStatus === 'stable'
-        ? '✅ الحواف على المستند — عدّل الزوايا أو التقط لحفظ PDF'
-        : detectionStatus === 'searching'
-          ? '🔍 جارٍ تحديد حواف المستند — اسحب الزوايا البيضاء للتعديل'
-          : '📄 وجّه الكاميرا — اسحب الزوايا 1–4 على أطراف المستند';
+  const isEdgesPhase = phase === 'edges';
 
   return (
     <div className="fixed inset-0 z-[70] bg-slate-950 flex flex-col" dir="rtl">
-      <input
-        ref={galleryInputRef}
-        type="file"
-        accept="image/*"
-        className="hidden"
-        onChange={handleGalleryFile}
-      />
+      <input ref={galleryInputRef} type="file" accept="image/*" className="hidden" onChange={handleGalleryFile} />
 
       {/*
         شريط علوي: موضعه `fixed` (لا `absolute`) وبأعلى ترتيب طبقات (z-[100])
-        عمداً — مستقل تماماً عن أي طبقة تحميل/معالجة داخل منطقة الكاميرا
-        (`starting`/`processing`/`error`...)، فيبقى زر الإغلاق (X) ظاهراً
-        وقابلاً للنقر فوق كل شيء دوماً، أياً كانت حالة المكوّن الداخلية.
+        عمداً — مستقل تماماً عن أي طبقة تحميل/معالجة داخل منطقة الكاميرا،
+        فيبقى زر الإغلاق/الرجوع ظاهراً وقابلاً للنقر فوق كل شيء دوماً. في
+        شاشة "كشف الحواف" فقط يتحوّل الشريط إلى (رجوع ← عنوان ← التالي) بأسلوب HP Smart.
       */}
       <div className="fixed top-0 inset-x-0 z-[100] flex items-center justify-between px-4 py-3 bg-gradient-to-b from-black/70 to-transparent pointer-events-none">
-        <button
-          type="button"
-          onClick={handleClose}
-          className="pointer-events-auto w-11 h-11 rounded-full bg-slate-900/70 backdrop-blur border border-white/10 text-white flex items-center justify-center text-lg active:scale-95 transition-transform"
-          aria-label="إغلاق الماسح الضوئي"
-        >
-          ✕
-        </button>
-        <span className="text-sm sm:text-base font-bold text-white/90">مسح مستند (HP Smart)</span>
-        <span className="w-11" aria-hidden />
+        {isEdgesPhase ? (
+          <button
+            type="button"
+            onClick={handleBackFromEdges}
+            className="pointer-events-auto flex items-center gap-1.5 rounded-full bg-slate-900/70 backdrop-blur border border-white/10 text-white px-3.5 h-11 text-sm font-bold active:scale-95 transition-transform"
+            aria-label="رجوع لالتقاط صورة جديدة"
+          >
+            <span aria-hidden>→</span> رجوع
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={handleClose}
+            className="pointer-events-auto w-11 h-11 rounded-full bg-slate-900/70 backdrop-blur border border-white/10 text-white flex items-center justify-center text-lg active:scale-95 transition-transform"
+            aria-label="إغلاق الماسح الضوئي"
+          >
+            ✕
+          </button>
+        )}
+
+        <span className="text-sm sm:text-base font-bold text-white/90">{isEdgesPhase ? 'كشف الحواف' : 'مسح مستند'}</span>
+
+        {isEdgesPhase ? (
+          <button
+            type="button"
+            onClick={handleConfirmEdges}
+            className="pointer-events-auto rounded-full bg-blue-500 text-white px-5 h-11 text-sm font-black shadow-lg shadow-blue-500/30 active:scale-95 transition-transform"
+          >
+            التالي
+          </button>
+        ) : (
+          <span className="w-11" aria-hidden />
+        )}
       </div>
 
-      {/* منطقة الكاميرا/المعاينة — النقر عليها أثناء البث الحي يلتقط المستند فوراً أيضاً (مثل زر الالتقاط تماماً) */}
+      {/* منطقة الكاميرا/كشف الحواف/المعاينة */}
       <div
         className={`relative flex-1 overflow-hidden bg-black ${phase === 'live' ? 'cursor-pointer' : ''}`}
         onClick={phase === 'live' ? handleCapture : undefined}
@@ -771,12 +455,10 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
         aria-label={phase === 'live' ? 'اضغط في أي مكان لالتقاط المستند' : undefined}
       >
         {/*
-          الفيديو وكانفاس الإطار التفاعلي يبقيان مثبَّتين (Mounted) دائماً طوال
-          حياة المكوّن — لا نزيلهما من الشجرة عند الانتقال لمرحلة المعاينة/الخطأ،
-          بل نُخفيهما بصرياً فقط (invisible). هذا يمنع مشكلة "الشاشة المجمّدة"
-          عند الضغط على "إعادة الالتقاط": فرصة إعادة تركيب <video> جديد كلياً
-          بلا `srcObject` (لأن العنصر القديم أُزيل من الشجرة) كانت تجعل البث لا
-          يظهر أبداً رغم أن الكاميرا لا تزال تعمل فعلياً في الخلفية.
+          الفيديو يبقى مثبَّتاً (Mounted) دائماً طوال حياة المكوّن — لا نزيله
+          من الشجرة عند الانتقال لمرحلة أخرى، بل نُخفيه بصرياً فقط
+          (invisible)، لضمان بقاء بثّ MediaStream متصلاً وعودة سلسة للمعاينة
+          الحية دون أي تجميد عند "إعادة الالتقاط".
         */}
         <video
           ref={videoRef}
@@ -784,16 +466,19 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
           muted
           autoPlay
           className={`absolute inset-0 w-full h-full object-cover ${
-            phase === 'starting' || phase === 'live' || phase === 'processing' ? '' : 'invisible'
+            phase === 'starting' || phase === 'live' || phase === 'capturing' ? '' : 'invisible'
           }`}
         />
-        <canvas
-          ref={overlayCanvasRef}
-          onPointerDown={handleOverlayPointerDown}
-          className={`absolute inset-0 w-full h-full object-cover touch-none ${
-            phase === 'live' ? 'pointer-events-auto cursor-grab active:cursor-grabbing' : 'pointer-events-none invisible'
-          }`}
-        />
+
+        {/* إطار إرشادي ثابت بأربع زوايا (شكل HP Smart) — توجيه بصري بسيط بلا أي تتبّع أو تفاعل مباشرة على الكاميرا الحية. */}
+        {(phase === 'live' || phase === 'starting' || phase === 'capturing') && (
+          <div className="absolute inset-8 sm:inset-14 pointer-events-none">
+            <CornerGuide position="tl" />
+            <CornerGuide position="tr" />
+            <CornerGuide position="bl" />
+            <CornerGuide position="br" />
+          </div>
+        )}
 
         {phase === 'starting' && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-slate-950/70">
@@ -802,10 +487,30 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
           </div>
         )}
 
+        {/* شارة "Processing..." علوية على البث الحي فور الالتقاط — قبل الانتقال لشاشة كشف الحواف. */}
+        {phase === 'capturing' && (
+          <div className="absolute bottom-32 inset-x-0 flex justify-center px-4 pointer-events-none">
+            <span className="flex items-center gap-2 bg-white text-slate-900 text-sm font-bold px-4 py-2 rounded-full shadow-xl">
+              <span className="h-3.5 w-3.5 rounded-full border-2 border-slate-300 border-t-slate-600 animate-spin" />
+              جارِ المعالجة...
+            </span>
+          </div>
+        )}
+
+        {phase === 'edges' && rawPreviewUrl && rawDims && edgesQuad && (
+          <CornerAdjuster
+            imageSrc={rawPreviewUrl}
+            naturalWidth={rawDims.width}
+            naturalHeight={rawDims.height}
+            quad={edgesQuad}
+            onQuadChange={handleEdgesQuadChange}
+          />
+        )}
+
         {phase === 'processing' && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-slate-950/80">
             <span className="h-10 w-10 rounded-full border-2 border-emerald-500/30 border-t-emerald-400 animate-spin" />
-            <p className="text-sm text-emerald-300 font-bold">جاري المعالجة وإنشاء PDF...</p>
+            <p className="text-sm text-emerald-300 font-bold">جاري القصّ والتحسين...</p>
           </div>
         )}
 
@@ -836,7 +541,7 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
           </div>
         )}
 
-        {(phase === 'preview' || phase === 'preview-uncertain') && previewDataUrl && (
+        {phase === 'preview' && previewDataUrl && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 p-4 bg-slate-950">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
@@ -844,33 +549,14 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
               alt="معاينة المستند الممسوح"
               className="max-h-[62vh] w-auto max-w-full rounded-2xl border-2 border-cyan-400/60 shadow-[0_25px_70px_-15px_rgba(8,145,178,0.5)] object-contain bg-white"
             />
-            {phase === 'preview-uncertain' && (
-              <div className="w-full max-w-sm rounded-2xl border border-amber-400/40 bg-amber-500/10 px-3.5 py-2.5 text-center">
-                <p className="text-xs sm:text-sm font-bold text-amber-200">
-                  ⚠️ تعذّر تحديد حواف المستند بدقة (قد تظهر خلفية). للحصول على
-                  أفضل نتيجة، أعد الالتقاط مع وضع الورقة على خلفية داكنة موحّدة
-                  وإضاءة جيدة.
-                </p>
-              </div>
-            )}
-            <p className="text-sm text-slate-300 text-center font-bold">
-              {phase === 'preview-uncertain'
-                ? 'راجع المستند ثم احفظه كـ PDF، أو أعد الالتقاط'
-                : 'تمت المعالجة — اضغط حفظ PDF إن لم يكتمل الرفع تلقائياً'}
-            </p>
+            <p className="text-sm text-slate-300 text-center font-bold">راجع وضوح المستند والحواف قبل الاعتماد النهائي</p>
           </div>
         )}
 
-        {(phase === 'live' || phase === 'starting') && (
+        {phase === 'live' && (
           <div className="absolute bottom-28 inset-x-0 flex justify-center px-4 pointer-events-none">
-            <span
-              className={`pointer-events-auto text-xs sm:text-sm font-bold px-4 py-2 rounded-full backdrop-blur border ${
-                detectionStatus === 'stable'
-                  ? 'bg-emerald-500/20 border-emerald-400/40 text-emerald-200'
-                  : 'bg-slate-900/70 border-white/10 text-white'
-              }`}
-            >
-              {statusHint}
+            <span className="pointer-events-auto text-xs sm:text-sm font-bold px-4 py-2 rounded-full backdrop-blur border bg-slate-900/70 border-white/10 text-white">
+              📄 ضع المستند داخل الإطار والتقط الصورة
             </span>
           </div>
         )}
@@ -880,33 +566,66 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
       <div className="relative z-20 bg-gradient-to-t from-black/80 to-transparent px-6 pb-8 pt-4">
         {phase === 'live' && (
           <div className="flex items-center justify-between">
-            <button
-              type="button"
-              onClick={handleGalleryPick}
-              className="w-12 h-12 rounded-full bg-slate-900/70 border border-white/10 text-white flex items-center justify-center text-lg"
-              aria-label="اختيار صورة من المعرض"
-            >
-              📁
-            </button>
+            <div className="flex flex-col items-center gap-1.5">
+              <button
+                type="button"
+                onClick={handleGalleryPick}
+                className="w-12 h-12 rounded-full bg-slate-900/70 border border-white/10 text-white flex items-center justify-center text-lg"
+                aria-label="اختيار صورة من المعرض"
+              >
+                📁
+              </button>
+              <span className="text-[11px] font-bold text-white/70">المصدر</span>
+            </div>
 
             <button
               type="button"
               onClick={handleCapture}
               className="w-20 h-20 rounded-full bg-white border-[6px] border-cyan-400 shadow-[0_0_30px_rgba(34,211,238,0.6)] active:scale-95 transition-transform"
-              aria-label="التقاط المستند يدوياً"
+              aria-label="التقاط المستند"
             />
 
-            <span className="w-12 h-12" aria-hidden />
+            <span className="w-12" aria-hidden />
           </div>
         )}
 
-        {(phase === 'preview' || phase === 'preview-uncertain') && (
+        {phase === 'edges' && (
+          <div className="flex items-center justify-center gap-4">
+            <button
+              type="button"
+              onClick={handleAutoDetectEdges}
+              className={`flex flex-col items-center gap-1.5 rounded-2xl px-5 py-2.5 border transition-colors ${
+                edgesMode === 'auto'
+                  ? 'bg-blue-500/20 border-blue-400/60 text-blue-200'
+                  : 'bg-slate-900/70 border-white/10 text-white/80'
+              }`}
+            >
+              <span className="text-lg" aria-hidden>
+                ✨
+              </span>
+              <span className="text-xs font-bold">Auto</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleFullFrameEdges}
+              className={`flex flex-col items-center gap-1.5 rounded-2xl px-5 py-2.5 border transition-colors ${
+                edgesMode === 'full'
+                  ? 'bg-blue-500/20 border-blue-400/60 text-blue-200'
+                  : 'bg-slate-900/70 border-white/10 text-white/80'
+              }`}
+            >
+              <span className="text-lg" aria-hidden>
+                ⤢
+              </span>
+              <span className="text-xs font-bold">Full</span>
+            </button>
+          </div>
+        )}
+
+        {phase === 'preview' && (
           <div className="space-y-3">
             {errorMessage && (
-              <div
-                role="alert"
-                className="rounded-2xl border border-rose-500/40 bg-rose-500/10 text-rose-100 text-sm px-3.5 py-3"
-              >
+              <div role="alert" className="rounded-2xl border border-rose-500/40 bg-rose-500/10 text-rose-100 text-sm px-3.5 py-3">
                 {errorMessage}
               </div>
             )}
@@ -923,7 +642,7 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
                 onClick={handleConfirm}
                 className="flex-1 rounded-2xl bg-gradient-to-l from-cyan-400 to-cyan-500 py-3.5 text-slate-950 font-black text-sm shadow-lg shadow-cyan-500/20"
               >
-                💾 حفظ PDF
+                ✅ اعتماد المستند وحفظه
               </button>
             </div>
           </div>
@@ -932,7 +651,7 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
         {phase === 'uploading' && (
           <div className="flex items-center justify-center gap-3 py-3">
             <span className="h-5 w-5 rounded-full border-2 border-cyan-500/30 border-t-cyan-400 animate-spin" />
-            <p className="text-sm font-bold text-cyan-300">جاري إنشاء PDF وحفظ المستند...</p>
+            <p className="text-sm font-bold text-cyan-300">جاري رفع وحفظ المستند...</p>
           </div>
         )}
       </div>
