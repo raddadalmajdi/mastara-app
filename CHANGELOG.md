@@ -4,6 +4,32 @@
 
 ---
 
+## [Feature] OCR تلقائي للفواتير (Tesseract.js) + تعبئة حقول المورد/التاريخ/المبلغ
+
+**التاريخ:** 29 يوليو 2026
+
+### الخيار التقني
+
+**Tesseract.js في المتصفح** (عربي + إنجليزي) — بدون API خارجي، متوافق مع مسار
+المسح الحالي (معالجة محلية + PDF)، ويحترم خصوصية المستند. أول تشغيل
+يحمّل ملفات اللغة من CDN (~عدة MB) ثم يُعاد استخدام Worker واحد.
+
+### التنفيذ
+
+- `lib/invoice-ocr/`: `run-invoice-ocr.ts`, `parse-invoice-fields.ts`,
+  `normalize-text.ts`, `apply-extracted-to-form.ts`, `types.ts`
+- شاشة معاينة الماسح: OCR تلقائي على الصورة المُحسَّنة + حقول قابلة للتعديل
+- `app/page.tsx`: قسم «بيانات الفاتورة (OCR)» + حفظ `extracted_fields` في
+  Supabase/localStorage
+- Migration: `supabase/migrations/20260729183000_add_invoices_extracted_fields.sql`
+
+### ⚠️ Supabase
+
+نفّذ migration `extracted_fields` في SQL Editor إن لم يكن العمود موجوداً —
+الرفع يستمر بدون العمود لكن البيانات المستخرجة لن تُحفَظ في DB.
+
+---
+
 ## [Improvement] تفعيل كامل لزر «Auto» في شاشة كشف الحواف: مؤشر تحميل + إشعار فشل واضح
 
 **التاريخ:** 29 يوليو 2026

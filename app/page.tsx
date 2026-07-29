@@ -34,6 +34,8 @@ import {
   uploadScannedInvoiceFiles,
 } from '@/lib/upload-scanned-invoice';
 import { DocumentScannerModal } from '@/components/scanner/DocumentScannerModal';
+import type { DocumentScanResult, InvoiceExtractedFields } from '@/lib/invoice-ocr/types';
+import { applyExtractedFieldsToForm, suggestedCustomerLocalPhone } from '@/lib/invoice-ocr/apply-extracted-to-form';
 
 type AuthFeedback = { type: 'success' | 'error'; message: string } | null;
 
@@ -84,6 +86,8 @@ export default function Home() {
   const [customerCountryCode, setCustomerCountryCode] = useState('965');
   const [customerLocalPhone, setCustomerLocalPhone] = useState('');
   const [customerInvoices, setCustomerInvoices] = useState<any[]>([]);
+  /** حقول فاتورة مستخرجة/قابلة للتعديل (OCR + يدوي) قبل/بعد المسح. */
+  const [invoiceFormDraft, setInvoiceFormDraft] = useState<InvoiceExtractedFields>({});
   const [isUploading, setIsUploading] = useState(false);
   const [showDocumentScanner, setShowDocumentScanner] = useState(false);
 
@@ -764,13 +768,28 @@ export default function Home() {
    * بعد الماسح: PDF مُولَّد في الواجهة الأمامية → رفع PDF إلى Storage → حفظ
    * `pdf_url` (+ صورة JPEG للمعاينة) في جدول `invoices`.
    */
-  const handleDocumentCaptured = async ({ jpegBlob, pdfBlob }: { jpegBlob: Blob; pdfBlob: Blob }) => {
-    if (!customerLocalPhone.trim()) {
+  const handleDocumentCaptured = async ({ jpegBlob, pdfBlob, extracted }: DocumentScanResult) => {
+    if (!customerLocalPhone.trim() && !extracted?.customerPhoneLocal) {
       throw new Error('يرجى كتابة رقم جوال العميل أولاً.');
     }
 
-    const fullCustomerPhone = `${customerCountryCode}${customerLocalPhone}`;
+    let localPhone = customerLocalPhone;
+    if (extracted) {
+      localPhone = suggestedCustomerLocalPhone(extracted, localPhone);
+      setCustomerLocalPhone(localPhone);
+      setInvoiceFormDraft((prev) => applyExtractedFieldsToForm(extracted, prev, { overwrite: true }));
+    }
+
+    const fullCustomerPhone = `${customerCountryCode}${localPhone}`;
     setIsUploading(true);
+
+    const extractedForSave = extracted ?? invoiceFormDraft;
+    const hasExtractedFields = Boolean(
+      extractedForSave.supplierName ||
+        extractedForSave.documentDate ||
+        extractedForSave.amount ||
+        extractedForSave.invoiceNumber
+    );
 
     try {
       if (!supabase) {
@@ -784,13 +803,14 @@ export default function Home() {
           image_url: imageUrl,
           pdf_url: pdfUrl,
           created_at: new Date().toISOString(),
+          ...(hasExtractedFields ? { extracted_fields: extractedForSave } : {}),
         };
 
         const savedInvoices = JSON.parse(localStorage.getItem('mistarh_local_invoices') || '[]');
         const updatedInvoices = [newInvoice, ...savedInvoices];
         localStorage.setItem('mistarh_local_invoices', JSON.stringify(updatedInvoices));
 
-        searchInvoices(customerLocalPhone, customerCountryCode);
+        searchInvoices(localPhone, customerCountryCode);
         alert('تم مسح المستند وحفظ PDF محلياً بنجاح!');
       } else {
         const { imageUrl, pdfUrl } = await uploadScannedInvoiceFiles(supabase, user.id, {
@@ -803,9 +823,10 @@ export default function Home() {
           customer_phone: fullCustomerPhone,
           image_url: imageUrl,
           pdf_url: pdfUrl,
+          ...(hasExtractedFields ? { extracted_fields: extractedForSave } : {}),
         });
 
-        await searchInvoices(customerLocalPhone, customerCountryCode);
+        await searchInvoices(localPhone, customerCountryCode);
         alert('تم رفع ملف PDF وحفظ رابطه في السجل بنجاح!');
       }
     } finally {
@@ -1247,6 +1268,59 @@ export default function Home() {
             </div>
           </div>
         </section>
+
+        {/* بيانات الفاتورة — تُعبَّأ تلقائياً من OCR بعد المسح (قابلة للتعديل يدوياً). */}
+        <section className="bg-slate-900 border border-slate-800 p-4 rounded-3xl space-y-3 shadow-lg sm:col-span-2">
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="text-sm text-cyan-400 font-bold">بيانات الفاتورة (OCR)</h3>
+            <span className="text-[11px] text-slate-500 font-bold">تعبئة تلقائية بعد مسح المستند</span>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <label className="space-y-1.5 sm:col-span-2">
+              <span className="text-xs text-slate-400 font-bold">اسم المورد / الجهة</span>
+              <input
+                type="text"
+                value={invoiceFormDraft.supplierName ?? ''}
+                onChange={(e) => setInvoiceFormDraft((d) => ({ ...d, supplierName: e.target.value }))}
+                className="w-full rounded-xl bg-slate-950 border border-slate-800 p-3 text-sm text-white"
+                placeholder="يظهر تلقائياً بعد المسح..."
+              />
+            </label>
+            <label className="space-y-1.5">
+              <span className="text-xs text-slate-400 font-bold">تاريخ المستند</span>
+              <input
+                type="text"
+                value={invoiceFormDraft.documentDate ?? ''}
+                onChange={(e) => setInvoiceFormDraft((d) => ({ ...d, documentDate: e.target.value }))}
+                className="w-full rounded-xl bg-slate-950 border border-slate-800 p-3 text-sm text-white tnum"
+                dir="ltr"
+                placeholder="—"
+              />
+            </label>
+            <label className="space-y-1.5">
+              <span className="text-xs text-slate-400 font-bold">المبلغ</span>
+              <input
+                type="text"
+                value={invoiceFormDraft.amount ?? ''}
+                onChange={(e) => setInvoiceFormDraft((d) => ({ ...d, amount: e.target.value }))}
+                className="w-full rounded-xl bg-slate-950 border border-slate-800 p-3 text-sm text-white tnum"
+                dir="ltr"
+                placeholder="—"
+              />
+            </label>
+            <label className="space-y-1.5 sm:col-span-2">
+              <span className="text-xs text-slate-400 font-bold">رقم الفاتورة</span>
+              <input
+                type="text"
+                value={invoiceFormDraft.invoiceNumber ?? ''}
+                onChange={(e) => setInvoiceFormDraft((d) => ({ ...d, invoiceNumber: e.target.value }))}
+                className="w-full rounded-xl bg-slate-950 border border-slate-800 p-3 text-sm text-white tnum"
+                dir="ltr"
+                placeholder="—"
+              />
+            </label>
+          </div>
+        </section>
         </div>
 
         {/* عرض الفواتير: الفاتورة الحديثة (الأحدث) ضخمة في المقدمة يعقبها الأرشيف */}
@@ -1270,6 +1344,14 @@ export default function Home() {
                         ⭐ الفاتورة الأحدث (فاتورة #<span className="tnum">{latestInvoiceNumber}</span>)
                       </span>
                       <span className="text-xs text-slate-400 font-bold font-mono tnum block" dir="ltr">{formatDate(latestInvoice.created_at)}</span>
+                      {latestInvoice.extracted_fields?.supplierName && (
+                        <span className="text-xs text-slate-500 font-bold block truncate">
+                          {latestInvoice.extracted_fields.supplierName}
+                          {latestInvoice.extracted_fields.amount ? (
+                            <span className="tnum"> · {latestInvoice.extracted_fields.amount}</span>
+                          ) : null}
+                        </span>
+                      )}
                     </div>
                   </div>
 
