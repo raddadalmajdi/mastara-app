@@ -22,8 +22,11 @@ export const DETECTION_INTERVAL_MS = 140;
  */
 export const CAMERA_START_TIMEOUT_MS = 8000;
 
-/** عدد الاكتشافات المتتالية المطلوبة قبل اعتبار الإطار "مستقراً" لبدء الالتقاط التلقائي. */
+/** عدد الاكتشافات المتتالية المطلوبة قبل اعتبار الإطار "مستقراً" (للتلوين الأخضر في الواجهة). */
 export const STABILITY_FRAME_COUNT = 5;
+
+/** إن كان false، يلتقط المستخدم يدوياً (زر الالتقاط) ثم يضغط «حفظ» — مثل ماسح HP Smart. */
+export const ENABLE_AUTO_CAPTURE = false;
 
 /** نسبة الدمج (Exponential Moving Average) لتنعيم حركة زوايا الإطار التفاعلي بين الإطارات؛ كلما قلّت، زاد الثبات وقلّ الاهتزاز. */
 export const OVERLAY_SMOOTHING_ALPHA = 0.35;

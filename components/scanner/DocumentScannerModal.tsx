@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   computeOutputSize,
   warpPerspective,
+  type Point,
   type Quad,
 } from '@/lib/document-scanner/geometry';
 import { detectDocumentQuad, quadsAreClose } from '@/lib/document-scanner/detect-document';
@@ -21,6 +22,7 @@ import {
   OVERLAY_SMOOTHING_ALPHA,
   SCAN_JPEG_QUALITY,
   STABILITY_FRAME_COUNT,
+  ENABLE_AUTO_CAPTURE,
 } from '@/lib/document-scanner/constants';
 
 export type DocumentScanResult = { jpegBlob: Blob; pdfBlob: Blob };
@@ -32,7 +34,7 @@ type DocumentScannerModalProps = {
 };
 
 type Phase = 'starting' | 'live' | 'processing' | 'preview' | 'preview-uncertain' | 'uploading' | 'error';
-type DetectionStatus = 'none' | 'searching' | 'stable';
+type DetectionStatus = 'none' | 'searching' | 'stable' | 'manual';
 
 function readFileAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -83,7 +85,67 @@ function drawFullFrame(source: CanvasImageSource, width: number, height: number)
   return canvas;
 }
 
-function drawOverlayQuad(canvas: HTMLCanvasElement, frameW: number, frameH: number, quad: Quad | null, stable: boolean) {
+type OverlayStyle = 'detecting' | 'stable' | 'manual' | 'fallback';
+
+/** يحوّل إحداثيات المؤشر/اللمس على عنصر `<video>` (object-cover) إلى بكسلات إطار الفيديو الأصلي. */
+function mapClientToVideoCoords(
+  clientX: number,
+  clientY: number,
+  videoEl: HTMLVideoElement,
+  frameW: number,
+  frameH: number
+): { x: number; y: number } {
+  const rect = videoEl.getBoundingClientRect();
+  const scale = Math.max(rect.width / frameW, rect.height / frameH);
+  const dispW = frameW * scale;
+  const dispH = frameH * scale;
+  const ox = (rect.width - dispW) / 2;
+  const oy = (rect.height - dispH) / 2;
+  return {
+    x: Math.max(0, Math.min(frameW, (clientX - rect.left - ox) / scale)),
+    y: Math.max(0, Math.min(frameH, (clientY - rect.top - oy) / scale)),
+  };
+}
+
+function drawCornerBrackets(
+  ctx: CanvasRenderingContext2D,
+  quad: Quad,
+  frameW: number,
+  color: string,
+  len: number
+) {
+  const lw = Math.max(4, frameW * 0.008);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = lw;
+  ctx.lineCap = 'round';
+
+  const corners: [Point, Point, Point][] = [
+    [quad[0], quad[1], quad[3]],
+    [quad[1], quad[0], quad[2]],
+    [quad[2], quad[3], quad[1]],
+    [quad[3], quad[2], quad[0]],
+  ];
+
+  for (const [corner, a, b] of corners) {
+    const toA = { x: a.x - corner.x, y: a.y - corner.y };
+    const toB = { x: b.x - corner.x, y: b.y - corner.y };
+    const lenA = Math.hypot(toA.x, toA.y) || 1;
+    const lenB = Math.hypot(toB.x, toB.y) || 1;
+    ctx.beginPath();
+    ctx.moveTo(corner.x + (toA.x / lenA) * len, corner.y + (toA.y / lenA) * len);
+    ctx.lineTo(corner.x, corner.y);
+    ctx.lineTo(corner.x + (toB.x / lenB) * len, corner.y + (toB.y / lenB) * len);
+    ctx.stroke();
+  }
+}
+
+function drawOverlayQuad(
+  canvas: HTMLCanvasElement,
+  frameW: number,
+  frameH: number,
+  quad: Quad | null,
+  style: OverlayStyle
+) {
   if (canvas.width !== frameW || canvas.height !== frameH) {
     canvas.width = frameW;
     canvas.height = frameH;
@@ -93,15 +155,26 @@ function drawOverlayQuad(canvas: HTMLCanvasElement, frameW: number, frameH: numb
   ctx.clearRect(0, 0, frameW, frameH);
   if (!quad) return;
 
-  const color = stable ? 'rgba(16,185,129,0.95)' : 'rgba(34,211,238,0.9)';
-  const fill = stable ? 'rgba(16,185,129,0.16)' : 'rgba(34,211,238,0.12)';
+  const color =
+    style === 'stable'
+      ? 'rgba(16,185,129,0.95)'
+      : style === 'manual'
+        ? 'rgba(251,191,36,0.95)'
+        : style === 'fallback'
+          ? 'rgba(148,163,184,0.85)'
+          : 'rgba(34,211,238,0.9)';
+  const fill =
+    style === 'stable'
+      ? 'rgba(16,185,129,0.14)'
+      : style === 'fallback'
+        ? 'rgba(148,163,184,0.08)'
+        : 'rgba(34,211,238,0.1)';
 
   ctx.lineJoin = 'round';
-  ctx.lineWidth = Math.max(3, frameW * 0.006);
+  ctx.setLineDash(style === 'fallback' ? [frameW * 0.02, frameW * 0.012] : []);
+  ctx.lineWidth = Math.max(2, frameW * 0.004);
   ctx.strokeStyle = color;
   ctx.fillStyle = fill;
-  ctx.shadowColor = color;
-  ctx.shadowBlur = 20;
 
   ctx.beginPath();
   ctx.moveTo(quad[0].x, quad[0].y);
@@ -111,12 +184,22 @@ function drawOverlayQuad(canvas: HTMLCanvasElement, frameW: number, frameH: numb
   ctx.closePath();
   ctx.fill();
   ctx.stroke();
+  ctx.setLineDash([]);
 
-  ctx.shadowBlur = 0;
-  const r = Math.max(5, frameW * 0.011);
+  const bracketLen = Math.max(28, frameW * 0.07);
+  drawCornerBrackets(ctx, quad, frameW, color, bracketLen);
+
+  const r = Math.max(14, frameW * 0.022);
   for (const pt of quad) {
     ctx.beginPath();
     ctx.arc(pt.x, pt.y, r, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(15,23,42,0.55)';
+    ctx.fill();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = Math.max(3, frameW * 0.005);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(pt.x, pt.y, r * 0.35, 0, Math.PI * 2);
     ctx.fillStyle = color;
     ctx.fill();
   }
@@ -148,6 +231,10 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
   const isClosingRef = useRef(false);
   /** معرِّف مؤقّت انتهاء مهلة تشغيل الكاميرا — يُلغى فوراً عند الإغلاق اليدوي كي لا يُفعَّل بعد فوات الأوان. */
   const cameraTimeoutIdRef = useRef<number | null>(null);
+  /** إطار الزوايا الأربع الذي عدّله المستخدم يدوياً (سحب الزوايا) — يُستخدم عند الالتقاط بدل إعادة الاكتشاف. */
+  const manualQuadRef = useRef<Quad | null>(null);
+  const userAdjustedQuadRef = useRef(false);
+  const draggingCornerRef = useRef<number | null>(null);
 
   const [phase, setPhase] = useState<Phase>('starting');
   const [detectionStatus, setDetectionStatus] = useState<DetectionStatus>('none');
@@ -249,37 +336,35 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
     };
   }, [startCamera, stopStream]);
 
-  const finishCapture = useCallback(async (fullCanvas: HTMLCanvasElement) => {
+  const finishCapture = useCallback(async (fullCanvas: HTMLCanvasElement, liveQuad?: Quad | null) => {
     const vw = fullCanvas.width;
     const vh = fullCanvas.height;
 
-    // نُجري دائماً اكتشافاً دقيقاً وطازجاً على كامل دقة الإطار الملتقط في هذه
-    // اللحظة بالذات (خوارزمية يدوية خفيفة قائمة على Canvas 2D/ImageData: تحسين
-    // تباين محلي + عتبة Otsu + إغلاق مورفولوجي + فحص نسيج داخلي يرفض الكتل
-    // المشبوهة) — لا نعتمد إطلاقاً على آخر اكتشاف حي منخفض الدقة، فهو معرَّض
-    // لنفس مصدر الخطأ (خلفية قريبة الإضاءة من الورقة).
-    const precise = detectDocumentQuad(fullCanvas, vw, vh, getOrCreateCanvas(workCanvasRef), {
-      sampleWidth: CAPTURE_DETECTION_SAMPLE_WIDTH,
-      denoise: true,
-    });
+    let confident: boolean;
+    let quad: Quad;
 
-    // ثقة كاملة فقط عند نجاح اكتشاف دقيق وطازج لحواف حقيقية. غير ذلك، بدل
-    // استخدام إطار الكاميرا بكامله (حواف-إلى-حواف، وما يحمله من أرضية/خلفية
-    // واضحة عند تصوير طويل)، نتراجع لإطار مركزي احترازي أضيق، ونتجنّب كلياً
-    // تطبيق تحويل المسح الثنائي (أبيض/أسود) القاسي عليه — لأنه مصمَّم لصفحة
-    // بيضاء نظيفة فقط، وسيُنتج ضجيجاً كثيفاً فوق أي خلفية واقعية غير مسطّحة.
+    if (userAdjustedQuadRef.current && liveQuad) {
+      quad = liveQuad;
+      confident = true;
+    } else {
+      const precise = detectDocumentQuad(fullCanvas, vw, vh, getOrCreateCanvas(workCanvasRef), {
+        sampleWidth: CAPTURE_DETECTION_SAMPLE_WIDTH,
+        denoise: true,
+      });
+
+      confident = Boolean(precise);
+      quad = precise?.points ?? liveQuad ?? centeredFallbackQuad(vw, vh);
+    }
+
     if (isClosingRef.current) return;
 
-    const confident = Boolean(precise);
     confidentCaptureRef.current = confident;
-    const quad = precise?.points ?? centeredFallbackQuad(vw, vh);
 
     const { width, height } = computeOutputSize(quad);
     const scaleDown = Math.min(1, MAX_OUTPUT_DIMENSION / Math.max(width, height));
     const outW = Math.max(1, Math.round(width * scaleDown));
     const outH = Math.max(1, Math.round(height * scaleDown));
 
-    // تصحيح منظور يدوي خفيف (Canvas 2D خالص — Homography + أخذ عيّنة ثنائية الخطية).
     const corrected = warpPerspective(fullCanvas, quad, outW, outH);
 
     if (confident) {
@@ -310,7 +395,11 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
           const vh = video.videoHeight;
           if (!vw || !vh) throw new Error('تعذّر قراءة إطار الكاميرا.');
           const fullCanvas = drawFullFrame(video, vw, vh);
-          await finishCapture(fullCanvas);
+          const liveQuad =
+            manualQuadRef.current ??
+            smoothedQuadRef.current ??
+            centeredFallbackQuad(vw, vh);
+          await finishCapture(fullCanvas, liveQuad);
         } catch (err) {
           if (isClosingRef.current) return;
           console.error('[scanner] capture failed', err);
@@ -321,7 +410,79 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
     }, 30);
   }, [phase, finishCapture]);
 
-  // حلقة الاكتشاف الحي (Edge Detection) + رسم الإطار التفاعلي + الالتقاط التلقائي عند الثبات
+  const handleOverlayPointerDown = useCallback(
+    (e: React.PointerEvent<HTMLCanvasElement>) => {
+      e.stopPropagation();
+      const video = videoRef.current;
+      if (!video || phase !== 'live') return;
+
+      const vw = video.videoWidth;
+      const vh = video.videoHeight;
+      if (!vw || !vh) return;
+
+      const pt = mapClientToVideoCoords(e.clientX, e.clientY, video, vw, vh);
+      const quad =
+        manualQuadRef.current ??
+        smoothedQuadRef.current ??
+        centeredFallbackQuad(vw, vh);
+      const hitRadius = Math.max(40, vw * 0.065);
+
+      let bestIndex = -1;
+      let bestDist = hitRadius;
+      quad.forEach((p, i) => {
+        const d = Math.hypot(p.x - pt.x, p.y - pt.y);
+        if (d < bestDist) {
+          bestDist = d;
+          bestIndex = i;
+        }
+      });
+
+      if (bestIndex < 0) return;
+
+      draggingCornerRef.current = bestIndex;
+      manualQuadRef.current = quad.map((p) => ({ ...p })) as Quad;
+      userAdjustedQuadRef.current = true;
+      setDetectionStatus('manual');
+      e.currentTarget.setPointerCapture(e.pointerId);
+    },
+    [phase]
+  );
+
+  useEffect(() => {
+    if (phase !== 'live') return;
+
+    const onMove = (e: PointerEvent) => {
+      if (draggingCornerRef.current === null) return;
+      const video = videoRef.current;
+      const overlay = overlayCanvasRef.current;
+      if (!video || !overlay) return;
+
+      const vw = video.videoWidth;
+      const vh = video.videoHeight;
+      if (!vw || !vh || !manualQuadRef.current) return;
+
+      const pt = mapClientToVideoCoords(e.clientX, e.clientY, video, vw, vh);
+      const idx = draggingCornerRef.current;
+      const next = manualQuadRef.current.map((p, i) => (i === idx ? pt : p)) as Quad;
+      manualQuadRef.current = next;
+      drawOverlayQuad(overlay, vw, vh, next, 'manual');
+    };
+
+    const endDrag = () => {
+      draggingCornerRef.current = null;
+    };
+
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', endDrag);
+    window.addEventListener('pointercancel', endDrag);
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', endDrag);
+      window.removeEventListener('pointercancel', endDrag);
+    };
+  }, [phase]);
+
+  // حلقة الاكتشاف الحي (Edge Detection) + رسم الإطار التفاعلي بأربع زوايا
   useEffect(() => {
     if (phase !== 'live') return;
 
@@ -348,7 +509,7 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
       // بين الإطارات المتتالية — يُقلِّل الاهتزاز الناتج عن ضجيج بسيط في
       // الاكتشاف اللحظي دون التأثير على دقة القصّ النهائي (الذي يعتمد دوماً
       // على اكتشاف طازج عالي الدقة عند الالتقاط الفعلي، لا على هذا التنعيم).
-      if (detected) {
+      if (detected && draggingCornerRef.current === null && !userAdjustedQuadRef.current) {
         missStreakRef.current = 0;
         const prevSmoothed = smoothedQuadRef.current;
         smoothedQuadRef.current = !prevSmoothed
@@ -367,6 +528,9 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
       }
 
       const smoothedQuad = smoothedQuadRef.current;
+      const fallbackQuad = centeredFallbackQuad(vw, vh);
+      const displayQuad =
+        manualQuadRef.current ?? smoothedQuad ?? fallbackQuad;
 
       const history = historyRef.current;
       if (smoothedQuad) {
@@ -381,10 +545,32 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
         history.length >= STABILITY_FRAME_COUNT &&
         history.every((q, i) => i === 0 || quadsAreClose(q, history[i - 1], tolerance));
 
-      setDetectionStatus(smoothedQuad ? (stable ? 'stable' : 'searching') : 'none');
-      drawOverlayQuad(overlay, vw, vh, smoothedQuad, stable);
+      setDetectionStatus(
+        userAdjustedQuadRef.current
+          ? 'manual'
+          : smoothedQuad
+            ? stable
+              ? 'stable'
+              : 'searching'
+            : 'none'
+      );
 
-      if (stable && smoothedQuad && !autoCapturedRef.current) {
+      const overlayStyle: OverlayStyle = userAdjustedQuadRef.current
+        ? 'manual'
+        : smoothedQuad
+          ? stable
+            ? 'stable'
+            : 'detecting'
+          : 'fallback';
+
+      drawOverlayQuad(overlay, vw, vh, displayQuad, overlayStyle);
+
+      if (
+        ENABLE_AUTO_CAPTURE &&
+        stable &&
+        smoothedQuad &&
+        !autoCapturedRef.current
+      ) {
         autoCapturedRef.current = true;
         handleCapture();
       }
@@ -421,6 +607,9 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
     historyRef.current = [];
     smoothedQuadRef.current = null;
     missStreakRef.current = 0;
+    manualQuadRef.current = null;
+    userAdjustedQuadRef.current = false;
+    draggingCornerRef.current = null;
     setDetectionStatus('none');
     setErrorMessage(null);
 
@@ -471,6 +660,9 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
     historyRef.current = [];
     smoothedQuadRef.current = null;
     missStreakRef.current = 0;
+    manualQuadRef.current = null;
+    userAdjustedQuadRef.current = false;
+    draggingCornerRef.current = null;
     void startCamera({ cancelled: false });
   };
 
@@ -488,11 +680,13 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
   };
 
   const statusHint =
-    detectionStatus === 'stable'
-      ? '✅ ثبّت الكاميرا... جارٍ الالتقاط تلقائياً'
-      : detectionStatus === 'searching'
-        ? '🔍 حواف المستند مكتشفة، ثبّت الكاميرا قليلاً'
-        : '📄 وجّه الكاميرا نحو المستند أو الفاتورة';
+    detectionStatus === 'manual'
+      ? '✋ تم تعديل الزوايا — اضغط زر الالتقاط عند الجاهزية'
+      : detectionStatus === 'stable'
+        ? '✅ حواف المستند ثابتة — اضغط زر الالتقاط أو منتصف الشاشة'
+        : detectionStatus === 'searching'
+          ? '🔍 جارٍ تحديد حواف المستند (اسحب الزوايا للتعديل)'
+          : '📄 وجّه الكاميرا نحو المستند — ستظهر أربع زوايا للإطار';
 
   return (
     <div className="fixed inset-0 z-[70] bg-slate-950 flex flex-col" dir="rtl">
@@ -549,7 +743,10 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
         />
         <canvas
           ref={overlayCanvasRef}
-          className={`absolute inset-0 w-full h-full object-cover pointer-events-none ${phase === 'live' ? '' : 'invisible'}`}
+          onPointerDown={handleOverlayPointerDown}
+          className={`absolute inset-0 w-full h-full object-cover touch-none ${
+            phase === 'live' ? 'pointer-events-auto cursor-grab active:cursor-grabbing' : 'pointer-events-none invisible'
+          }`}
         />
 
         {phase === 'starting' && (
@@ -678,7 +875,7 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
                 onClick={handleConfirm}
                 className="flex-1 rounded-2xl bg-gradient-to-l from-cyan-400 to-cyan-500 py-3.5 text-slate-950 font-black text-sm shadow-lg shadow-cyan-500/20"
               >
-                ✅ اعتماد المستند وحفظه
+                💾 حفظ المستند
               </button>
             </div>
           </div>

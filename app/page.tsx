@@ -1397,22 +1397,24 @@ export default function Home() {
         )}
       </main>
 
-      {/* زر الاتصال بتصميم دائري كبير بارز في منتصف أسفل الشاشة مع علامة (+) بارزة — يفتح الماسح الضوئي الذكي */}
+      {/* زر الكاميرا / الماسح في منتصف أسفل الشاشة — يفتح ماسح المستندات بأربع زوايا (شبيه HP Smart) */}
       {customerLocalPhone.trim().length >= 1 && (
         <div className="fixed bottom-4 left-0 right-0 z-40 flex justify-center items-center pointer-events-none">
           <button
             type="button"
             onClick={() => setShowDocumentScanner(true)}
             disabled={isUploading}
-            className="pointer-events-auto w-24 h-24 rounded-full bg-gradient-to-tr from-emerald-500 via-teal-400 to-cyan-400 text-slate-950 font-black shadow-[0_0_40px_rgba(16,185,129,0.8)] border-4 border-slate-950 flex flex-col items-center justify-center cursor-pointer transition-transform transform active:scale-95 animate-bounce disabled:opacity-60 disabled:animate-none disabled:cursor-not-allowed"
-            title="مسح فاتورة أو مستند جديد بالماسح الضوئي الذكي"
+            className="pointer-events-auto w-24 h-24 rounded-full bg-gradient-to-tr from-emerald-500 via-teal-400 to-cyan-400 text-slate-950 font-black shadow-[0_0_40px_rgba(16,185,129,0.8)] border-4 border-slate-950 flex flex-col items-center justify-center cursor-pointer transition-transform transform active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
+            title="فتح الكاميرا ومسح فاتورة أو مستند (تحديد الحواف تلقائياً)"
           >
             {isUploading ? (
               <span className="h-7 w-7 rounded-full border-2 border-slate-950/30 border-t-slate-950 animate-spin" />
             ) : (
               <>
-                <span className="text-3xl font-black leading-none mb-0.5">+</span>
-                <span className="text-xs font-black tracking-tight text-slate-950">مسح</span>
+                <span className="text-4xl leading-none mb-0.5" aria-hidden>
+                  📷
+                </span>
+                <span className="text-xs font-black tracking-tight text-slate-950">كاميرا</span>
               </>
             )}
           </button>
