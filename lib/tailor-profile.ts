@@ -17,6 +17,9 @@ export type TailorProfileUpsert = {
 };
 
 const LOCAL_PROFILE_KEY = 'mistarh_tailor_profile';
+const LOCAL_AVATAR_PREFIX = 'mistarh_tailor_avatar:';
+
+export type AvatarPersistTarget = 'database' | 'local';
 
 /** لا تُرسل أبداً في Insert/Update — تُدار في PostgreSQL عبر DEFAULT فقط. */
 const FORBIDDEN_WRITE_COLUMNS = ['updated_at', 'created_at'] as const;
@@ -71,6 +74,53 @@ export function saveLocalTailorProfile(profile: Omit<TailorProfileUpsert, 'user_
   );
 }
 
+/** يحفظ رابط الصورة محلياً على الجهاز (احتياط عند غياب عمود avatar_url في Supabase). */
+export function saveLocalAvatarUrl(userId: string, avatarUrl: string): void {
+  if (typeof window === 'undefined' || !userId) return;
+  try {
+    localStorage.setItem(`${LOCAL_AVATAR_PREFIX}${userId}`, avatarUrl.trim());
+  } catch {
+    /* تجاهل: قد يمتلئ التخزين المحلي */
+  }
+}
+
+export function loadLocalAvatarUrl(userId: string): string | null {
+  if (typeof window === 'undefined' || !userId) return null;
+  try {
+    return localStorage.getItem(`${LOCAL_AVATAR_PREFIX}${userId}`);
+  } catch {
+    return null;
+  }
+}
+
+/** يدمج رابط الصورة من قاعدة البيانات مع النسخة المحلية الاحتياطية. */
+export function resolveAvatarUrl(dbUrl: string | null | undefined, userId: string): string {
+  const fromDb = dbUrl?.trim();
+  if (fromDb) return fromDb;
+  return loadLocalAvatarUrl(userId)?.trim() ?? '';
+}
+
+function enrichProfileWithLocalAvatar(
+  record: TailorProfileRecord | null,
+  userId: string
+): TailorProfileRecord | null {
+  if (!record) {
+    const localAvatar = loadLocalAvatarUrl(userId);
+    if (!localAvatar) return null;
+    return {
+      user_id: userId,
+      phone: null,
+      cloud_notes: null,
+      shop_name: null,
+      avatar_url: localAvatar,
+    };
+  }
+  const mergedAvatar = resolveAvatarUrl(record.avatar_url, userId);
+  return mergedAvatar !== (record.avatar_url?.trim() ?? '')
+    ? { ...record, avatar_url: mergedAvatar || null }
+    : record;
+}
+
 export async function fetchTailorProfile(
   supabase: SupabaseClient,
   userId: string
@@ -83,7 +133,10 @@ export async function fetchTailorProfile(
 
   if (!fullSelect.error) {
     const row = fullSelect.data as TailorProfileRecord | null;
-    return row ? { ...row, avatar_url: row.avatar_url ?? null } : null;
+    return enrichProfileWithLocalAvatar(
+      row ? { ...row, avatar_url: row.avatar_url ?? null } : null,
+      userId
+    );
   }
 
   if (
@@ -105,15 +158,19 @@ export async function fetchTailorProfile(
         if (minimal.error) {
           throw new Error(minimal.error.message);
         }
-        return minimal.data
-          ? { ...(minimal.data as TailorProfileRecord), shop_name: null, avatar_url: null }
-          : null;
+        return enrichProfileWithLocalAvatar(
+          minimal.data
+            ? { ...(minimal.data as TailorProfileRecord), shop_name: null, avatar_url: null }
+            : null,
+          userId
+        );
       }
       throw new Error(legacy.error.message);
     }
-    return legacy.data
-      ? { ...(legacy.data as TailorProfileRecord), avatar_url: null }
-      : null;
+    return enrichProfileWithLocalAvatar(
+      legacy.data ? { ...(legacy.data as TailorProfileRecord), avatar_url: null } : null,
+      userId
+    );
   }
 
   throw new Error(fullSelect.error.message);
@@ -214,23 +271,25 @@ export async function upsertTailorProfile(
 }
 
 /**
- * يحفظ رابط صورة الحساب بشكل دائم — يحدّث الصف الحالي أو يُنشئ ملفاً جديداً
- * إن لم يكن موجوداً بعد (حتى بدون رقم هاتف مسجّل).
+ * يحفظ رابط صورة الحساب — يحاول Supabase أولاً، ويخزّن دائماً نسخة محلية
+ * احتياطية حتى لا يختفي الأفاتار بعد تحديث الصفحة إن غاب عمود avatar_url.
  */
 export async function persistTailorAvatarUrl(
   supabase: SupabaseClient,
   userId: string,
   avatarUrl: string,
   profile: Omit<TailorProfileUpsert, 'user_id' | 'avatar_url'>
-): Promise<void> {
+): Promise<AvatarPersistTarget> {
   const trimmedUrl = avatarUrl.trim();
   if (!trimmedUrl) {
     throw new Error('رابط صورة الحساب فارغ.');
   }
 
+  saveLocalAvatarUrl(userId, trimmedUrl);
+
   const { exists, error: existsError } = await profileRowExists(supabase, userId);
   if (existsError && !isTimestampSchemaCacheError(existsError)) {
-    throw new Error(existsError.message);
+    return 'local';
   }
 
   if (exists) {
@@ -240,33 +299,64 @@ export async function persistTailorAvatarUrl(
       .eq('user_id', userId);
 
     if (!avatarOnlyError) {
-      return;
+      return 'database';
     }
 
-    if (isMissingSchemaColumn(avatarOnlyError, 'avatar_url')) {
-      throw new Error(
-        'عمود avatar_url غير موجود في tailor_profiles. نفّذ migration من supabase/migrations/20260730180000_tailor_profiles_avatar_url.sql ثم أعد المحاولة.'
-      );
-    }
-
-    if (!isTimestampSchemaCacheError(avatarOnlyError)) {
-      throw new Error(avatarOnlyError.message);
+    if (
+      isMissingSchemaColumn(avatarOnlyError, 'avatar_url') ||
+      isTimestampSchemaCacheError(avatarOnlyError)
+    ) {
+      return 'local';
     }
   }
 
-  await upsertTailorProfile(supabase, {
-    user_id: userId,
-    phone: profile.phone,
-    cloud_notes: profile.cloud_notes,
-    shop_name: profile.shop_name,
-    avatar_url: trimmedUrl,
-  });
+  try {
+    await upsertTailorProfile(supabase, {
+      user_id: userId,
+      phone: profile.phone,
+      cloud_notes: profile.cloud_notes,
+      shop_name: profile.shop_name,
+      avatar_url: trimmedUrl,
+    });
+
+    const { data: verifyRow, error: verifyError } = await supabase
+      .from('tailor_profiles')
+      .select('avatar_url')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (verifyError && isMissingSchemaColumn(verifyError, 'avatar_url')) {
+      return 'local';
+    }
+
+    const savedInDb = Boolean(
+      verifyRow &&
+        typeof verifyRow === 'object' &&
+        'avatar_url' in verifyRow &&
+        String((verifyRow as { avatar_url?: string }).avatar_url ?? '').trim() === trimmedUrl
+    );
+
+    return savedInDb ? 'database' : 'local';
+  } catch {
+    try {
+      await upsertTailorProfile(supabase, {
+        user_id: userId,
+        phone: profile.phone,
+        cloud_notes: profile.cloud_notes,
+        shop_name: profile.shop_name,
+      });
+    } catch {
+      /* الملف المحلي كافٍ — الصورة مرفوعة إلى Storage */
+    }
+    return 'local';
+  }
 }
 
 /** يدمج avatar_url في ملف الخياط المحلي (وضع التجربة). */
 export function persistLocalTailorAvatarUrl(
   avatarUrl: string,
-  profile: Omit<TailorProfileUpsert, 'user_id' | 'avatar_url'>
+  profile: Omit<TailorProfileUpsert, 'user_id' | 'avatar_url'>,
+  userId = 'guest-local-user'
 ): void {
   const existing = loadLocalTailorProfile();
   saveLocalTailorProfile({
@@ -275,4 +365,5 @@ export function persistLocalTailorAvatarUrl(
     shop_name: profile.shop_name ?? existing?.shop_name ?? '',
     avatar_url: avatarUrl,
   });
+  saveLocalAvatarUrl(userId, avatarUrl);
 }

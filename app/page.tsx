@@ -62,6 +62,7 @@ import {
   loadLocalTailorProfile,
   persistLocalTailorAvatarUrl,
   persistTailorAvatarUrl,
+  saveLocalAvatarUrl,
   saveLocalTailorProfile,
   upsertTailorProfile,
 } from '@/lib/tailor-profile';
@@ -463,6 +464,9 @@ export default function Home() {
         shop_name: shopName,
         avatar_url: tailorAvatarUrl || undefined,
       });
+      if (tailorAvatarUrl.trim()) {
+        saveLocalAvatarUrl(user.id, tailorAvatarUrl);
+      }
       setIsTailorRegistered(true);
       setSettingsFeedback({
         type: 'success',
@@ -512,18 +516,24 @@ export default function Home() {
     try {
       if (!supabase || !user?.id) {
         const dataUrl = await blobToDataUrl(blob);
-        persistLocalTailorAvatarUrl(dataUrl, snapshot);
+        persistLocalTailorAvatarUrl(dataUrl, snapshot, user?.id ?? 'guest-local-user');
         setTailorAvatarUrl(dataUrl);
         clearPendingAvatar();
-        setAvatarFeedback({ type: 'success', message: 'تم حفظ الصورة الشخصية محلياً.' });
+        setAvatarFeedback({ type: 'success', message: 'تم حفظ الصورة الشخصية بنجاح.' });
         return;
       }
 
       const publicUrl = await uploadTailorAvatar(supabase, user.id, blob);
-      await persistTailorAvatarUrl(supabase, user.id, publicUrl, snapshot);
+      const persistTarget = await persistTailorAvatarUrl(supabase, user.id, publicUrl, snapshot);
       setTailorAvatarUrl(publicUrl);
       clearPendingAvatar();
-      setAvatarFeedback({ type: 'success', message: 'تم حفظ الصورة الشخصية بنجاح.' });
+      setAvatarFeedback({
+        type: 'success',
+        message:
+          persistTarget === 'database'
+            ? 'تم حفظ الصورة الشخصية بنجاح.'
+            : 'تم حفظ الصورة الشخصية على هذا الجهاز.',
+      });
     } catch (saveError) {
       setAvatarFeedback({
         type: 'error',
