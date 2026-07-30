@@ -2,7 +2,7 @@
 
 /** لوحة مسطرة 2030 — دخول (بريد/كلمة مرور/OTP)، إعدادات الخياط، ودفتر العملاء. */
 
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import type { EmailOtpType } from '@supabase/supabase-js';
 import { mapAuthErrorToArabic } from '@/lib/auth-errors';
@@ -48,7 +48,7 @@ import {
   InvoiceSaveProgressRing,
   type InvoiceSaveUiPhase,
 } from '@/components/invoices/InvoiceSaveProgressRing';
-import { AccountMenuPanel, AccountMenuTrigger } from '@/components/account/AccountMenuPanel';
+import { AccountMenuPanel, AccountMenuTrigger, type AvatarSaveFeedback } from '@/components/account/AccountMenuPanel';
 import { fileToAvatarJpegBlob, uploadTailorAvatar } from '@/lib/upload-tailor-avatar';
 import { useIdleLogout } from '@/lib/use-idle-logout';
 import {
@@ -60,6 +60,8 @@ import {
 import {
   fetchTailorProfile,
   loadLocalTailorProfile,
+  persistLocalTailorAvatarUrl,
+  persistTailorAvatarUrl,
   saveLocalTailorProfile,
   upsertTailorProfile,
 } from '@/lib/tailor-profile';
@@ -101,7 +103,12 @@ export default function Home() {
   const [tailorLocalPhone, setTailorLocalPhone] = useState('');
   const [tailorShopName, setTailorShopName] = useState('');
   const [tailorAvatarUrl, setTailorAvatarUrl] = useState('');
-  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [pendingAvatarPreview, setPendingAvatarPreview] = useState<string | null>(null);
+  const [hasPendingAvatar, setHasPendingAvatar] = useState(false);
+  const pendingAvatarBlobRef = useRef<Blob | null>(null);
+  const pendingPreviewUrlRef = useRef<string | null>(null);
+  const [savingAvatar, setSavingAvatar] = useState(false);
+  const [avatarFeedback, setAvatarFeedback] = useState<AvatarSaveFeedback>(null);
   const [cloudNotes, setCloudNotes] = useState('');
   const [isTailorRegistered, setIsTailorRegistered] = useState(false);
   const [checkingTailor, setCheckingTailor] = useState(false);
@@ -274,6 +281,33 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    return () => {
+      if (pendingPreviewUrlRef.current) {
+        URL.revokeObjectURL(pendingPreviewUrlRef.current);
+      }
+    };
+  }, []);
+
+  const clearPendingAvatar = useCallback(() => {
+    if (pendingPreviewUrlRef.current) {
+      URL.revokeObjectURL(pendingPreviewUrlRef.current);
+      pendingPreviewUrlRef.current = null;
+    }
+    pendingAvatarBlobRef.current = null;
+    setPendingAvatarPreview(null);
+    setHasPendingAvatar(false);
+  }, []);
+
+  const tailorProfileSnapshot = useCallback(
+    () => ({
+      phone: tailorLocalPhone.trim() ? `${tailorCountryCode}${tailorLocalPhone}` : '',
+      cloud_notes: cloudNotes,
+      shop_name: tailorShopName.trim(),
+    }),
+    [tailorCountryCode, tailorLocalPhone, cloudNotes, tailorShopName]
+  );
+
+  useEffect(() => {
     if (!user || checkingTailor || authBootstrapping) return;
     const needsProfile = !isTailorRegistered;
     if (!needsProfile || profileOnboardingShownRef.current) return;
@@ -290,6 +324,8 @@ export default function Home() {
     setTailorShopName('');
     setTailorAvatarUrl('');
     setCloudNotes('');
+    clearPendingAvatar();
+    setAvatarFeedback(null);
     profileOnboardingShownRef.current = false;
     setShowMenu(false);
     if (idleReason) {
@@ -445,45 +481,62 @@ export default function Home() {
     setSavingSettings(false);
   };
 
-  const handleAvatarSelect = async (file: File) => {
-    setUploadingAvatar(true);
-    setSettingsFeedback(null);
+  const handleAvatarFilePick = async (file: File) => {
+    setAvatarFeedback(null);
     try {
       const jpegBlob = await fileToAvatarJpegBlob(file);
+      if (pendingPreviewUrlRef.current) {
+        URL.revokeObjectURL(pendingPreviewUrlRef.current);
+      }
+      pendingAvatarBlobRef.current = jpegBlob;
+      const previewUrl = URL.createObjectURL(jpegBlob);
+      pendingPreviewUrlRef.current = previewUrl;
+      setPendingAvatarPreview(previewUrl);
+      setHasPendingAvatar(true);
+    } catch (pickError) {
+      setAvatarFeedback({
+        type: 'error',
+        message: pickError instanceof Error ? pickError.message : 'تعذّر قراءة الصورة.',
+      });
+    }
+  };
 
-      if (!supabase || !user) {
-        const dataUrl = await blobToDataUrl(jpegBlob);
+  const handleSaveAvatar = async () => {
+    const blob = pendingAvatarBlobRef.current;
+    if (!blob) return;
+
+    setSavingAvatar(true);
+    setAvatarFeedback(null);
+    const snapshot = tailorProfileSnapshot();
+
+    try {
+      if (!supabase || !user?.id) {
+        const dataUrl = await blobToDataUrl(blob);
+        persistLocalTailorAvatarUrl(dataUrl, snapshot);
         setTailorAvatarUrl(dataUrl);
-        saveLocalTailorProfile({
-          phone: tailorLocalPhone.trim() ? `${tailorCountryCode}${tailorLocalPhone}` : '',
-          cloud_notes: cloudNotes,
-          shop_name: tailorShopName.trim(),
-          avatar_url: dataUrl,
-        });
+        clearPendingAvatar();
+        setAvatarFeedback({ type: 'success', message: 'تم حفظ الصورة الشخصية محلياً.' });
         return;
       }
 
-      const publicUrl = await uploadTailorAvatar(supabase, user.id, jpegBlob);
+      const publicUrl = await uploadTailorAvatar(supabase, user.id, blob);
+      await persistTailorAvatarUrl(supabase, user.id, publicUrl, snapshot);
       setTailorAvatarUrl(publicUrl);
-
-      if (isTailorRegistered && tailorLocalPhone.trim()) {
-        await upsertTailorProfile(supabase, {
-          user_id: user.id,
-          phone: `${tailorCountryCode}${tailorLocalPhone}`,
-          cloud_notes: cloudNotes,
-          shop_name: tailorShopName.trim(),
-          avatar_url: publicUrl,
-        });
-      }
-    } catch (avatarError) {
-      setSettingsFeedback({
+      clearPendingAvatar();
+      setAvatarFeedback({ type: 'success', message: 'تم حفظ الصورة الشخصية بنجاح.' });
+    } catch (saveError) {
+      setAvatarFeedback({
         type: 'error',
-        message: avatarError instanceof Error ? avatarError.message : 'تعذّر رفع صورة الحساب.',
+        message: saveError instanceof Error ? saveError.message : 'تعذّر حفظ صورة الحساب.',
       });
-      window.setTimeout(() => setSettingsFeedback(null), 4000);
     } finally {
-      setUploadingAvatar(false);
+      setSavingAvatar(false);
     }
+  };
+
+  const handleDiscardPendingAvatar = () => {
+    clearPendingAvatar();
+    setAvatarFeedback(null);
   };
 
   const switchAuthMode = (signUp: boolean) => {
@@ -1518,8 +1571,13 @@ export default function Home() {
             tailorCountryCode={tailorCountryCode}
             tailorLocalPhone={tailorLocalPhone}
             avatarUrl={tailorAvatarUrl}
-            uploadingAvatar={uploadingAvatar}
-            onAvatarSelect={(file) => void handleAvatarSelect(file)}
+            pendingAvatarPreview={pendingAvatarPreview}
+            hasPendingAvatar={hasPendingAvatar}
+            savingAvatar={savingAvatar}
+            avatarFeedback={avatarFeedback}
+            onAvatarFilePick={(file) => void handleAvatarFilePick(file)}
+            onSaveAvatar={() => void handleSaveAvatar()}
+            onDiscardPendingAvatar={handleDiscardPendingAvatar}
             onOpenSettings={() => {
               setShowMenu(false);
               setShowTailorProfileModal(true);

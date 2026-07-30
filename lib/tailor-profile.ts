@@ -212,3 +212,67 @@ export async function upsertTailorProfile(
 
   throw new Error('تعذّر حفظ إعدادات الخياط بعد عدة محاولات.');
 }
+
+/**
+ * يحفظ رابط صورة الحساب بشكل دائم — يحدّث الصف الحالي أو يُنشئ ملفاً جديداً
+ * إن لم يكن موجوداً بعد (حتى بدون رقم هاتف مسجّل).
+ */
+export async function persistTailorAvatarUrl(
+  supabase: SupabaseClient,
+  userId: string,
+  avatarUrl: string,
+  profile: Omit<TailorProfileUpsert, 'user_id' | 'avatar_url'>
+): Promise<void> {
+  const trimmedUrl = avatarUrl.trim();
+  if (!trimmedUrl) {
+    throw new Error('رابط صورة الحساب فارغ.');
+  }
+
+  const { exists, error: existsError } = await profileRowExists(supabase, userId);
+  if (existsError && !isTimestampSchemaCacheError(existsError)) {
+    throw new Error(existsError.message);
+  }
+
+  if (exists) {
+    const { error: avatarOnlyError } = await supabase
+      .from('tailor_profiles')
+      .update({ avatar_url: trimmedUrl })
+      .eq('user_id', userId);
+
+    if (!avatarOnlyError) {
+      return;
+    }
+
+    if (isMissingSchemaColumn(avatarOnlyError, 'avatar_url')) {
+      throw new Error(
+        'عمود avatar_url غير موجود في tailor_profiles. نفّذ migration من supabase/migrations/20260730180000_tailor_profiles_avatar_url.sql ثم أعد المحاولة.'
+      );
+    }
+
+    if (!isTimestampSchemaCacheError(avatarOnlyError)) {
+      throw new Error(avatarOnlyError.message);
+    }
+  }
+
+  await upsertTailorProfile(supabase, {
+    user_id: userId,
+    phone: profile.phone,
+    cloud_notes: profile.cloud_notes,
+    shop_name: profile.shop_name,
+    avatar_url: trimmedUrl,
+  });
+}
+
+/** يدمج avatar_url في ملف الخياط المحلي (وضع التجربة). */
+export function persistLocalTailorAvatarUrl(
+  avatarUrl: string,
+  profile: Omit<TailorProfileUpsert, 'user_id' | 'avatar_url'>
+): void {
+  const existing = loadLocalTailorProfile();
+  saveLocalTailorProfile({
+    phone: profile.phone || existing?.phone || '',
+    cloud_notes: profile.cloud_notes ?? existing?.cloud_notes ?? '',
+    shop_name: profile.shop_name ?? existing?.shop_name ?? '',
+    avatar_url: avatarUrl,
+  });
+}
