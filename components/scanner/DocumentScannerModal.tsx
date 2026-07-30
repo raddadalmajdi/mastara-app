@@ -1,11 +1,16 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { computeOutputSize, warpPerspective, type Quad } from '@/lib/document-scanner/geometry';
-import { enhanceDocumentCanvas } from '@/lib/document-scanner/enhance';
+import { type Quad } from '@/lib/document-scanner/geometry';
+import { processDocumentCanvas } from '@/lib/document-scanner/process-document';
 import { canvasToDocumentPdfBlob } from '@/lib/document-scanner/to-pdf';
 import { CornerAdjuster, detectDocumentEdgesAuto } from './CornerAdjuster';
-import { CAMERA_START_TIMEOUT_MS, MAX_OUTPUT_DIMENSION, SCAN_JPEG_QUALITY } from '@/lib/document-scanner/constants';
+import {
+  CAMERA_START_TIMEOUT_MS,
+  MAX_COVERAGE_RATIO,
+  MIN_COVERAGE_RATIO,
+  SCAN_JPEG_QUALITY,
+} from '@/lib/document-scanner/constants';
 import type { DocumentScanResult } from '@/lib/document-scanner/scan-result';
 
 export type { DocumentScanResult } from '@/lib/document-scanner/scan-result';
@@ -22,8 +27,8 @@ type DocumentScannerModalProps = {
  *   capturing → لحظة قصيرة فور الالتقاط (شارة "Processing..." فوق المعاينة الحية).
  *   edges     → شاشة "كشف الحواف" الثابتة: صورة عالية الدقة + شبه منحرف أزرق
  *               قابل للسحب بحرية + أزرار Auto/Full + زر التالي.
- *   processing→ القصّ الهندسي (Perspective) والتحويل لأبيض/أسود بعد "التالي".
- *   preview   → مراجعة نهائية قبل الحفظ (اعتماد/إعادة الالتقاط).
+ *   processing→ القصّ الهندسي (Perspective) وتحسين ألوان المستند قبل المعاينة.
+ *   preview   → مراجعة نهائية + Auto Crop قبل الحفظ.
  *   uploading → رفع PDF + JPEG وحفظ السجل.
  */
 type Phase = 'starting' | 'live' | 'capturing' | 'edges' | 'processing' | 'preview' | 'uploading' | 'error';
@@ -90,7 +95,7 @@ function CornerGuide({ position }: { position: 'tl' | 'tr' | 'bl' | 'br' }) {
  * ماسح ضوئي ذكي للمستندات/الفواتير بتجربة مطابقة لتطبيق HP Smart: التقاط
  * سريع بإطار إرشادي ثابت، فشاشة "كشف حواف" مخصَّصة لضبط شبه منحرف أزرق
  * بأربع مقابض قابلة للسحب بدقة فوق صورة ثابتة عالية الدقة، ثم قصّ هندسي
- * وتحويل أبيض/أسود، فمعاينة نهائية واعتماد، فرفع PDF+JPEG إلى Supabase.
+ * وتحسين ألوان (Document Enhance)، فمعاينة نهائية واعتماد، فرفع PDF+JPEG.
  */
 export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModalProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -114,8 +119,9 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
   const [rawDims, setRawDims] = useState<{ width: number; height: number } | null>(null);
   const [edgesQuad, setEdgesQuad] = useState<Quad | null>(null);
   const [edgesMode, setEdgesMode] = useState<EdgesMode>('auto');
-  /** مؤشر تحميل بسيط أثناء تشغيل زر «Auto» صراحةً في شاشة كشف الحواف. */
+  /** مؤشر تحميل أثناء Auto Crop في المعاينة أو شاشة الحواف. */
   const [isAutoDetecting, setIsAutoDetecting] = useState(false);
+  const [previewToast, setPreviewToast] = useState<string | null>(null);
   /** رسالة تنبيه قصيرة (تختفي تلقائياً) عند فشل الاكتشاف التلقائي — يبقى شبه المنحرف الحالي كما هو دون تغيير. */
   const [edgesToast, setEdgesToast] = useState<string | null>(null);
 
@@ -125,6 +131,12 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
     const id = window.setTimeout(() => setEdgesToast(null), 3800);
     return () => window.clearTimeout(id);
   }, [edgesToast]);
+
+  useEffect(() => {
+    if (!previewToast) return;
+    const id = window.setTimeout(() => setPreviewToast(null), 3800);
+    return () => window.clearTimeout(id);
+  }, [previewToast]);
 
   const stopStream = useCallback(() => {
     streamRef.current?.getTracks().forEach((track) => track.stop());
@@ -225,7 +237,22 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
     setEdgesMode('auto');
     setIsAutoDetecting(false);
     setEdgesToast(null);
+    setPreviewToast(null);
   }, []);
+
+  const applyProcessedPreview = useCallback((quad: Quad) => {
+    const rawCanvas = rawCaptureCanvasRef.current;
+    if (!rawCanvas || isClosingRef.current) return false;
+
+    const corrected = processDocumentCanvas(rawCanvas, quad);
+    correctedCanvasRef.current = corrected;
+    setPreviewDataUrl(corrected.toDataURL('image/jpeg', SCAN_JPEG_QUALITY));
+    setEdgesQuad(quad);
+    return true;
+  }, []);
+
+  const shouldAutoSkipToPreview = (coverage: number): boolean =>
+    coverage >= MIN_COVERAGE_RATIO && coverage <= MAX_COVERAGE_RATIO;
 
   /** ينتقل لشاشة "كشف الحواف" من إطار خام (كاميرا أو صورة من المعرض): اكتشاف أولي سريع لتحديد شبه منحرف بادئ، ثم عرض الصورة كاملة الدقة قابلة للتعديل اليدوي. */
   const beginEdgesFromRawCanvas = useCallback((rawCanvas: HTMLCanvasElement) => {
@@ -239,13 +266,32 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
 
     setEdgesMode(result ? 'auto' : 'full');
     setEdgesQuad(result?.quad ?? fullFrameQuad(vw, vh));
-    setEdgesToast(result ? null : 'تعذّر العثور على حواف واضحة تلقائياً — تم اعتماد الصورة كاملة، اضبط الزوايا يدوياً أو اضغط Auto مجدداً.');
+    setEdgesToast(result ? null : 'تعذّر العثور على حواف واضحة تلقائياً — تم اعتماد الصورة كاملة، اضبط الزوايا يدوياً أو اضغط Auto Crop مجدداً.');
     setRawDims({ width: vw, height: vh });
     setRawPreviewUrl(rawCanvas.toDataURL('image/jpeg', 0.92));
 
     if (isClosingRef.current) return;
+
+    if (result && shouldAutoSkipToPreview(result.coverage)) {
+      setPhase('processing');
+      window.setTimeout(() => {
+        try {
+          if (isClosingRef.current) return;
+          if (applyProcessedPreview(result.quad)) {
+            setPhase('preview');
+          } else {
+            setPhase('edges');
+          }
+        } catch (err) {
+          console.error('[scanner] auto crop failed', err);
+          setPhase('edges');
+        }
+      }, 30);
+      return;
+    }
+
     setPhase('edges');
-  }, []);
+  }, [applyProcessedPreview]);
 
   const handleCapture = useCallback(() => {
     const video = videoRef.current;
@@ -291,14 +337,7 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
     }
   };
 
-  /**
-   * زر «Auto» في شاشة كشف الحواف: يعيد تشغيل الاكتشاف التلقائي على الصورة
-   * الخام كاملة الدقة. يعرض مؤشر تحميل بسيط على الزر أثناء التشغيل (مهلة
-   * قصيرة صريحة تضمن ظهوره فعلياً ولو للحظة، فالاكتشاف نفسه سريع جداً)،
-   * ويُحدِّث المقابض الزرقاء فوراً عند النجاح. عند الفشل: يبقى شبه المنحرف
-   * الحالي كما هو دون أي تغيير (لا يُستبدَل بالصورة كاملة تلقائياً)، مع
-   * إشعار قصير يوجّه المستخدم للتعديل اليدوي أو إعادة المحاولة.
-   */
+  /** زر «Auto Crop» — إعادة اكتشاف الحواف على الصورة الخام. */
   const handleAutoDetectEdges = useCallback(() => {
     const rawCanvas = rawCaptureCanvasRef.current;
     if (!rawCanvas || isAutoDetecting) return;
@@ -345,7 +384,7 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
     setPhase(streamRef.current ? 'live' : 'error');
   }, [resetEdgesState]);
 
-  /** زر «التالي»: قصّ هندسي حقيقي (Perspective Correction) وفق شبه المنحرف المضبوط فعلياً، ثم تحويل أبيض/أسود عالي التباين. */
+  /** زر «التالي»: قصّ منظور + تحسين ألوان المستند (Document Enhance). */
   const handleConfirmEdges = useCallback(() => {
     const rawCanvas = rawCaptureCanvasRef.current;
     const quad = edgesQuad;
@@ -356,19 +395,9 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
     window.setTimeout(() => {
       try {
         if (isClosingRef.current) return;
-
-        const { width, height } = computeOutputSize(quad);
-        const scaleDown = Math.min(1, MAX_OUTPUT_DIMENSION / Math.max(width, height));
-        const outW = Math.max(1, Math.round(width * scaleDown));
-        const outH = Math.max(1, Math.round(height * scaleDown));
-
-        const corrected = warpPerspective(rawCanvas, quad, outW, outH);
-        enhanceDocumentCanvas(corrected);
-
-        if (isClosingRef.current) return;
-
-        correctedCanvasRef.current = corrected;
-        setPreviewDataUrl(corrected.toDataURL('image/jpeg', SCAN_JPEG_QUALITY));
+        if (!applyProcessedPreview(quad)) {
+          throw new Error('تعذّرت معالجة المستند.');
+        }
         setPhase('preview');
       } catch (err) {
         if (isClosingRef.current) return;
@@ -377,7 +406,43 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
         setPhase('edges');
       }
     }, 30);
-  }, [edgesQuad]);
+  }, [edgesQuad, applyProcessedPreview]);
+
+  /** Auto Crop من شاشة المعاينة — إعادة اكتشاف الحواف ومعالجة الصورة. */
+  const handlePreviewAutoCrop = useCallback(() => {
+    const rawCanvas = rawCaptureCanvasRef.current;
+    if (!rawCanvas || isAutoDetecting) return;
+
+    setIsAutoDetecting(true);
+    setPreviewToast(null);
+
+    window.setTimeout(() => {
+      try {
+        if (isClosingRef.current) return;
+        const result = detectDocumentEdgesAuto(
+          rawCanvas,
+          rawCanvas.width,
+          rawCanvas.height,
+          getOrCreateCanvas(workCanvasRef)
+        );
+        if (result) {
+          setEdgesMode('auto');
+          if (applyProcessedPreview(result.quad)) {
+            setPreviewToast('تم قصّ المستند تلقائياً.');
+          }
+        } else {
+          setPreviewToast('تعذّر العثور على حواف واضحة — جرّب «ضبط القص» يدوياً.');
+        }
+      } finally {
+        if (!isClosingRef.current) setIsAutoDetecting(false);
+      }
+    }, 250);
+  }, [isAutoDetecting, applyProcessedPreview]);
+
+  const handleAdjustCropFromPreview = useCallback(() => {
+    setPreviewToast(null);
+    setPhase('edges');
+  }, []);
 
   const handleRetake = () => {
     setPreviewDataUrl(null);
@@ -401,9 +466,7 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
           SCAN_JPEG_QUALITY
         );
       });
-      // PNG (ضغط بلا فقد) دائماً هنا: المستند دوماً محوَّل فعلياً لأبيض/أسود
-      // (مناطق مسطّحة واسعة تضغط ممتازاً وبلا تشويش حواف) بعد شاشة كشف
-      // الحواف الصريحة — لا حاجة بعد الآن لمسار "غير واثق" منفصل.
+      // PNG (ضغط بلا فقد): المستند مُحسَّن بالألوان مع خلفية بيضاء وتباين عالٍ.
       const pdfBlob = await canvasToDocumentPdfBlob(canvas, { preferPng: true, highQuality: true });
 
       await onConfirm({
@@ -565,7 +628,7 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
         {phase === 'processing' && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-slate-950/80">
             <span className="h-10 w-10 rounded-full border-2 border-emerald-500/30 border-t-emerald-400 animate-spin" />
-            <p className="text-sm text-emerald-300 font-bold">جاري القصّ والتحسين...</p>
+            <p className="text-sm text-emerald-300 font-bold">جاري القصّ وتحسين الألوان...</p>
           </div>
         )}
 
@@ -597,14 +660,17 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
         )}
 
         {phase === 'preview' && previewDataUrl && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 p-4 pt-20 bg-slate-950">
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 p-4 pt-20 bg-slate-950">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={previewDataUrl}
               alt="معاينة المستند الممسوح"
-              className="max-h-[70vh] w-auto max-w-full rounded-2xl border-2 border-cyan-400/60 shadow-[0_25px_70px_-15px_rgba(8,145,178,0.5)] object-contain bg-white"
+              className="max-h-[62vh] w-auto max-w-full rounded-2xl border-2 border-cyan-400/60 shadow-[0_25px_70px_-15px_rgba(8,145,178,0.5)] object-contain bg-white"
             />
-            <p className="text-sm text-slate-300 text-center font-bold">تأكد من وضوح المستند قبل الاعتماد</p>
+            {previewToast && (
+              <p className="text-xs font-bold text-amber-200 text-center px-4">{previewToast}</p>
+            )}
+            <p className="text-sm text-slate-300 text-center font-bold">تأكد من وضوح المستند والألوان قبل الاعتماد</p>
           </div>
         )}
 
@@ -664,7 +730,7 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
                   ✨
                 </span>
               )}
-              <span className="text-xs font-bold">{isAutoDetecting ? '...جارِ الاكتشاف' : 'Auto'}</span>
+              <span className="text-xs font-bold">{isAutoDetecting ? '...جارِ القص' : 'Auto Crop'}</span>
             </button>
             <button
               type="button"
@@ -691,6 +757,31 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
                 {errorMessage}
               </div>
             )}
+            <div className="flex gap-2 justify-center">
+              <button
+                type="button"
+                onClick={handlePreviewAutoCrop}
+                disabled={isAutoDetecting}
+                aria-busy={isAutoDetecting}
+                className="flex flex-col items-center gap-1 rounded-2xl px-4 py-2.5 border bg-slate-900/70 border-white/10 text-white/90 text-xs font-bold disabled:opacity-60"
+              >
+                {isAutoDetecting ? (
+                  <span className="h-4 w-4 rounded-full border-2 border-cyan-300/40 border-t-cyan-300 animate-spin" aria-hidden />
+                ) : (
+                  <span aria-hidden>✨</span>
+                )}
+                Auto Crop
+              </button>
+              <button
+                type="button"
+                onClick={handleAdjustCropFromPreview}
+                disabled={isAutoDetecting}
+                className="flex flex-col items-center gap-1 rounded-2xl px-4 py-2.5 border bg-slate-900/70 border-white/10 text-white/90 text-xs font-bold disabled:opacity-60"
+              >
+                <span aria-hidden>✂️</span>
+                ضبط القص
+              </button>
+            </div>
             <div className="flex gap-3">
               <button
                 type="button"
