@@ -5,6 +5,7 @@ export type TailorProfileRecord = {
   phone: string | null;
   cloud_notes: string | null;
   shop_name: string | null;
+  avatar_url: string | null;
 };
 
 export type TailorProfileUpsert = {
@@ -12,6 +13,7 @@ export type TailorProfileUpsert = {
   phone: string;
   cloud_notes: string;
   shop_name: string;
+  avatar_url?: string;
 };
 
 const LOCAL_PROFILE_KEY = 'mistarh_tailor_profile';
@@ -20,7 +22,7 @@ const LOCAL_PROFILE_KEY = 'mistarh_tailor_profile';
 const FORBIDDEN_WRITE_COLUMNS = ['updated_at', 'created_at'] as const;
 
 /** قد تغيب في جداول قديمة أو في Schema Cache قبل التحديث. */
-const OPTIONAL_WRITE_COLUMNS = ['shop_name'] as const;
+const OPTIONAL_WRITE_COLUMNS = ['shop_name', 'avatar_url'] as const;
 
 export function isMissingSchemaColumn(error: PostgrestError, column: string): boolean {
   const msg = (error.message ?? '').toLowerCase();
@@ -39,12 +41,16 @@ function isTimestampSchemaCacheError(error: PostgrestError): boolean {
 export function buildTailorProfileWriteRow(
   payload: TailorProfileUpsert & Partial<Record<(typeof FORBIDDEN_WRITE_COLUMNS)[number], string>>
 ): Record<string, string> {
-  return {
+  const row: Record<string, string> = {
     user_id: payload.user_id,
     phone: payload.phone,
     cloud_notes: payload.cloud_notes,
     shop_name: payload.shop_name,
   };
+  if (payload.avatar_url?.trim()) {
+    row.avatar_url = payload.avatar_url.trim();
+  }
+  return row;
 }
 
 export function loadLocalTailorProfile(): Partial<TailorProfileUpsert> | null {
@@ -71,25 +77,42 @@ export async function fetchTailorProfile(
 ): Promise<TailorProfileRecord | null> {
   const fullSelect = await supabase
     .from('tailor_profiles')
-    .select('user_id, phone, cloud_notes, shop_name')
+    .select('user_id, phone, cloud_notes, shop_name, avatar_url')
     .eq('user_id', userId)
     .maybeSingle();
 
   if (!fullSelect.error) {
-    return fullSelect.data as TailorProfileRecord | null;
+    const row = fullSelect.data as TailorProfileRecord | null;
+    return row ? { ...row, avatar_url: row.avatar_url ?? null } : null;
   }
 
-  if (isMissingSchemaColumn(fullSelect.error, 'shop_name')) {
+  if (
+    isMissingSchemaColumn(fullSelect.error, 'shop_name') ||
+    isMissingSchemaColumn(fullSelect.error, 'avatar_url')
+  ) {
     const legacy = await supabase
       .from('tailor_profiles')
-      .select('user_id, phone, cloud_notes')
+      .select('user_id, phone, cloud_notes, shop_name')
       .eq('user_id', userId)
       .maybeSingle();
     if (legacy.error) {
+      if (isMissingSchemaColumn(legacy.error, 'shop_name')) {
+        const minimal = await supabase
+          .from('tailor_profiles')
+          .select('user_id, phone, cloud_notes')
+          .eq('user_id', userId)
+          .maybeSingle();
+        if (minimal.error) {
+          throw new Error(minimal.error.message);
+        }
+        return minimal.data
+          ? { ...(minimal.data as TailorProfileRecord), shop_name: null, avatar_url: null }
+          : null;
+      }
       throw new Error(legacy.error.message);
     }
     return legacy.data
-      ? { ...(legacy.data as TailorProfileRecord), shop_name: null }
+      ? { ...(legacy.data as TailorProfileRecord), avatar_url: null }
       : null;
   }
 

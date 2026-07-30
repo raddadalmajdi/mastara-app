@@ -48,6 +48,8 @@ import {
   InvoiceSaveProgressRing,
   type InvoiceSaveUiPhase,
 } from '@/components/invoices/InvoiceSaveProgressRing';
+import { AccountMenuPanel, AccountMenuTrigger } from '@/components/account/AccountMenuPanel';
+import { fileToAvatarJpegBlob, uploadTailorAvatar } from '@/lib/upload-tailor-avatar';
 import { useIdleLogout } from '@/lib/use-idle-logout';
 import {
   lookupTailorCustomerByPhone,
@@ -98,6 +100,8 @@ export default function Home() {
   const [tailorCountryCode, setTailorCountryCode] = useState('965');
   const [tailorLocalPhone, setTailorLocalPhone] = useState('');
   const [tailorShopName, setTailorShopName] = useState('');
+  const [tailorAvatarUrl, setTailorAvatarUrl] = useState('');
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [cloudNotes, setCloudNotes] = useState('');
   const [isTailorRegistered, setIsTailorRegistered] = useState(false);
   const [checkingTailor, setCheckingTailor] = useState(false);
@@ -201,6 +205,7 @@ export default function Home() {
         setIsTailorRegistered(false);
         setCloudNotes('');
         setTailorShopName('');
+        setTailorAvatarUrl('');
         setCheckingTailor(false);
         setLoading(false);
         setAuthBootstrapping(false);
@@ -224,6 +229,7 @@ export default function Home() {
         setIsTailorRegistered(false);
         setCloudNotes('');
         setTailorShopName('');
+        setTailorAvatarUrl('');
         setCheckingTailor(false);
         setLoading(false);
         setAuthBootstrapping(false);
@@ -282,6 +288,7 @@ export default function Home() {
     setUser(null);
     setIsTailorRegistered(false);
     setTailorShopName('');
+    setTailorAvatarUrl('');
     setCloudNotes('');
     profileOnboardingShownRef.current = false;
     setShowMenu(false);
@@ -318,6 +325,9 @@ export default function Home() {
       if (local?.shop_name) {
         setTailorShopName(local.shop_name);
       }
+      if (local?.avatar_url) {
+        setTailorAvatarUrl(local.avatar_url);
+      }
       if (local?.cloud_notes) {
         setCloudNotes(local.cloud_notes);
       }
@@ -350,12 +360,18 @@ export default function Home() {
         } else {
           setTailorShopName('');
         }
+        if (data.avatar_url) {
+          setTailorAvatarUrl(String(data.avatar_url));
+        } else {
+          setTailorAvatarUrl('');
+        }
         if (data.cloud_notes) {
           setCloudNotes(data.cloud_notes);
         }
       } else {
         setIsTailorRegistered(false);
         setTailorShopName('');
+        setTailorAvatarUrl('');
       }
     } catch (fetchError) {
       if (process.env.NODE_ENV === 'development') {
@@ -388,6 +404,7 @@ export default function Home() {
         phone: fullPhone,
         cloud_notes: cloudNotes,
         shop_name: shopName,
+        avatar_url: tailorAvatarUrl || undefined,
       });
       setIsTailorRegistered(true);
       setSettingsFeedback({
@@ -408,6 +425,7 @@ export default function Home() {
         phone: fullPhone,
         cloud_notes: cloudNotes,
         shop_name: shopName,
+        avatar_url: tailorAvatarUrl || undefined,
       });
       setIsTailorRegistered(true);
       setSettingsFeedback({
@@ -425,6 +443,47 @@ export default function Home() {
       });
     }
     setSavingSettings(false);
+  };
+
+  const handleAvatarSelect = async (file: File) => {
+    setUploadingAvatar(true);
+    setSettingsFeedback(null);
+    try {
+      const jpegBlob = await fileToAvatarJpegBlob(file);
+
+      if (!supabase || !user) {
+        const dataUrl = await blobToDataUrl(jpegBlob);
+        setTailorAvatarUrl(dataUrl);
+        saveLocalTailorProfile({
+          phone: tailorLocalPhone.trim() ? `${tailorCountryCode}${tailorLocalPhone}` : '',
+          cloud_notes: cloudNotes,
+          shop_name: tailorShopName.trim(),
+          avatar_url: dataUrl,
+        });
+        return;
+      }
+
+      const publicUrl = await uploadTailorAvatar(supabase, user.id, jpegBlob);
+      setTailorAvatarUrl(publicUrl);
+
+      if (isTailorRegistered && tailorLocalPhone.trim()) {
+        await upsertTailorProfile(supabase, {
+          user_id: user.id,
+          phone: `${tailorCountryCode}${tailorLocalPhone}`,
+          cloud_notes: cloudNotes,
+          shop_name: tailorShopName.trim(),
+          avatar_url: publicUrl,
+        });
+      }
+    } catch (avatarError) {
+      setSettingsFeedback({
+        type: 'error',
+        message: avatarError instanceof Error ? avatarError.message : 'تعذّر رفع صورة الحساب.',
+      });
+      window.setTimeout(() => setSettingsFeedback(null), 4000);
+    } finally {
+      setUploadingAvatar(false);
+    }
   };
 
   const switchAuthMode = (signUp: boolean) => {
@@ -1449,71 +1508,30 @@ export default function Home() {
         </div>
 
         <div className="relative" ref={menuRef}>
-          <button
-            onClick={() => setShowMenu(!showMenu)}
-            className="w-11 h-11 rounded-xl bg-cyan-500 text-slate-950 font-black flex items-center justify-center text-xl shadow-md"
-          >
-            م
-          </button>
+          <AccountMenuTrigger avatarUrl={tailorAvatarUrl} onClick={() => setShowMenu(!showMenu)} />
 
-          {showMenu && (
-            <div className="absolute left-0 mt-2 w-72 sm:w-80 bg-slate-900 border border-cyan-500/30 rounded-2xl shadow-2xl p-4 z-50 space-y-3">
-              <div className="border-b border-slate-800 pb-2">
-                <span className="text-sm text-cyan-400">الحساب:</span>
-                <p className="text-sm text-white truncate">{user?.email || 'ضيف'}</p>
-                {tailorShopName.trim() ? (
-                  <p className="text-xs text-slate-300 mt-1 truncate">{tailorShopName.trim()}</p>
-                ) : null}
-              </div>
-              <div className="border-b border-slate-800 pb-2 flex justify-between items-center gap-2">
-                <div className="min-w-0">
-                  <span className="text-sm text-cyan-400">هاتف الخياط:</span>
-                  <p className="text-sm text-white font-bold tnum truncate" dir="ltr">
-                    {isTailorRegistered ? `+${tailorCountryCode}${tailorLocalPhone}` : 'غير مسجل'}
-                  </p>
-                </div>
-                <button
-                  onClick={() => { setShowMenu(false); setShowTailorProfileModal(true); }}
-                  className="bg-cyan-500/10 text-cyan-400 text-sm px-3 py-2 rounded-lg border border-cyan-500/30"
-                >
-                  الإعدادات
-                </button>
-              </div>
-              <button
-                onClick={handleLogout}
-                className="w-full bg-rose-500/10 text-rose-400 text-sm py-3 rounded-xl border border-rose-500/30 font-bold"
-              >
-                خروج / تسجيل الدخول بحساب آخر
-              </button>
-            </div>
-          )}
+          <AccountMenuPanel
+            open={showMenu}
+            email={user?.email}
+            tailorShopName={tailorShopName}
+            isTailorRegistered={isTailorRegistered}
+            tailorCountryCode={tailorCountryCode}
+            tailorLocalPhone={tailorLocalPhone}
+            avatarUrl={tailorAvatarUrl}
+            uploadingAvatar={uploadingAvatar}
+            onAvatarSelect={(file) => void handleAvatarSelect(file)}
+            onOpenSettings={() => {
+              setShowMenu(false);
+              setShowTailorProfileModal(true);
+            }}
+            onLogout={() => void handleLogout()}
+          />
         </div>
         </div>
       </header>
 
       {/* المحتوى الرئيسي */}
       <main className="flex-1 max-w-lg sm:max-w-2xl lg:max-w-4xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 space-y-4 sm:space-y-6">
-
-        {/* معلومات الخياط ورقم العميل: عمود واحد على الجوال، عمودان جنباً إلى جنب على الشاشات الأوسع */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-stretch">
-        {/* معلومات الخياط المبسطة */}
-        <div className="bg-slate-900 border border-cyan-500/20 p-4 rounded-2xl flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <span className="text-sm text-cyan-400 font-bold">لوحة الخياط</span>
-            {tailorShopName.trim() ? (
-              <p className="text-sm text-white font-bold truncate">{tailorShopName.trim()}</p>
-            ) : null}
-            <p className="text-sm text-white font-bold tnum truncate" dir="ltr">
-              {isTailorRegistered ? `+${tailorCountryCode}${tailorLocalPhone}` : '⚠️ أضف رقم هاتفك'}
-            </p>
-          </div>
-          <button
-            onClick={() => setShowTailorProfileModal(true)}
-            className="shrink-0 bg-cyan-500 text-slate-950 text-sm font-bold px-3.5 py-2.5 rounded-xl shadow"
-          >
-            {isTailorRegistered ? 'الإعدادات' : 'إضافة الرقم'}
-          </button>
-        </div>
 
         {/* رقم العميل + الاسم — إدخال مباشر */}
         <section className="bg-slate-900 border border-cyan-500/40 p-4 rounded-3xl space-y-3 shadow-xl">
@@ -1623,7 +1641,6 @@ export default function Home() {
             </button>
           )}
         </section>
-        </div>
 
         {/* عرض الفواتير: الفاتورة الحديثة (الأحدث) ضخمة في المقدمة يعقبها الأرشيف */}
         {customerLocalPhone.length >= 1 && customerInvoices.length > 0 && (
@@ -1816,6 +1833,23 @@ export default function Home() {
             </div>
             
             <form onSubmit={handleSaveTailorProfile} className="space-y-4">
+              <div className="flex items-center gap-3 rounded-2xl border border-slate-800 bg-slate-950/60 p-3">
+                {tailorAvatarUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={tailorAvatarUrl}
+                    alt="معاينة صورة الحساب"
+                    className="h-14 w-14 shrink-0 rounded-2xl border border-cyan-500/30 object-cover"
+                  />
+                ) : (
+                  <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-cyan-500/20 text-lg font-black text-cyan-300">
+                    م
+                  </div>
+                )}
+                <p className="text-xs leading-relaxed text-slate-400">
+                  غيّر صورة الحساب أو الشعار من قائمة أيقونة «م» في الأعلى، أو احفظ الإعدادات بعد إضافة رقمك.
+                </p>
+              </div>
               {settingsFeedback && (
                 <div
                   role="alert"
