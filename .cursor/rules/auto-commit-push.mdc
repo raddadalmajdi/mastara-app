@@ -1,0 +1,21 @@
+---
+description: Commit and push to main after user-requested code updates
+alwaysApply: true
+---
+
+# Git: commit & push after requested updates
+
+When the user asks you to implement, fix, or change code in this repo:
+
+1. Complete the requested work first (build/lint if the change is non-trivial).
+2. Unless the user explicitly says **not** to commit (e.g. "بدون commit", "don't push"), run **commit + push to `origin/main`** when there are staged-worthy changes.
+3. Follow the repo git safety protocol: no `--no-verify`, no force-push to `main`, no amending pushed commits unless allowed.
+4. Use a concise commit message focused on **why** (1–2 sentences), via HEREDOC.
+5. After push, confirm the commit hash and that `origin/main` is up to date.
+
+Skip commit/push when:
+- The user only asked a question or review (no code changes).
+- There are no file changes to commit.
+- The user explicitly forbids committing.
+
+Remote: `https://github.com/raddadalmajdi/mastara-app.git` (branch `main`).
