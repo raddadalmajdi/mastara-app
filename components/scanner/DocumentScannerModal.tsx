@@ -35,7 +35,9 @@ type Phase = 'starting' | 'live' | 'capturing' | 'edges' | 'processing' | 'previ
 type EdgesMode = 'auto' | 'full' | 'manual';
 /** ارتفاع محجوز أسفل شريط العنوان وآخر الشاشة في مرحلة كشف الحواف (px تقريباً). */
 const EDGES_SAFE_TOP_PX = 68;
-const EDGES_SAFE_BOTTOM_PX = 128;
+const EDGES_SAFE_BOTTOM_PX = 200;
+/** مدة ظهور تنبيه فشل الاكتشاف (ms) — قصيرة ولا تُثبَّت على الشاشة. */
+const EDGES_TOAST_DURATION_MS = 2000;
 
 function readFileAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -125,10 +127,10 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
   /** رسالة تنبيه قصيرة (تختفي تلقائياً) عند فشل الاكتشاف التلقائي — يبقى شبه المنحرف الحالي كما هو دون تغيير. */
   const [edgesToast, setEdgesToast] = useState<string | null>(null);
 
-  // إخفاء تلقائي لتنبيه فشل الاكتشاف بعد مدة قصيرة كي لا يبقى معلَّقاً على الشاشة.
+  // إخفاء تنبيه فشل الاكتشاف بعد ثانيتين — أو فور نجاح الضبط/السحب اليدوي.
   useEffect(() => {
     if (!edgesToast) return;
-    const id = window.setTimeout(() => setEdgesToast(null), 3800);
+    const id = window.setTimeout(() => setEdgesToast(null), EDGES_TOAST_DURATION_MS);
     return () => window.clearTimeout(id);
   }, [edgesToast]);
 
@@ -352,6 +354,7 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
         if (result) {
           setEdgesMode('auto');
           setEdgesQuad(result.quad);
+          setEdgesToast(null);
         } else {
           setEdgesToast('تعذّر العثور على حواف واضحة تلقائياً. جرّب إضاءة أفضل أو خلفية داكنة موحّدة، أو اضبط الزوايا يدوياً.');
         }
@@ -510,7 +513,7 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
         شريط علوي: موضعه `fixed` (لا `absolute`) وبأعلى ترتيب طبقات (z-[100])
         عمداً — مستقل تماماً عن أي طبقة تحميل/معالجة داخل منطقة الكاميرا،
         فيبقى زر الإغلاق/الرجوع ظاهراً وقابلاً للنقر فوق كل شيء دوماً. في
-        شاشة "كشف الحواف" فقط يتحوّل الشريط إلى (رجوع ← عنوان ← التالي) بأسلوب HP Smart.
+        شاشة "كشف الحواف" يظهر زر الرجوع والعنوان فقط — زر «التالي» في الأسفل.
       */}
       <div className="fixed top-0 inset-x-0 z-[100] flex items-center justify-between px-4 py-3 bg-gradient-to-b from-black/70 to-transparent pointer-events-none">
         {isEdgesPhase ? (
@@ -535,17 +538,7 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
 
         <span className="text-sm sm:text-base font-bold text-white/90">{isEdgesPhase ? 'كشف الحواف' : 'مسح مستند'}</span>
 
-        {isEdgesPhase ? (
-          <button
-            type="button"
-            onClick={handleConfirmEdges}
-            className="pointer-events-auto rounded-full bg-blue-500 text-white px-5 h-11 text-sm font-black shadow-lg shadow-blue-500/30 active:scale-95 transition-transform"
-          >
-            التالي
-          </button>
-        ) : (
-          <span className="w-11" aria-hidden />
-        )}
+        <span className="w-11" aria-hidden />
       </div>
 
       {/* منطقة الكاميرا/كشف الحواف/المعاينة */}
@@ -617,7 +610,7 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
                 className="absolute inset-x-4 flex justify-center pointer-events-none z-10"
                 style={{ top: EDGES_SAFE_TOP_PX + 8 }}
               >
-                <div className="pointer-events-auto max-w-sm rounded-2xl border border-amber-400/40 bg-amber-500/15 backdrop-blur px-3.5 py-2.5 text-center shadow-lg">
+                <div className="pointer-events-none max-w-sm rounded-2xl border border-amber-400/40 bg-amber-500/15 backdrop-blur px-3.5 py-2.5 text-center shadow-lg">
                   <p className="text-xs sm:text-sm font-bold text-amber-100">⚠️ {edgesToast}</p>
                 </div>
               </div>
@@ -711,42 +704,52 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
         )}
 
         {phase === 'edges' && (
-          <div className="flex items-center justify-center gap-4">
+          <div className="flex flex-col items-center gap-3 w-full max-w-sm mx-auto">
             <button
               type="button"
-              onClick={handleAutoDetectEdges}
+              onClick={handleConfirmEdges}
               disabled={isAutoDetecting}
-              aria-busy={isAutoDetecting}
-              className={`flex flex-col items-center gap-1.5 rounded-2xl px-5 py-2.5 border transition-colors disabled:opacity-70 ${
-                edgesMode === 'auto'
-                  ? 'bg-blue-500/20 border-blue-400/60 text-blue-200'
-                  : 'bg-slate-900/70 border-white/10 text-white/80'
-              }`}
+              className="w-full rounded-2xl bg-blue-500 text-white py-3.5 text-sm font-black shadow-lg shadow-blue-500/30 active:scale-[0.98] transition-transform disabled:opacity-60"
             >
-              {isAutoDetecting ? (
-                <span className="h-4 w-4 rounded-full border-2 border-blue-300/40 border-t-blue-300 animate-spin" aria-hidden />
-              ) : (
+              التالي
+            </button>
+            <div className="flex items-center justify-center gap-4 w-full">
+              <button
+                type="button"
+                onClick={handleAutoDetectEdges}
+                disabled={isAutoDetecting}
+                aria-busy={isAutoDetecting}
+                className={`flex flex-1 flex-col items-center gap-1.5 rounded-2xl px-4 py-2.5 border transition-colors disabled:opacity-70 ${
+                  edgesMode === 'auto'
+                    ? 'bg-blue-500/20 border-blue-400/60 text-blue-200'
+                    : 'bg-slate-900/70 border-white/10 text-white/80'
+                }`}
+              >
+                {isAutoDetecting ? (
+                  <span className="h-4 w-4 rounded-full border-2 border-blue-300/40 border-t-blue-300 animate-spin" aria-hidden />
+                ) : (
+                  <span className="text-lg" aria-hidden>
+                    ✨
+                  </span>
+                )}
+                <span className="text-xs font-bold">{isAutoDetecting ? '...جارِ القص' : 'Auto Crop'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleFullFrameEdges}
+                disabled={isAutoDetecting}
+                className={`flex flex-1 flex-col items-center gap-1.5 rounded-2xl px-4 py-2.5 border transition-colors disabled:opacity-70 ${
+                  edgesMode === 'full'
+                    ? 'bg-blue-500/20 border-blue-400/60 text-blue-200'
+                    : 'bg-slate-900/70 border-white/10 text-white/80'
+                }`}
+              >
                 <span className="text-lg" aria-hidden>
-                  ✨
+                  ⤢
                 </span>
-              )}
-              <span className="text-xs font-bold">{isAutoDetecting ? '...جارِ القص' : 'Auto Crop'}</span>
-            </button>
-            <button
-              type="button"
-              onClick={handleFullFrameEdges}
-              disabled={isAutoDetecting}
-              className={`flex flex-col items-center gap-1.5 rounded-2xl px-5 py-2.5 border transition-colors disabled:opacity-70 ${
-                edgesMode === 'full'
-                  ? 'bg-blue-500/20 border-blue-400/60 text-blue-200'
-                  : 'bg-slate-900/70 border-white/10 text-white/80'
-              }`}
-            >
-              <span className="text-lg" aria-hidden>
-                ⤢
-              </span>
-              <span className="text-xs font-bold">Full</span>
-            </button>
+                <span className="text-xs font-bold">Full</span>
+              </button>
+            </div>
           </div>
         )}
 
