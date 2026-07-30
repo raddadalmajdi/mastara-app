@@ -1,4 +1,4 @@
-import type { SupabaseClient } from '@supabase/supabase-js';
+import type { PostgrestError, SupabaseClient } from '@supabase/supabase-js';
 
 export type TailorCustomerRecord = {
   id: string;
@@ -8,6 +8,8 @@ export type TailorCustomerRecord = {
 };
 
 const LOCAL_CUSTOMERS_KEY = 'mistarh_local_customers';
+
+const FORBIDDEN_WRITE_COLUMNS = ['updated_at', 'created_at'] as const;
 
 type LocalCustomer = { phone: string; customer_name: string };
 
@@ -25,8 +27,36 @@ function writeLocalCustomers(list: LocalCustomer[]): void {
   localStorage.setItem(LOCAL_CUSTOMERS_KEY, JSON.stringify(list));
 }
 
-function normalizeStoredPhone(fullPhone: string): string {
+export function normalizeStoredPhone(fullPhone: string): string {
   return fullPhone.replace(/\D/g, '');
+}
+
+/** أشكال محتملة لرقم الجوال في الفواتير والدفتر (96550123456، +965…، 50123456). */
+export function phoneMatchVariants(countryCode: string, localPhone: string): string[] {
+  const local = localPhone.replace(/\D/g, '');
+  const cc = countryCode.replace(/\D/g, '');
+  const full = `${cc}${local}`;
+  const variants = new Set<string>();
+  if (local) variants.add(local);
+  if (full) variants.add(full);
+  if (cc && local) variants.add(`${cc}${local}`);
+  if (cc && local) variants.add(`+${cc}${local}`);
+  return [...variants];
+}
+
+export function phonesMatch(a: string, b: string): boolean {
+  const da = normalizeStoredPhone(a);
+  const db = normalizeStoredPhone(b);
+  if (!da || !db) return false;
+  if (da === db) return true;
+  if (da.endsWith(db) || db.endsWith(da)) return true;
+  return false;
+}
+
+function isMissingSchemaColumn(error: PostgrestError, column: string): boolean {
+  const msg = (error.message ?? '').toLowerCase();
+  const col = column.toLowerCase();
+  return msg.includes(col) || (error.code === 'PGRST204' && msg.includes(col));
 }
 
 async function assertTailorOwnsSession(
@@ -50,7 +80,7 @@ export async function lookupTailorCustomerByPhone(
   if (!normalized) return null;
 
   if (!supabase) {
-    const hit = readLocalCustomers().find((c) => c.phone.replace(/\D/g, '') === normalized);
+    const hit = readLocalCustomers().find((c) => normalizeStoredPhone(c.phone) === normalized);
     return hit
       ? {
           id: `local-${normalized}`,
@@ -80,6 +110,41 @@ export async function lookupTailorCustomerByPhone(
   return data as TailorCustomerRecord | null;
 }
 
+async function writeTailorCustomerRow(
+  supabase: SupabaseClient,
+  tailorUserId: string,
+  phone: string,
+  customerName: string
+): Promise<PostgrestError | null> {
+  const row = {
+    tailor_user_id: tailorUserId,
+    phone,
+    customer_name: customerName,
+  };
+
+  const existing = await supabase
+    .from('tailor_customers')
+    .select('id')
+    .eq('tailor_user_id', tailorUserId)
+    .eq('phone', phone)
+    .maybeSingle();
+
+  if (existing.error && !isMissingSchemaColumn(existing.error, 'updated_at')) {
+    return existing.error;
+  }
+
+  if (existing.data?.id) {
+    const { error } = await supabase
+      .from('tailor_customers')
+      .update({ customer_name: customerName })
+      .eq('id', existing.data.id);
+    return error;
+  }
+
+  const { error } = await supabase.from('tailor_customers').insert(row);
+  return error;
+}
+
 export async function upsertTailorCustomer(
   supabase: SupabaseClient | null,
   tailorUserId: string,
@@ -91,7 +156,7 @@ export async function upsertTailorCustomer(
   if (!phone || !name) return;
 
   if (!supabase) {
-    const list = readLocalCustomers().filter((c) => c.phone.replace(/\D/g, '') !== phone);
+    const list = readLocalCustomers().filter((c) => normalizeStoredPhone(c.phone) !== phone);
     list.unshift({ phone, customer_name: name });
     writeLocalCustomers(list);
     return;
@@ -99,15 +164,11 @@ export async function upsertTailorCustomer(
 
   await assertTailorOwnsSession(supabase, tailorUserId);
 
-  const { error } = await supabase.from('tailor_customers').upsert(
-    {
-      tailor_user_id: tailorUserId,
-      phone,
-      customer_name: name,
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: 'tailor_user_id,phone' }
-  );
+  let error = await writeTailorCustomerRow(supabase, tailorUserId, phone, name);
+
+  if (error && FORBIDDEN_WRITE_COLUMNS.some((col) => isMissingSchemaColumn(error!, col))) {
+    error = await writeTailorCustomerRow(supabase, tailorUserId, phone, name);
+  }
 
   if (error) {
     if (error.message.includes('tailor_customers') || error.code === 'PGRST204') {

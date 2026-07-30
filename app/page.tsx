@@ -35,13 +35,17 @@ import {
 } from '@/lib/upload-scanned-invoice';
 import { DocumentScannerModal } from '@/components/scanner/DocumentScannerModal';
 import type { DocumentScanResult } from '@/lib/document-scanner/scan-result';
-import { PasskeySignInButton, RegisterPasskeyButton } from '@/components/auth/PasskeyAuthButtons';
 import {
   InvoiceSaveProgressRing,
   type InvoiceSaveUiPhase,
 } from '@/components/invoices/InvoiceSaveProgressRing';
 import { useIdleLogout } from '@/lib/use-idle-logout';
-import { lookupTailorCustomerByPhone, upsertTailorCustomer } from '@/lib/tailor-customers';
+import {
+  lookupTailorCustomerByPhone,
+  phoneMatchVariants,
+  phonesMatch,
+  upsertTailorCustomer,
+} from '@/lib/tailor-customers';
 import {
   fetchTailorProfile,
   loadLocalTailorProfile,
@@ -102,6 +106,7 @@ export default function Home() {
   const [customerBookStatus, setCustomerBookStatus] = useState<
     'idle' | 'searching' | 'known' | 'new'
   >('idle');
+  const [customerNamePanelOpen, setCustomerNamePanelOpen] = useState(false);
   const [customerInvoices, setCustomerInvoices] = useState<any[]>([]);
   const customerLookupTimerRef = useRef<number | null>(null);
   const profileOnboardingShownRef = useRef(false);
@@ -811,6 +816,7 @@ export default function Home() {
           if (hit) {
             setCustomerDisplayName(hit.customer_name);
             setCustomerBookStatus('known');
+            setCustomerNamePanelOpen(false);
           } else {
             setCustomerDisplayName('');
             setCustomerBookStatus('new');
@@ -822,14 +828,19 @@ export default function Home() {
           setCustomerBookStatus('new');
         }
       })();
-    }, 320);
+    }, 200);
   };
 
   const handleCustomerPhoneInput = (val: string) => {
     const cleanVal = val.replace(/\D/g, '');
     setCustomerLocalPhone(cleanVal);
-    setCustomerDisplayName('');
-    setCustomerBookStatus('idle');
+    setCustomerNamePanelOpen(false);
+    if (cleanVal.length < 3) {
+      setCustomerDisplayName('');
+      setCustomerBookStatus('idle');
+    } else {
+      setCustomerBookStatus('searching');
+    }
     if (cleanVal.length >= 1) {
       void searchInvoices(cleanVal, customerCountryCode);
       scheduleCustomerDirectoryLookup(cleanVal, customerCountryCode);
@@ -839,10 +850,30 @@ export default function Home() {
     }
   };
 
+  const handleAddCustomerNameClick = () => {
+    setCustomerNamePanelOpen(true);
+  };
+
+  const handleOpenScannerForCustomer = () => {
+    if (!customerLocalPhone.trim()) {
+      return;
+    }
+    if (customerBookStatus === 'new' && !customerDisplayName.trim()) {
+      setCustomerNamePanelOpen(true);
+      return;
+    }
+    setShowDocumentScanner(true);
+  };
+
   const handleCountryCodeChange = (newCode: string) => {
     setCustomerCountryCode(newCode);
-    setCustomerDisplayName('');
-    setCustomerBookStatus('idle');
+    setCustomerNamePanelOpen(false);
+    if (customerLocalPhone.length >= 3) {
+      setCustomerBookStatus('searching');
+    } else {
+      setCustomerDisplayName('');
+      setCustomerBookStatus('idle');
+    }
     if (customerLocalPhone.length >= 1) {
       void searchInvoices(customerLocalPhone, newCode);
       scheduleCustomerDirectoryLookup(customerLocalPhone, newCode);
@@ -850,17 +881,14 @@ export default function Home() {
   };
 
   const searchInvoices = async (localPhone: string, cCode: string) => {
-    const fullSearch = `${cCode}${localPhone}`.replace(/\D/g, '');
-    const fullSearchWithCode = `${cCode}${localPhone}`;
+    const variants = phoneMatchVariants(cCode, localPhone);
 
     setIsSearchingInvoices(true);
     try {
       if (!supabase) {
         const savedInvoices = JSON.parse(localStorage.getItem('mistarh_local_invoices') || '[]');
-        const filtered = savedInvoices.filter(
-          (inv: { customer_phone?: string }) =>
-            String(inv.customer_phone ?? '').replace(/\D/g, '') === fullSearch ||
-            inv.customer_phone === fullSearchWithCode
+        const filtered = savedInvoices.filter((inv: { customer_phone?: string }) =>
+          variants.some((variant) => phonesMatch(String(inv.customer_phone ?? ''), variant))
         );
         setCustomerInvoices(filtered);
         const initialMessages: { [key: string]: string } = {};
@@ -873,22 +901,28 @@ export default function Home() {
 
       const { data, error } = await supabase
         .from('invoices')
-        .select('*')
+        .select('id, user_id, customer_phone, image_url, pdf_url, created_at')
         .eq('user_id', user.id)
-        .in('customer_phone', [fullSearchWithCode, fullSearch])
         .order('created_at', { ascending: false });
 
-      if (!error && data) {
-        setCustomerInvoices(data);
-        const initialMessages: { [key: string]: string } = {};
-        data.forEach((inv) => {
-          initialMessages[inv.id] = `تم! شكراً لتعاملك معنا، نسعد بخدمتك. رابط مستندك (PDF): ${invoiceShareDocumentUrl(inv)}`;
-        });
-        setWhatsappMessages(initialMessages);
-      } else if (!error) {
+      if (error) {
+        if (process.env.NODE_ENV === 'development') {
+          console.warn('[invoices] search failed', error);
+        }
         setCustomerInvoices([]);
         setWhatsappMessages({});
+        return;
       }
+
+      const filtered = (data ?? []).filter((inv) =>
+        variants.some((variant) => phonesMatch(String(inv.customer_phone ?? ''), variant))
+      );
+      setCustomerInvoices(filtered);
+      const initialMessages: { [key: string]: string } = {};
+      filtered.forEach((inv) => {
+        initialMessages[inv.id] = `تم! شكراً لتعاملك معنا، نسعد بخدمتك. رابط مستندك (PDF): ${invoiceShareDocumentUrl(inv)}`;
+      });
+      setWhatsappMessages(initialMessages);
     } finally {
       setIsSearchingInvoices(false);
     }
@@ -1261,19 +1295,6 @@ export default function Home() {
                     سنرسل رمز تحقق مكوّناً من 6 أرقام إلى بريدك لتسجيل الدخول دون كلمة مرور.
                   </p>
                 )}
-                {!isSignUp && loginMethod === 'password' && (
-                  <PasskeySignInButton
-                    email={email}
-                    disabled={authSubmitting}
-                    onSuccess={() => {
-                      setAuthFeedback({
-                        type: 'success',
-                        message: 'تم تسجيل الدخول بالبصمة بنجاح.',
-                      });
-                    }}
-                    onError={(message) => setAuthFeedback({ type: 'error', message })}
-                  />
-                )}
                 <button
                   type="submit"
                   disabled={authSubmitting}
@@ -1461,30 +1482,51 @@ export default function Home() {
                 <span className="text-xs text-slate-500 font-bold shrink-0">جاري البحث...</span>
               ) : customerBookStatus === 'known' && customerDisplayName ? (
                 <p className="text-base font-bold text-white truncate sm:max-w-[40%] sm:text-right">
-                  {customerDisplayName}
+                  👤 {customerDisplayName}
                 </p>
+              ) : customerBookStatus === 'new' && customerLocalPhone.length >= 3 ? (
+                <button
+                  type="button"
+                  onClick={handleAddCustomerNameClick}
+                  className="shrink-0 flex items-center gap-1.5 bg-cyan-500/15 border border-cyan-500/40 text-cyan-300 text-xs sm:text-sm font-bold px-3 py-2 rounded-xl"
+                >
+                  <span className="text-base leading-none">+</span>
+                  <span>إضافة اسم شخص</span>
+                </button>
               ) : null}
             </div>
           </div>
-          {customerBookStatus === 'new' && customerLocalPhone.length >= 3 && (
+          {customerNamePanelOpen && (
             <div className="space-y-1.5">
-              <label className="text-sm text-cyan-400 font-bold block">اسم العميل (جديد)</label>
+              <label className="text-sm text-cyan-400 font-bold block">اسم العميل</label>
               <input
                 type="text"
                 value={customerDisplayName}
                 onChange={(e) => setCustomerDisplayName(e.target.value)}
-                placeholder=""
+                placeholder="اكتب اسم العميل..."
+                autoFocus={customerNamePanelOpen}
                 className="w-full rounded-xl bg-slate-950 border border-slate-800 p-3.5 text-base font-bold text-white"
               />
+              {customerDisplayName.trim() && (
+                <button
+                  type="button"
+                  onClick={handleOpenScannerForCustomer}
+                  className="w-full bg-emerald-500/15 border border-emerald-500/40 text-emerald-300 text-sm font-bold py-2.5 rounded-xl"
+                >
+                  📷 فتح الكاميرا وحفظ مستند لهذا العميل
+                </button>
+              )}
             </div>
           )}
           {customerLocalPhone.length >= 1 && (
             <p className="text-[11px] text-slate-500 font-bold">
-              {isSearchingInvoices
-                ? 'جاري تحميل فواتير هذا الرقم...'
+              {isSearchingInvoices || customerBookStatus === 'searching'
+                ? 'جاري البحث في سجل العملاء والفواتير...'
                 : customerInvoices.length > 0
-                  ? `تم العثور على ${customerInvoices.length} مستند/فاتورة سابقة.`
-                  : 'لا توجد فواتير سابقة مسجّلة لهذا الرقم بعد.'}
+                  ? `تم العثور على ${customerInvoices.length} مستند/فاتورة سابقة${customerDisplayName ? ` لـ ${customerDisplayName}` : ''}.`
+                  : customerLocalPhone.length >= 3 && customerBookStatus === 'new'
+                    ? 'لا يوجد سجلات لهذا الرقم — أضف اسم العميل ثم افتح الكاميرا.'
+                    : 'لا توجد فواتير سابقة مسجّلة لهذا الرقم بعد.'}
             </p>
           )}
         </section>
@@ -1643,7 +1685,7 @@ export default function Home() {
           ) : (
             <button
               type="button"
-              onClick={() => setShowDocumentScanner(true)}
+              onClick={handleOpenScannerForCustomer}
               disabled={isUploading}
               className="pointer-events-auto w-24 h-24 rounded-full bg-gradient-to-tr from-emerald-500 via-teal-400 to-cyan-400 text-slate-950 font-black shadow-[0_0_40px_rgba(16,185,129,0.8)] border-4 border-slate-950 flex flex-col items-center justify-center cursor-pointer transition-transform transform active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
               title="فتح الكاميرا ومسح فاتورة أو مستند"
@@ -1758,19 +1800,6 @@ export default function Home() {
                   className="w-full rounded-xl bg-slate-950 border border-slate-800 p-3 text-sm text-white focus:border-cyan-500 focus:outline-none resize-none"
                 />
               </div>
-
-              {supabase && (
-                <RegisterPasskeyButton
-                  disabled={savingSettings}
-                  getAccessToken={async () => {
-                    const {
-                      data: { session },
-                    } = await supabase.auth.getSession();
-                    return session?.access_token ?? null;
-                  }}
-                  onFeedback={(type, message) => setSettingsFeedback({ type, message })}
-                />
-              )}
 
               <div className="flex gap-2 pt-2">
                 <button
