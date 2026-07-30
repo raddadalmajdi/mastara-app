@@ -8,14 +8,14 @@ export const metadata: Metadata = {
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
-    statusBarStyle: 'black-translucent',
+    statusBarStyle: 'default',
     title: 'مسطرة',
   },
 };
 
 export const viewport: Viewport = {
-  themeColor: '#030712',
-  colorScheme: 'dark',
+  themeColor: '#EDE4D3',
+  colorScheme: 'light',
   width: 'device-width',
   initialScale: 1,
   maximumScale: 1,
@@ -23,8 +23,8 @@ export const viewport: Viewport = {
 };
 
 const shellStyle = {
-  backgroundColor: '#030712',
-  color: '#f1f5f9',
+  backgroundColor: '#EDE4D3',
+  color: '#2C1810',
   minHeight: '100%',
 } as const;
 
@@ -38,12 +38,12 @@ export default function RootLayout({
       lang="ar"
       dir="rtl"
       style={shellStyle}
-      className={`${cairo.variable} bg-[#030712]`}
+      className={`${cairo.variable} bg-mistara-sand`}
       suppressHydrationWarning
     >
       <body
         style={shellStyle}
-        className="min-h-screen bg-[#030712] text-slate-100 antialiased"
+        className="min-h-screen bg-mistara-sand text-mistara-espresso antialiased"
         suppressHydrationWarning
       >
         {children}

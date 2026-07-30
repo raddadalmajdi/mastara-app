@@ -15,18 +15,18 @@ export default function GlobalError({
   }, [error]);
 
   return (
-    <html lang="ar" dir="rtl" style={{ backgroundColor: '#030712', color: '#f1f5f9' }}>
-      <body style={{ backgroundColor: '#030712', margin: 0 }}>
+    <html lang="ar" dir="rtl" style={{ backgroundColor: '#EDE4D3', color: '#2C1810' }}>
+      <body style={{ backgroundColor: '#EDE4D3', margin: 0 }}>
         <div className="min-h-screen flex flex-col items-center justify-center px-5 gap-4">
           <AuthBootScreen message="حدث خطأ أثناء تحميل التطبيق." />
           <button
             type="button"
             onClick={() => reset()}
-            className="rounded-xl bg-cyan-500 px-6 py-3 text-slate-950 font-bold text-sm"
+            className="rounded-xl bg-mistara-gold px-6 py-3 text-mistara-cream font-bold text-sm"
           >
             إعادة المحاولة
           </button>
-          <p className="text-[10px] text-slate-500 max-w-sm text-center font-mono" dir="ltr">
+          <p className="text-[10px] text-mistara-brown/60 max-w-sm text-center font-mono" dir="ltr">
             {error.message}
           </p>
         </div>

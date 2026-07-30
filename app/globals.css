@@ -1,34 +1,38 @@
 @import "tailwindcss";
 
-/* ثيم داكن ثابت — بدون تبديل prefers-color-scheme لتفادي وميض/تعارض مع layout */
+/* ─── مسطرة 2027: بيج دافئ + زجاج + بني غامق ─── */
 @theme {
-  --color-background: #030712;
-  --color-foreground: #f1f5f9;
-  /* خط Cairo (عربي/لاتيني عصري) محمَّل ذاتياً عبر next/font/google في
-     app/fonts.ts، ومربوط هنا بمتغيّر --font-cairo على وسم <html>. تبقى
-     الخطوط الاحتياطية كما هي في حال فشل تحميل الخط لأي سبب. */
+  --color-background: #EDE4D3;
+  --color-foreground: #2C1810;
+
+  --color-mistara-sand: #EDE4D3;
+  --color-mistara-beige: #FAF4EA;
+  --color-mistara-cream: #FFF9F0;
+  --color-mistara-espresso: #2C1810;
+  --color-mistara-brown: #5C4033;
+  --color-mistara-warm: #6B4423;
+  --color-mistara-gold: #A67C52;
+  --color-mistara-gold-light: #C4A574;
+  --color-mistara-gold-dark: #8B6914;
+
   --font-sans: var(--font-cairo), ui-sans-serif, system-ui, sans-serif, "Segoe UI", "Noto Sans Arabic", sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
 html {
-  background-color: #030712;
-  color: #f1f5f9;
+  background-color: var(--color-mistara-sand);
+  color: var(--color-mistara-espresso);
   min-height: 100%;
-  /* حجم أساس أكبر قليلاً (16px) لقراءة أوضح على الجوال والشاشات الكبيرة */
   font-size: 16px;
   -webkit-text-size-adjust: 100%;
 }
 
 body {
-  background-color: #030712;
-  color: #f1f5f9;
+  background-color: var(--color-mistara-sand);
+  color: var(--color-mistara-espresso);
   min-height: 100%;
   margin: 0;
   font-family: var(--font-sans);
-  /* تباعد أسطر مريح للعين يمنع تداخل النصوص العربية (خصوصاً مع الحركات
-     والامتدادات الرأسية للحروف)، بدون التأثير على الأزرار/الشارات الصغيرة
-     التي تحدّد ارتفاعها بنفسها. */
   line-height: 1.65;
   letter-spacing: 0;
   -webkit-font-smoothing: antialiased;
@@ -37,17 +41,68 @@ body {
 
 h1, h2, h3, h4, h5, h6 {
   line-height: 1.35;
+  color: var(--color-mistara-espresso);
 }
 
-/* أرقام إنجليزية بارزة: تُستخدم على أي عنصر يعرض تاريخاً/وقتاً/مبلغاً/عدّاداً
-   لضمان محاذاة ثابتة (tabular) ووضوح أكبر بصرياً بمعزل عن سياق النص العربي
-   المحيط به. الاستخدام: className="tnum" على العنصر الحاوي للرقم. */
 .tnum {
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum" 1, "lnum" 1;
   direction: ltr;
   unicode-bidi: isolate;
   letter-spacing: 0.01em;
+}
+
+/* بطاقات زجاجية — Beige Glassmorphism */
+.glass-panel {
+  background: rgba(255, 249, 240, 0.72);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(74, 55, 40, 0.14);
+  box-shadow: 0 4px 28px rgba(44, 24, 16, 0.07);
+}
+
+.glass-header {
+  background: rgba(250, 244, 234, 0.88);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-bottom: 1px solid rgba(74, 55, 40, 0.1);
+}
+
+.glass-modal-backdrop {
+  background: rgba(44, 24, 16, 0.35);
+  backdrop-filter: blur(6px);
+}
+
+.glass-input {
+  background: rgba(255, 249, 240, 0.9);
+  border: 1px solid rgba(74, 55, 40, 0.18);
+  color: var(--color-mistara-espresso);
+}
+
+.glass-input:focus {
+  border-color: rgba(166, 124, 82, 0.55);
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(166, 124, 82, 0.15);
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, #A67C52 0%, #8B6914 100%);
+  color: #FFF9F0;
+  font-weight: 700;
+  box-shadow: 0 4px 16px rgba(139, 105, 20, 0.25);
+}
+
+.btn-primary:active {
+  transform: scale(0.98);
+}
+
+.text-label {
+  color: var(--color-mistara-warm);
+  font-weight: 700;
+}
+
+.text-muted {
+  color: rgba(92, 64, 51, 0.72);
 }
 
 @keyframes auth-boot-slide {

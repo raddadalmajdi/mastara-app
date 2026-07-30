@@ -162,9 +162,9 @@ export default function DocumentScanner({ onCapture, onClose, className = '' }: 
       }));
       lastQuadRef.current = orderedSmall.map((p) => ({ x: p.x / scale, y: p.y / scale }));
 
-      ctx.strokeStyle = '#22d3ee';
+      ctx.strokeStyle = '#A67C52';
       ctx.lineWidth = 3;
-      ctx.fillStyle = 'rgba(34,211,238,0.14)';
+      ctx.fillStyle = 'rgba(166,124,82,0.16)';
       ctx.beginPath();
       ctx.moveTo(displayPts[0].x, displayPts[0].y);
       for (let i = 1; i < 4; i++) ctx.lineTo(displayPts[i].x, displayPts[i].y);
@@ -174,7 +174,7 @@ export default function DocumentScanner({ onCapture, onClose, className = '' }: 
       displayPts.forEach((p) => {
         ctx.beginPath();
         ctx.arc(p.x, p.y, 6, 0, Math.PI * 2);
-        ctx.fillStyle = '#34d399';
+        ctx.fillStyle = '#8B6914';
         ctx.fill();
       });
       setDocumentFound(true);
@@ -416,21 +416,21 @@ export default function DocumentScanner({ onCapture, onClose, className = '' }: 
   };
 
   return (
-    <div className={`flex flex-col bg-[#030712] text-slate-100 ${className}`}>
+    <div className={`flex flex-col bg-mistara-sand text-mistara-espresso ${className}`}>
       {!cameraOn && !resultVisible && (
         <div className="flex flex-1 flex-col items-center justify-center gap-5 px-6 py-10 text-center">
-          <div className="w-full max-w-sm space-y-4 rounded-3xl border border-cyan-500/30 bg-slate-900/80 p-6 shadow-2xl backdrop-blur-md">
-            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-cyan-500/15 ring-4 ring-cyan-500/25">
+          <div className="w-full max-w-sm space-y-4 rounded-3xl border border-mistara-gold/30 glass-panel p-6 shadow-2xl backdrop-blur-md">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-mistara-gold/12 ring-4 ring-mistara-gold/25">
               <span className="text-3xl" aria-hidden>
                 📄
               </span>
             </div>
-            <h2 className="text-lg font-black text-cyan-400">ماسح المستندات</h2>
-            <p className="text-sm leading-relaxed text-slate-400">
+            <h2 className="text-lg font-black text-mistara-gold">ماسح المستندات</h2>
+            <p className="text-sm leading-relaxed text-mistara-brown/80">
               وجّه الكاميرا نحو المستند. عند ظهور الإطار السماوي اضغط زر الالتقاط.
             </p>
             {cvError && (
-              <p role="alert" className="rounded-xl border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs font-bold text-rose-200">
+              <p role="alert" className="rounded-xl border border-red-800/35 bg-red-800/8 px-3 py-2 text-xs font-bold text-red-700">
                 {cvError}
               </p>
             )}
@@ -439,7 +439,7 @@ export default function DocumentScanner({ onCapture, onClose, className = '' }: 
                 type="button"
                 disabled={!cvReady || !!cvError}
                 onClick={() => void startCamera()}
-                className="w-full rounded-2xl bg-gradient-to-r from-cyan-500 to-teal-400 py-3.5 text-sm font-black text-slate-950 shadow-lg shadow-cyan-500/25 disabled:cursor-not-allowed disabled:opacity-50"
+                className="w-full rounded-2xl bg-gradient-to-r from-mistara-gold to-mistara-gold-light py-3.5 text-sm font-black text-mistara-cream shadow-lg shadow-mistara-gold/20 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {cvReady ? 'فتح الكاميرا' : 'جاري تجهيز محرك المعالجة...'}
               </button>
@@ -447,7 +447,7 @@ export default function DocumentScanner({ onCapture, onClose, className = '' }: 
                 <button
                   type="button"
                   onClick={onClose}
-                  className="w-full rounded-2xl border border-slate-700 bg-slate-950 py-3 text-sm font-bold text-slate-300"
+                  className="w-full rounded-2xl border border-mistara-brown/20 bg-mistara-cream py-3 text-sm font-bold text-mistara-brown"
                 >
                   إلغاء
                 </button>
@@ -465,8 +465,8 @@ export default function DocumentScanner({ onCapture, onClose, className = '' }: 
             <span
               className={`absolute left-1/2 top-4 -translate-x-1/2 rounded-full border px-4 py-2 text-xs font-bold backdrop-blur-md ${
                 documentFound
-                  ? 'border-emerald-400/50 bg-emerald-500/15 text-emerald-200'
-                  : 'border-cyan-500/30 bg-slate-900/70 text-cyan-200'
+                  ? 'border-mistara-gold/45 bg-mistara-gold/12 text-mistara-warm'
+                  : 'border-mistara-gold/30 bg-mistara-beige/70 text-mistara-gold-light'
               }`}
             >
               {documentFound ? 'تم العثور على المستند ✓' : 'جاري البحث عن المستند...'}
@@ -477,8 +477,8 @@ export default function DocumentScanner({ onCapture, onClose, className = '' }: 
               type="button"
               aria-label="التقاط المستند"
               onClick={capturePhoto}
-              className={`h-20 w-20 rounded-full border-[6px] shadow-[0_0_30px_rgba(34,211,238,0.55)] transition-transform active:scale-95 ${
-                documentFound ? 'border-emerald-400 bg-white' : 'border-cyan-400 bg-white/95'
+              className={`h-20 w-20 rounded-full border-[6px] shadow-[0_0_30px_rgba(166,124,82,0.4)] transition-transform active:scale-95 ${
+                documentFound ? 'border-mistara-gold bg-white' : 'border-mistara-gold bg-white/95'
               }`}
             />
           </div>
@@ -487,7 +487,7 @@ export default function DocumentScanner({ onCapture, onClose, className = '' }: 
 
       {resultVisible && (
         <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-4 py-5">
-          <div className="rounded-2xl border border-cyan-500/30 bg-slate-900/80 p-3 shadow-xl backdrop-blur-md">
+          <div className="rounded-2xl border border-mistara-gold/30 glass-panel p-3 shadow-xl backdrop-blur-md">
             <canvas ref={resultCanvasRef} className="mx-auto max-h-[52vh] w-auto max-w-full rounded-xl bg-white object-contain" />
           </div>
 
@@ -499,8 +499,8 @@ export default function DocumentScanner({ onCapture, onClose, className = '' }: 
                 onClick={() => handleFilterChange(mode)}
                 className={`rounded-xl border px-2 py-2.5 text-xs font-bold transition-colors ${
                   activeFilter === mode
-                    ? 'border-cyan-400/60 bg-cyan-500/20 text-cyan-200'
-                    : 'border-slate-700 bg-slate-950/80 text-slate-400 hover:border-slate-600'
+                    ? 'border-mistara-gold/50 bg-mistara-gold/15 text-mistara-gold-light'
+                    : 'border-mistara-brown/20 bg-mistara-cream/80 text-mistara-brown/80 hover:border-mistara-brown/25'
                 }`}
               >
                 {FILTER_LABELS[mode]}
@@ -512,14 +512,14 @@ export default function DocumentScanner({ onCapture, onClose, className = '' }: 
             <button
               type="button"
               onClick={handleRetake}
-              className="flex-1 rounded-2xl border border-slate-700 bg-slate-950 py-3 text-sm font-bold text-slate-300"
+              className="flex-1 rounded-2xl border border-mistara-brown/20 bg-mistara-cream py-3 text-sm font-bold text-mistara-brown"
             >
               إعادة الالتقاط
             </button>
             <button
               type="button"
               onClick={handleSave}
-              className="flex-1 rounded-2xl bg-gradient-to-r from-emerald-500 to-cyan-400 py-3 text-sm font-black text-slate-950 shadow-lg shadow-emerald-500/20"
+              className="flex-1 rounded-2xl bg-gradient-to-r from-mistara-gold to-mistara-gold-dark py-3 text-sm font-black text-mistara-cream shadow-lg shadow-mistara-gold/20"
             >
               حفظ ورفع الفاتورة
             </button>

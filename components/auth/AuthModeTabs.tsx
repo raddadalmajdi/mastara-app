@@ -24,14 +24,14 @@ export function AuthModeTabs({ mode, onModeChange, disabled = false }: AuthModeT
     'relative z-10 w-full rounded-xl py-3 text-sm font-bold transition-all duration-150 ' +
     'touch-manipulation select-none disabled:opacity-50 disabled:cursor-not-allowed';
 
-  const activeClass = 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20';
-  const inactiveClass = 'text-slate-400 hover:text-white hover:bg-slate-900/80';
+  const activeClass = 'bg-mistara-gold text-mistara-cream shadow-md shadow-mistara-gold/15';
+  const inactiveClass = 'text-mistara-brown/80 hover:text-mistara-espresso hover:glass-panel';
 
   return (
     <div
       role="tablist"
       aria-label="وضع المصادقة: تسجيل الدخول أو إنشاء حساب"
-      className="grid grid-cols-2 gap-1 p-1 rounded-2xl bg-slate-950/70 border border-slate-800"
+      className="grid grid-cols-2 gap-1 p-1 rounded-2xl bg-mistara-cream/70 border border-mistara-brown/15"
     >
       <button
         type="button"

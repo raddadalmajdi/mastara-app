@@ -36,33 +36,33 @@ export function AccountMenuPanel({
   const phoneLabel = isTailorRegistered ? `+${tailorCountryCode}${tailorLocalPhone}` : 'غير مسجل';
 
   return (
-    <div className="absolute left-0 mt-2 w-80 sm:w-[22rem] rounded-2xl border border-cyan-500/30 bg-slate-900/95 p-4 shadow-2xl backdrop-blur-md z-50 space-y-4">
-      <div className="flex items-center gap-3 border-b border-slate-800 pb-3">
+    <div className="absolute left-0 mt-2 w-80 sm:w-[22rem] rounded-2xl border border-mistara-gold/30 glass-panel p-4 shadow-2xl backdrop-blur-md z-50 space-y-4">
+      <div className="flex items-center gap-3 border-b border-mistara-brown/15 pb-3">
         <div className="relative shrink-0">
           {avatarUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={avatarUrl}
               alt="صورة حساب الخياط"
-              className="h-14 w-14 rounded-2xl border-2 border-cyan-500/40 object-cover shadow-md"
+              className="h-14 w-14 rounded-2xl border-2 border-mistara-gold/35 object-cover shadow-md"
             />
           ) : (
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-cyan-500 text-2xl font-black text-slate-950 shadow-md">
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-mistara-gold text-2xl font-black text-mistara-cream shadow-md">
               م
             </div>
           )}
           {uploadingAvatar && (
-            <span className="absolute inset-0 flex items-center justify-center rounded-2xl bg-slate-950/70">
-              <span className="h-5 w-5 animate-spin rounded-full border-2 border-cyan-400/30 border-t-cyan-400" />
+            <span className="absolute inset-0 flex items-center justify-center rounded-2xl bg-mistara-cream/70">
+              <span className="h-5 w-5 animate-spin rounded-full border-2 border-mistara-gold/30 border-t-mistara-gold" />
             </span>
           )}
         </div>
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-black text-cyan-400">لوحة الخياط</p>
-          <p className="truncate text-sm font-bold text-white">
+          <p className="text-sm font-black text-mistara-gold">لوحة الخياط</p>
+          <p className="truncate text-sm font-bold text-mistara-espresso">
             {tailorShopName.trim() || 'اسم المحل غير مضاف'}
           </p>
-          <p className="truncate text-xs text-slate-400">{email || 'ضيف'}</p>
+          <p className="truncate text-xs text-mistara-brown/80">{email || 'ضيف'}</p>
         </div>
       </div>
 
@@ -82,22 +82,22 @@ export function AccountMenuPanel({
           type="button"
           disabled={uploadingAvatar}
           onClick={() => fileInputRef.current?.click()}
-          className="w-full rounded-xl border border-cyan-500/30 bg-cyan-500/10 py-2.5 text-sm font-bold text-cyan-300 transition-colors hover:bg-cyan-500/15 disabled:opacity-60"
+          className="w-full rounded-xl border border-mistara-gold/30 bg-mistara-gold/10 py-2.5 text-sm font-bold text-mistara-warm transition-colors hover:bg-mistara-gold/12 disabled:opacity-60"
         >
           {uploadingAvatar ? 'جاري رفع الصورة...' : avatarUrl ? 'تغيير صورة الحساب' : 'رفع صورة أو شعار'}
         </button>
       </div>
 
-      <div className="rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2.5 space-y-1.5">
+      <div className="rounded-xl border border-mistara-brown/15 bg-mistara-cream/60 px-3 py-2.5 space-y-1.5">
         <div>
-          <span className="text-xs font-bold text-cyan-400/90">اسم الخياط / المحل</span>
-          <p className="truncate text-sm font-bold text-white">
+          <span className="text-xs font-bold text-mistara-gold">اسم الخياط / المحل</span>
+          <p className="truncate text-sm font-bold text-mistara-espresso">
             {tailorShopName.trim() || '—'}
           </p>
         </div>
         <div>
-          <span className="text-xs font-bold text-cyan-400/90">رقم الجوال</span>
-          <p className="truncate text-sm font-bold text-white tnum" dir="ltr">
+          <span className="text-xs font-bold text-mistara-gold">رقم الجوال</span>
+          <p className="truncate text-sm font-bold text-mistara-espresso tnum" dir="ltr">
             {phoneLabel}
           </p>
         </div>
@@ -106,7 +106,7 @@ export function AccountMenuPanel({
       <button
         type="button"
         onClick={onOpenSettings}
-        className="w-full rounded-xl bg-cyan-500 py-3 text-sm font-black text-slate-950 shadow-md shadow-cyan-500/20"
+        className="w-full rounded-xl bg-mistara-gold py-3 text-sm font-black text-mistara-cream shadow-md shadow-mistara-gold/15"
       >
         الإعدادات
       </button>
@@ -114,7 +114,7 @@ export function AccountMenuPanel({
       <button
         type="button"
         onClick={onLogout}
-        className="w-full rounded-xl border border-rose-500/30 bg-rose-500/10 py-3 text-sm font-bold text-rose-300"
+        className="w-full rounded-xl border border-red-800/30 bg-red-800/8 py-3 text-sm font-bold text-red-700"
       >
         خروج / تسجيل الدخول بحساب آخر
       </button>
@@ -134,7 +134,7 @@ export function AccountMenuTrigger({
       type="button"
       onClick={onClick}
       aria-label="فتح قائمة الحساب"
-      className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-xl bg-cyan-500 text-xl font-black text-slate-950 shadow-md ring-2 ring-cyan-500/30 transition-transform active:scale-95"
+      className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-xl bg-mistara-gold text-xl font-black text-mistara-cream shadow-md ring-2 ring-mistara-gold/30 transition-transform active:scale-95"
     >
       {avatarUrl ? (
         // eslint-disable-next-line @next/next/no-img-element

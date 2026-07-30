@@ -83,7 +83,7 @@ function drawFullFrame(source: CanvasImageSource, width: number, height: number)
 
 /** زاوية إرشادية ثابتة (شكل "L") — إطار توجيهي بصري بسيط فوق الكاميرا الحية، بلا أي تتبّع أو تفاعل، تماماً كما في HP Smart. */
 function CornerGuide({ position }: { position: 'tl' | 'tr' | 'bl' | 'br' }) {
-  const base = 'absolute w-10 h-10 sm:w-14 sm:h-14 border-white/95';
+  const base = 'absolute w-10 h-10 sm:w-14 sm:h-14 border-mistara-cream/95';
   const styles: Record<typeof position, string> = {
     tl: 'top-0 left-0 border-t-[3px] border-l-[3px] rounded-tl-2xl',
     tr: 'top-0 right-0 border-t-[3px] border-r-[3px] rounded-tr-2xl',
@@ -520,7 +520,7 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
   const isEdgesPhase = phase === 'edges';
 
   return (
-    <div className="fixed inset-0 z-[70] bg-slate-950 flex flex-col" dir="rtl">
+    <div className="fixed inset-0 z-[70] bg-mistara-cream flex flex-col" dir="rtl">
       <input ref={galleryInputRef} type="file" accept="image/*" className="hidden" onChange={handleGalleryFile} />
 
       {/*
@@ -534,7 +534,7 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
           <button
             type="button"
             onClick={handleBackFromEdges}
-            className="pointer-events-auto flex items-center gap-1.5 rounded-full bg-slate-900/70 backdrop-blur border border-white/10 text-white px-3.5 h-11 text-sm font-bold active:scale-95 transition-transform"
+            className="pointer-events-auto flex items-center gap-1.5 rounded-full bg-mistara-beige/85 backdrop-blur border border-mistara-brown/12 text-mistara-espresso px-3.5 h-11 text-sm font-bold active:scale-95 transition-transform"
             aria-label="رجوع لالتقاط صورة جديدة"
           >
             <span aria-hidden>→</span> رجوع
@@ -543,14 +543,14 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
           <button
             type="button"
             onClick={handleClose}
-            className="pointer-events-auto w-11 h-11 rounded-full bg-slate-900/70 backdrop-blur border border-white/10 text-white flex items-center justify-center text-lg active:scale-95 transition-transform"
+            className="pointer-events-auto w-11 h-11 rounded-full bg-mistara-beige/70 backdrop-blur border border-mistara-brown/12 text-white flex items-center justify-center text-lg active:scale-95 transition-transform"
             aria-label="إغلاق الماسح الضوئي"
           >
             ✕
           </button>
         )}
 
-        <span className="text-sm sm:text-base font-bold text-white/90">{isEdgesPhase ? 'كشف الحواف' : 'مسح مستند'}</span>
+        <span className="text-sm sm:text-base font-bold text-mistara-espresso/90">{isEdgesPhase ? 'كشف الحواف' : 'مسح مستند'}</span>
 
         <span className="w-11" aria-hidden />
       </div>
@@ -589,9 +589,9 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
         )}
 
         {phase === 'starting' && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-slate-950/70">
-            <span className="h-10 w-10 rounded-full border-2 border-cyan-500/30 border-t-cyan-400 animate-spin" />
-            <p className="text-sm text-cyan-300 font-bold">جاري تشغيل الكاميرا...</p>
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-mistara-cream/70">
+            <span className="h-10 w-10 rounded-full border-2 border-mistara-gold/30 border-t-mistara-gold animate-spin" />
+            <p className="text-sm text-mistara-warm font-bold">جاري تشغيل الكاميرا...</p>
           </div>
         )}
 
@@ -626,7 +626,7 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
                 style={{ top: EDGES_SAFE_TOP_PX + 8 }}
               >
                 <div className="pointer-events-none max-w-sm rounded-2xl border border-amber-400/40 bg-amber-500/15 backdrop-blur px-3.5 py-2.5 text-center shadow-lg">
-                  <p className="text-xs sm:text-sm font-bold text-amber-100">⚠️ {edgesToast}</p>
+                  <p className="text-xs sm:text-sm font-bold text-mistara-brown">⚠️ {edgesToast}</p>
                 </div>
               </div>
             )}
@@ -634,32 +634,32 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
         )}
 
         {phase === 'processing' && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-slate-950/80">
-            <span className="h-10 w-10 rounded-full border-2 border-emerald-500/30 border-t-emerald-400 animate-spin" />
-            <p className="text-sm text-emerald-300 font-bold">جاري القصّ وتحسين الألوان...</p>
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-mistara-cream/80">
+            <span className="h-10 w-10 rounded-full border-2 border-mistara-gold-dark/30 border-t-mistara-gold animate-spin" />
+            <p className="text-sm text-mistara-gold-dark font-bold">جاري القصّ وتحسين الألوان...</p>
           </div>
         )}
 
         {phase === 'error' && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 px-6 text-center bg-slate-950">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-rose-500/15 ring-4 ring-rose-500/30">
-              <svg className="h-8 w-8 text-rose-400" viewBox="0 0 24 24" fill="none" aria-hidden>
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 px-6 text-center bg-mistara-cream">
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-red-800/10 ring-4 ring-red-800/25">
+              <svg className="h-8 w-8 text-red-800" viewBox="0 0 24 24" fill="none" aria-hidden>
                 <path d="M8 8l8 8M16 8l-8 8" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
               </svg>
             </div>
-            <p className="text-base font-bold text-rose-300">{errorMessage ?? 'تعذّر تشغيل الكاميرا.'}</p>
+            <p className="text-base font-bold text-red-700">{errorMessage ?? 'تعذّر تشغيل الكاميرا.'}</p>
             <div className="flex gap-2 w-full max-w-xs">
               <button
                 type="button"
                 onClick={handleRetryCamera}
-                className="flex-1 rounded-2xl bg-cyan-500 text-slate-950 font-bold text-sm py-3"
+                className="flex-1 rounded-2xl bg-mistara-gold text-mistara-cream font-bold text-sm py-3"
               >
                 🔄 إعادة المحاولة
               </button>
               <button
                 type="button"
                 onClick={handleGalleryPick}
-                className="flex-1 rounded-2xl bg-slate-800 text-white font-bold text-sm py-3 border border-white/10"
+                className="flex-1 rounded-2xl bg-mistara-beige text-mistara-espresso font-bold text-sm py-3 border border-mistara-brown/12"
               >
                 📁 من المعرض
               </button>
@@ -668,23 +668,23 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
         )}
 
         {phase === 'preview' && previewDataUrl && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 p-4 pt-20 bg-slate-950">
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 p-4 pt-20 bg-mistara-cream">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={previewDataUrl}
               alt="معاينة المستند الممسوح"
-              className="max-h-[62vh] w-auto max-w-full rounded-2xl border-2 border-cyan-400/60 shadow-[0_25px_70px_-15px_rgba(8,145,178,0.5)] object-contain bg-white"
+              className="max-h-[62vh] w-auto max-w-full rounded-2xl border-2 border-mistara-gold/50 shadow-[0_16px_48px_-12px_rgba(74,55,40,0.18)] object-contain bg-white"
             />
             {previewToast && (
-              <p className="text-xs font-bold text-amber-200 text-center px-4">{previewToast}</p>
+              <p className="text-xs font-bold text-mistara-warm text-center px-4">{previewToast}</p>
             )}
-            <p className="text-sm text-slate-300 text-center font-bold">تأكد من وضوح المستند والألوان قبل الاعتماد</p>
+            <p className="text-sm text-mistara-brown text-center font-bold">تأكد من وضوح المستند والألوان قبل الاعتماد</p>
           </div>
         )}
 
         {phase === 'live' && (
           <div className="absolute bottom-28 inset-x-0 flex justify-center px-4 pointer-events-none">
-            <span className="pointer-events-auto text-xs sm:text-sm font-bold px-4 py-2 rounded-full backdrop-blur border bg-slate-900/70 border-white/10 text-white">
+            <span className="pointer-events-auto text-xs sm:text-sm font-bold px-4 py-2 rounded-full backdrop-blur border bg-mistara-beige/70 border-mistara-brown/12 text-white">
               📄 ضع المستند داخل الإطار والتقط الصورة
             </span>
           </div>
@@ -699,18 +699,18 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
               <button
                 type="button"
                 onClick={handleGalleryPick}
-                className="w-12 h-12 rounded-full bg-slate-900/70 border border-white/10 text-white flex items-center justify-center text-lg"
+                className="w-12 h-12 rounded-full bg-mistara-beige/70 border border-mistara-brown/12 text-white flex items-center justify-center text-lg"
                 aria-label="اختيار صورة من المعرض"
               >
                 📁
               </button>
-              <span className="text-[11px] font-bold text-white/70">المصدر</span>
+              <span className="text-[11px] font-bold text-mistara-cream/75">المصدر</span>
             </div>
 
             <button
               type="button"
               onClick={handleCapture}
-              className="w-20 h-20 rounded-full bg-white border-[6px] border-cyan-400 shadow-[0_0_30px_rgba(34,211,238,0.6)] active:scale-95 transition-transform"
+              className="w-20 h-20 rounded-full bg-white border-[6px] border-mistara-gold shadow-[0_0_30px_rgba(166,124,82,0.4)] active:scale-95 transition-transform"
               aria-label="التقاط المستند"
             />
 
@@ -724,7 +724,7 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
               type="button"
               onClick={handleConfirmEdges}
               disabled={isAutoDetecting}
-              className="w-full rounded-2xl bg-blue-500 text-white py-3.5 text-sm font-black shadow-lg shadow-blue-500/30 active:scale-[0.98] transition-transform disabled:opacity-60"
+              className="w-full rounded-2xl bg-mistara-gold text-mistara-cream py-3.5 text-sm font-black shadow-lg shadow-mistara-gold/25 active:scale-[0.98] transition-transform disabled:opacity-60"
             >
               التالي
             </button>
@@ -736,12 +736,12 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
                 aria-busy={isAutoDetecting}
                 className={`flex flex-1 flex-col items-center gap-1.5 rounded-2xl px-4 py-2.5 border transition-colors disabled:opacity-70 ${
                   edgesMode === 'auto'
-                    ? 'bg-blue-500/20 border-blue-400/60 text-blue-200'
-                    : 'bg-slate-900/70 border-white/10 text-white/80'
+                    ? 'bg-mistara-gold/15 border-mistara-gold/50 text-mistara-gold-light'
+                    : 'bg-mistara-beige/70 border-mistara-brown/12 text-mistara-cream/85'
                 }`}
               >
                 {isAutoDetecting ? (
-                  <span className="h-4 w-4 rounded-full border-2 border-blue-300/40 border-t-blue-300 animate-spin" aria-hidden />
+                  <span className="h-4 w-4 rounded-full border-2 border-mistara-gold-light/40 border-t-mistara-gold-light animate-spin" aria-hidden />
                 ) : (
                   <span className="text-lg" aria-hidden>
                     ✨
@@ -755,8 +755,8 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
                 disabled={isAutoDetecting}
                 className={`flex flex-1 flex-col items-center gap-1.5 rounded-2xl px-4 py-2.5 border transition-colors disabled:opacity-70 ${
                   edgesMode === 'full'
-                    ? 'bg-blue-500/20 border-blue-400/60 text-blue-200'
-                    : 'bg-slate-900/70 border-white/10 text-white/80'
+                    ? 'bg-mistara-gold/15 border-mistara-gold/50 text-mistara-gold-light'
+                    : 'bg-mistara-beige/70 border-mistara-brown/12 text-mistara-cream/85'
                 }`}
               >
                 <span className="text-lg" aria-hidden>
@@ -771,7 +771,7 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
         {phase === 'preview' && (
           <div className="space-y-3">
             {errorMessage && (
-              <div role="alert" className="rounded-2xl border border-rose-500/40 bg-rose-500/10 text-rose-100 text-sm px-3.5 py-3">
+              <div role="alert" className="rounded-2xl border border-red-800/35 bg-red-800/8 text-red-900 text-sm px-3.5 py-3">
                 {errorMessage}
               </div>
             )}
@@ -781,10 +781,10 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
                 onClick={handlePreviewAutoCrop}
                 disabled={isAutoDetecting}
                 aria-busy={isAutoDetecting}
-                className="flex flex-col items-center gap-1 rounded-2xl px-4 py-2.5 border bg-slate-900/70 border-white/10 text-white/90 text-xs font-bold disabled:opacity-60"
+                className="flex flex-col items-center gap-1 rounded-2xl px-4 py-2.5 border bg-mistara-beige/70 border-mistara-brown/12 text-mistara-cream/90 text-xs font-bold disabled:opacity-60"
               >
                 {isAutoDetecting ? (
-                  <span className="h-4 w-4 rounded-full border-2 border-cyan-300/40 border-t-cyan-300 animate-spin" aria-hidden />
+                  <span className="h-4 w-4 rounded-full border-2 border-mistara-gold-light/40 border-t-mistara-gold-light animate-spin" aria-hidden />
                 ) : (
                   <span aria-hidden>✨</span>
                 )}
@@ -794,7 +794,7 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
                 type="button"
                 onClick={handleAdjustCropFromPreview}
                 disabled={isAutoDetecting}
-                className="flex flex-col items-center gap-1 rounded-2xl px-4 py-2.5 border bg-slate-900/70 border-white/10 text-white/90 text-xs font-bold disabled:opacity-60"
+                className="flex flex-col items-center gap-1 rounded-2xl px-4 py-2.5 border bg-mistara-beige/70 border-mistara-brown/12 text-mistara-cream/90 text-xs font-bold disabled:opacity-60"
               >
                 <span aria-hidden>✂️</span>
                 ضبط القص
@@ -804,14 +804,14 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
               <button
                 type="button"
                 onClick={handleRetake}
-                className="flex-1 rounded-2xl bg-slate-800/80 hover:bg-slate-800 py-3.5 text-sm text-white font-bold border border-white/10"
+                className="flex-1 rounded-2xl bg-mistara-beige/80 hover:bg-mistara-beige py-3.5 text-sm text-mistara-espresso font-bold border border-mistara-brown/12"
               >
                 🔁 إعادة الالتقاط
               </button>
               <button
                 type="button"
                 onClick={handleConfirm}
-                className="flex-1 rounded-2xl bg-gradient-to-l from-cyan-400 to-cyan-500 py-3.5 text-slate-950 font-black text-sm shadow-lg shadow-cyan-500/20"
+                className="flex-1 rounded-2xl bg-gradient-to-l from-mistara-gold to-mistara-gold-dark py-3.5 text-mistara-cream font-black text-sm shadow-lg shadow-mistara-gold/15"
               >
                 ✅ اعتماد المستند وحفظه
               </button>
@@ -821,8 +821,8 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
 
         {phase === 'uploading' && (
           <div className="flex items-center justify-center gap-3 py-3">
-            <span className="h-5 w-5 rounded-full border-2 border-cyan-500/30 border-t-cyan-400 animate-spin" />
-            <p className="text-sm font-bold text-cyan-300">جاري رفع وحفظ المستند...</p>
+            <span className="h-5 w-5 rounded-full border-2 border-mistara-gold/30 border-t-mistara-gold animate-spin" />
+            <p className="text-sm font-bold text-mistara-warm">جاري رفع وحفظ المستند...</p>
           </div>
         )}
       </div>

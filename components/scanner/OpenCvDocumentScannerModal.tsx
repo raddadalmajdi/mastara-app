@@ -38,14 +38,14 @@ export function OpenCvDocumentScannerModal({ onClose, onConfirm }: OpenCvDocumen
   );
 
   return (
-    <div className="fixed inset-0 z-[70] flex flex-col bg-slate-950/95 backdrop-blur-md" dir="rtl">
-      <header className="relative z-20 flex items-center justify-between border-b border-cyan-500/20 bg-slate-950/80 px-4 py-3 backdrop-blur-md">
-        <h2 className="text-sm font-black text-cyan-400">ماسح OpenCV المتقدّم</h2>
+    <div className="fixed inset-0 z-[70] flex flex-col glass-modal-backdrop" dir="rtl">
+      <header className="relative z-20 flex items-center justify-between border-b border-mistara-gold/20 bg-mistara-cream/80 px-4 py-3 backdrop-blur-md">
+        <h2 className="text-sm font-black text-mistara-gold">ماسح OpenCV المتقدّم</h2>
         <button
           type="button"
           onClick={onClose}
           disabled={isSaving}
-          className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-1.5 text-sm font-bold text-slate-300 disabled:opacity-50"
+          className="rounded-xl border border-mistara-brown/20 glass-panel px-3 py-1.5 text-sm font-bold text-mistara-brown disabled:opacity-50"
         >
           ✕
         </button>
@@ -54,7 +54,7 @@ export function OpenCvDocumentScannerModal({ onClose, onConfirm }: OpenCvDocumen
       {errorMessage && (
         <div
           role="alert"
-          className="relative z-20 mx-4 mt-3 rounded-2xl border border-rose-500/40 bg-rose-500/10 px-3.5 py-2.5 text-sm font-bold text-rose-100"
+          className="relative z-20 mx-4 mt-3 rounded-2xl border border-red-800/35 bg-red-800/8 px-3.5 py-2.5 text-sm font-bold text-red-900"
         >
           {errorMessage}
         </div>
@@ -62,8 +62,8 @@ export function OpenCvDocumentScannerModal({ onClose, onConfirm }: OpenCvDocumen
 
       {isSaving ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-3">
-          <span className="h-10 w-10 animate-spin rounded-full border-2 border-cyan-500/30 border-t-cyan-400" />
-          <p className="text-sm font-bold text-cyan-300">جاري رفع المستند...</p>
+          <span className="h-10 w-10 animate-spin rounded-full border-2 border-mistara-gold/30 border-t-mistara-gold" />
+          <p className="text-sm font-bold text-mistara-warm">جاري رفع المستند...</p>
         </div>
       ) : (
         <DocumentScanner onCapture={handleCapture} onClose={onClose} className="flex-1 min-h-0" />

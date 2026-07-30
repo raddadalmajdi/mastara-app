@@ -96,18 +96,18 @@ export function OtpCodeInput({ value, onChange, onComplete, disabled, hasError }
                   inputsRef.current[index + 1]?.focus();
                 }
               }}
-              className={`h-14 w-11 sm:h-16 sm:w-12 rounded-2xl border-2 bg-slate-950 text-center text-2xl sm:text-3xl font-black font-mono tnum text-white shadow-inner outline-none transition-all duration-150 ${
+              className={`h-14 w-11 sm:h-16 sm:w-12 rounded-2xl border-2 bg-mistara-cream text-center text-2xl sm:text-3xl font-black font-mono tnum text-mistara-espresso shadow-inner outline-none transition-all duration-150 ${
                 hasError
-                  ? 'border-rose-500/70 shadow-[0_0_0_3px_rgba(244,63,94,0.15)]'
+                  ? 'border-red-800/70 shadow-[0_0_0_3px_rgba(244,63,94,0.15)]'
                   : filled
-                    ? 'border-cyan-400 shadow-[0_0_0_3px_rgba(34,211,238,0.18)]'
-                    : 'border-slate-800 focus:border-cyan-500 focus:shadow-[0_0_0_3px_rgba(34,211,238,0.15)]'
+                    ? 'border-mistara-gold shadow-[0_0_0_3px_rgba(34,211,238,0.18)]'
+                    : 'border-mistara-brown/15 focus:border-mistara-gold focus:shadow-[0_0_0_3px_rgba(34,211,238,0.15)]'
               }`}
             />
           );
         })}
       </div>
-      <p className="text-xs sm:text-sm text-slate-500 text-center" dir="rtl">
+      <p className="text-xs sm:text-sm text-mistara-brown/60 text-center" dir="rtl">
         أدخل الرمز المكوّن من 6 أرقام المرسل إلى بريدك — يمكنك أيضاً لصقه دفعة واحدة.
       </p>
     </div>

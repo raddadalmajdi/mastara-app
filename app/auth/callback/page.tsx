@@ -74,27 +74,27 @@ function AuthCallbackContent() {
 
   return (
     <main
-      className="relative min-h-screen bg-[#030712] flex flex-col items-center justify-center px-5 py-8 overflow-hidden"
+      className="relative min-h-screen bg-mistara-sand flex flex-col items-center justify-center px-5 py-8 overflow-hidden"
       dir="rtl"
     >
       <div
-        className="pointer-events-none absolute -top-32 left-1/2 h-72 w-72 -translate-x-1/2 rounded-full bg-cyan-500/20 blur-[100px]"
+        className="pointer-events-none absolute -top-32 left-1/2 h-72 w-72 -translate-x-1/2 rounded-full bg-mistara-gold/15 blur-[100px]"
         aria-hidden
       />
-      <div className="relative w-full max-w-sm sm:max-w-md mx-auto bg-slate-900/90 backdrop-blur-xl border border-white/10 rounded-[2rem] p-8 shadow-[0_25px_70px_-15px_rgba(8,145,178,0.35)] text-center space-y-4">
-        <h1 className="text-3xl font-black text-cyan-400">مسطرة 2030</h1>
+      <div className="relative w-full max-w-sm sm:max-w-md mx-auto glass-panel/90 backdrop-blur-xl border border-mistara-brown/12 rounded-[2rem] p-8 shadow-[0_25px_70px_-15px_rgba(8,145,178,0.35)] text-center space-y-4">
+        <h1 className="text-3xl font-black text-mistara-gold">مسطرة 2030</h1>
 
         {status === 'loading' && (
           <>
-            <div className="mx-auto h-12 w-12 rounded-full border-2 border-cyan-500/30 border-t-cyan-400 animate-spin" />
-            <p className="text-base text-slate-300">جاري تأكيد حسابك بأمان...</p>
+            <div className="mx-auto h-12 w-12 rounded-full border-2 border-mistara-gold/30 border-t-mistara-gold animate-spin" />
+            <p className="text-base text-mistara-brown">جاري تأكيد حسابك بأمان...</p>
           </>
         )}
 
         {status === 'success' && (
           <>
-            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-500/15 ring-4 ring-emerald-500/30">
-              <svg className="h-8 w-8 text-emerald-400" viewBox="0 0 24 24" fill="none" aria-hidden>
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-mistara-gold/12 ring-4 ring-mistara-gold/30">
+              <svg className="h-8 w-8 text-mistara-gold-dark" viewBox="0 0 24 24" fill="none" aria-hidden>
                 <path
                   d="M5 13l4 4L19 7"
                   stroke="currentColor"
@@ -104,24 +104,24 @@ function AuthCallbackContent() {
                 />
               </svg>
             </div>
-            <p className="text-base font-bold text-emerald-300">تم تأكيد حسابك بنجاح!</p>
-            <p className="text-sm text-slate-400">سيتم تحويلك إلى لوحة التحكم...</p>
+            <p className="text-base font-bold text-mistara-gold-dark">تم تأكيد حسابك بنجاح!</p>
+            <p className="text-sm text-mistara-brown/80">سيتم تحويلك إلى لوحة التحكم...</p>
           </>
         )}
 
         {status === 'error' && (
           <>
-            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-rose-500/15 ring-4 ring-rose-500/30">
-              <svg className="h-8 w-8 text-rose-400" viewBox="0 0 24 24" fill="none" aria-hidden>
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-red-800/10 ring-4 ring-red-800/25">
+              <svg className="h-8 w-8 text-red-800" viewBox="0 0 24 24" fill="none" aria-hidden>
                 <path d="M8 8l8 8M16 8l-8 8" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
               </svg>
             </div>
-            <p className="text-base font-bold text-rose-300">تعذّر تأكيد الحساب</p>
-            <p className="text-sm text-slate-400 leading-relaxed">{errorMessage}</p>
+            <p className="text-base font-bold text-red-700">تعذّر تأكيد الحساب</p>
+            <p className="text-sm text-mistara-brown/80 leading-relaxed">{errorMessage}</p>
             <button
               type="button"
               onClick={() => router.replace('/')}
-              className="w-full rounded-xl bg-cyan-500 py-3 text-slate-950 font-bold text-base"
+              className="w-full rounded-xl bg-mistara-gold py-3 text-mistara-cream font-bold text-base"
             >
               العودة لإدخال رمز التحقق
             </button>

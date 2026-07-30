@@ -195,8 +195,8 @@ export function CornerAdjuster({
         <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ overflow: 'visible' }}>
           <polygon
             points={screenPoints.map((p) => `${p.x},${p.y}`).join(' ')}
-            fill="rgba(59,130,246,0.16)"
-            stroke="#3b82f6"
+            fill="rgba(166,124,82,0.18)"
+            stroke="#A67C52"
             strokeWidth={3}
             strokeLinejoin="round"
             style={animateQuad ? { transition: 'all 0.28s ease-out' } : undefined}
@@ -209,8 +209,8 @@ export function CornerAdjuster({
                 cx={(p.x + next.x) / 2}
                 cy={(p.y + next.y) / 2}
                 r={5}
-                fill="#3b82f6"
-                stroke="#ffffff"
+                fill="#8B6914"
+                stroke="#FFF9F0"
                 strokeWidth={1.5}
               />
             );
@@ -226,7 +226,7 @@ export function CornerAdjuster({
             tabIndex={0}
             aria-label={`مقبض ${HANDLE_LABELS[i]} — اسحب لضبط حافة المستند`}
             onPointerDown={startDrag(i)}
-            className="absolute w-8 h-8 -translate-x-1/2 -translate-y-1/2 rounded-md bg-blue-500 border-2 border-white shadow-[0_2px_12px_rgba(37,99,235,0.7)] active:scale-110 touch-none cursor-grab active:cursor-grabbing"
+            className="absolute w-8 h-8 -translate-x-1/2 -translate-y-1/2 rounded-md bg-mistara-gold border-2 border-mistara-cream shadow-[0_2px_12px_rgba(139,105,20,0.35)] active:scale-110 touch-none cursor-grab active:cursor-grabbing"
             style={{
               left: p.x,
               top: p.y,

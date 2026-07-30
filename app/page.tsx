@@ -1241,26 +1241,26 @@ export default function Home() {
     /* مصادقة قياسية فقط: بريد + كلمة مرور أو OTP — بدون Passkey / Face ID. */
     return (
       <main
-        className="relative min-h-screen bg-[#030712] flex flex-col justify-center px-5 sm:px-8 py-8 sm:py-12 overflow-hidden"
-        style={{ backgroundColor: '#030712', color: '#f1f5f9' }}
+        className="relative min-h-screen bg-mistara-sand flex flex-col justify-center px-5 sm:px-8 py-8 sm:py-12 overflow-hidden"
+        style={{ backgroundColor: '#EDE4D3', color: '#2C1810' }}
         dir="rtl"
       >
         <div
-          className="pointer-events-none absolute -top-32 left-1/2 h-72 w-72 -translate-x-1/2 rounded-full bg-cyan-500/20 blur-[100px]"
+          className="pointer-events-none absolute -top-32 left-1/2 h-72 w-72 -translate-x-1/2 rounded-full bg-mistara-gold/15 blur-[100px]"
           aria-hidden
         />
         <div
-          className="pointer-events-none absolute -bottom-32 left-1/2 h-72 w-72 -translate-x-1/2 rounded-full bg-emerald-500/10 blur-[100px]"
+          className="pointer-events-none absolute -bottom-32 left-1/2 h-72 w-72 -translate-x-1/2 rounded-full bg-mistara-gold/10 blur-[100px]"
           aria-hidden
         />
-        <div className="relative w-full max-w-sm sm:max-w-md mx-auto bg-slate-900/90 backdrop-blur-xl border border-white/10 rounded-[2rem] p-6 sm:p-8 shadow-[0_25px_70px_-15px_rgba(8,145,178,0.35)] space-y-6">
+        <div className="relative w-full max-w-sm sm:max-w-md mx-auto glass-panel/90 backdrop-blur-xl border border-mistara-brown/12 rounded-[2rem] p-6 sm:p-8 shadow-[0_25px_70px_-15px_rgba(8,145,178,0.35)] space-y-6">
           <div className="text-center mb-1 space-y-2">
-            <h1 className="text-4xl sm:text-5xl font-black bg-gradient-to-l from-cyan-300 via-cyan-400 to-teal-300 bg-clip-text text-transparent tracking-tight">
+            <h1 className="text-4xl sm:text-5xl font-black bg-gradient-to-l from-mistara-gold-light via-mistara-gold to-mistara-gold-dark bg-clip-text text-transparent tracking-tight">
               مسطرة 2030
             </h1>
-            <p className="text-sm sm:text-base text-slate-400">نظام إدارة فواتير الخياطة الذكي</p>
+            <p className="text-sm sm:text-base text-mistara-brown/80">نظام إدارة فواتير الخياطة الذكي</p>
             {sessionCheckPending && (
-              <p className="text-xs text-slate-500 mt-2 animate-pulse">جاري التحقق من جلسة الدخول...</p>
+              <p className="text-xs text-mistara-brown/60 mt-2 animate-pulse">جاري التحقق من جلسة الدخول...</p>
             )}
           </div>
 
@@ -1293,19 +1293,19 @@ export default function Home() {
                   role="alert"
                   className={`flex items-start gap-3 rounded-2xl border px-3 py-3 text-sm leading-relaxed ${
                     authFeedback.type === 'success'
-                      ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-100'
-                      : 'border-rose-500/40 bg-rose-500/10 text-rose-100'
+                      ? 'border-mistara-gold-dark/40 bg-mistara-gold/10 text-mistara-brown'
+                      : 'border-red-800/35 bg-red-800/8 text-red-900'
                   }`}
                 >
                   <span
                     className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${
                       authFeedback.type === 'success'
-                        ? 'bg-emerald-500/20 ring-2 ring-emerald-500/40'
-                        : 'bg-rose-500/20 ring-2 ring-rose-500/40'
+                        ? 'bg-mistara-gold/15 ring-2 ring-mistara-gold/40'
+                        : 'bg-red-800/10 ring-2 ring-rose-500/40'
                     }`}
                   >
                     {authFeedback.type === 'success' ? (
-                      <svg className="h-4 w-4 text-emerald-300" viewBox="0 0 24 24" fill="none" aria-hidden>
+                      <svg className="h-4 w-4 text-mistara-gold-dark" viewBox="0 0 24 24" fill="none" aria-hidden>
                         <path
                           d="M5 13l4 4L19 7"
                           stroke="currentColor"
@@ -1315,7 +1315,7 @@ export default function Home() {
                         />
                       </svg>
                     ) : (
-                      <svg className="h-4 w-4 text-rose-300" viewBox="0 0 24 24" fill="none" aria-hidden>
+                      <svg className="h-4 w-4 text-red-700" viewBox="0 0 24 24" fill="none" aria-hidden>
                         <path
                           d="M8 8l8 8M16 8l-8 8"
                           stroke="currentColor"
@@ -1337,7 +1337,7 @@ export default function Home() {
                 className="space-y-4 relative z-10"
               >
                 <div>
-                  <label className="block text-sm font-bold text-cyan-400 mb-1.5">البريد الإلكتروني</label>
+                  <label className="block text-sm font-bold text-mistara-gold mb-1.5">البريد الإلكتروني</label>
                   <input
                     type="email"
                     required
@@ -1347,15 +1347,15 @@ export default function Home() {
                       setEmail(e.target.value);
                       if (authFeedback) setAuthFeedback(null);
                     }}
-                    className={`w-full rounded-2xl bg-slate-950/70 border p-3.5 text-base text-white placeholder:text-slate-600 outline-none transition-all focus:ring-4 ${
+                    className={`w-full rounded-2xl bg-mistara-cream/70 border p-3.5 text-base text-mistara-espresso placeholder:text-mistara-brown/50 outline-none transition-all focus:ring-4 ${
                       authFeedback?.type === 'error'
-                        ? 'border-rose-500/50 focus:border-rose-400 focus:ring-rose-500/10'
-                        : 'border-slate-800 focus:border-cyan-500 focus:ring-cyan-500/10'
+                        ? 'border-red-800/50 focus:border-rose-400 focus:ring-rose-500/10'
+                        : 'border-mistara-brown/15 focus:border-mistara-gold focus:ring-mistara-gold/15'
                     }`}
                   />
                 </div>
                 {!isSignUp && (
-                  <div className="grid grid-cols-2 gap-1 p-1 rounded-2xl bg-slate-950/70 border border-slate-800">
+                  <div className="grid grid-cols-2 gap-1 p-1 rounded-2xl bg-mistara-cream/70 border border-mistara-brown/15">
                     <button
                       type="button"
                       onClick={() => {
@@ -1364,8 +1364,8 @@ export default function Home() {
                       }}
                       className={`rounded-xl py-2.5 text-xs sm:text-sm font-bold transition-all ${
                         loginMethod === 'password'
-                          ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20'
-                          : 'text-slate-500 hover:text-slate-300'
+                          ? 'bg-mistara-gold text-mistara-cream shadow-md shadow-mistara-gold/15'
+                          : 'text-mistara-brown/60 hover:text-mistara-brown'
                       }`}
                     >
                       كلمة المرور
@@ -1378,8 +1378,8 @@ export default function Home() {
                       }}
                       className={`rounded-xl py-2.5 text-xs sm:text-sm font-bold transition-all ${
                         loginMethod === 'otp'
-                          ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20'
-                          : 'text-slate-500 hover:text-slate-300'
+                          ? 'bg-mistara-gold text-mistara-cream shadow-md shadow-mistara-gold/15'
+                          : 'text-mistara-brown/60 hover:text-mistara-brown'
                       }`}
                     >
                       رمز مؤقت (OTP)
@@ -1388,7 +1388,7 @@ export default function Home() {
                 )}
                 {(isSignUp || loginMethod === 'password') && (
                 <div>
-                  <label className="block text-sm font-bold text-cyan-400 mb-1.5">كلمة المرور</label>
+                  <label className="block text-sm font-bold text-mistara-gold mb-1.5">كلمة المرور</label>
                   <input
                     type="password"
                     required={isSignUp || loginMethod === 'password'}
@@ -1399,29 +1399,29 @@ export default function Home() {
                       setPassword(e.target.value);
                       if (authFeedback) setAuthFeedback(null);
                     }}
-                    className={`w-full rounded-2xl bg-slate-950/70 border p-3.5 text-base text-white placeholder:text-slate-600 outline-none transition-all focus:ring-4 ${
+                    className={`w-full rounded-2xl bg-mistara-cream/70 border p-3.5 text-base text-mistara-espresso placeholder:text-mistara-brown/50 outline-none transition-all focus:ring-4 ${
                       authFeedback?.type === 'error'
-                        ? 'border-rose-500/50 focus:border-rose-400 focus:ring-rose-500/10'
-                        : 'border-slate-800 focus:border-cyan-500 focus:ring-cyan-500/10'
+                        ? 'border-red-800/50 focus:border-rose-400 focus:ring-rose-500/10'
+                        : 'border-mistara-brown/15 focus:border-mistara-gold focus:ring-mistara-gold/15'
                     }`}
                   />
                   {isSignUp && (
-                    <p className="text-xs text-slate-500 mt-1.5">6 أحرف على الأقل — يُفضّل أرقام ورموز.</p>
+                    <p className="text-xs text-mistara-brown/60 mt-1.5">6 أحرف على الأقل — يُفضّل أرقام ورموز.</p>
                   )}
                 </div>
                 )}
                 {!isSignUp && loginMethod === 'otp' && (
-                  <p className="text-xs text-slate-400 leading-relaxed bg-slate-950/50 border border-slate-800 rounded-xl p-2.5">
+                  <p className="text-xs text-mistara-brown/80 leading-relaxed bg-mistara-cream/50 border border-mistara-brown/15 rounded-xl p-2.5">
                     سنرسل رمز تحقق مكوّناً من 6 أرقام إلى بريدك لتسجيل الدخول دون كلمة مرور.
                   </p>
                 )}
                 <button
                   type="submit"
                   disabled={authSubmitting}
-                  className="w-full rounded-2xl bg-gradient-to-l from-cyan-400 to-cyan-500 py-3.5 text-slate-950 font-black text-base shadow-lg shadow-cyan-500/20 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none flex items-center justify-center gap-2 transition-all active:scale-[0.99]"
+                  className="w-full rounded-2xl bg-gradient-to-l from-mistara-gold to-mistara-gold-dark py-3.5 text-mistara-cream font-black text-base shadow-lg shadow-mistara-gold/15 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none flex items-center justify-center gap-2 transition-all active:scale-[0.99]"
                 >
                   {authSubmitting && (
-                    <span className="h-4 w-4 rounded-full border-2 border-slate-950/30 border-t-slate-950 animate-spin" />
+                    <span className="h-4 w-4 rounded-full border-2 border-mistara-brown/20 border-t-mistara-espresso animate-spin" />
                   )}
                   {authSubmitting
                     ? isSignUp
@@ -1438,33 +1438,33 @@ export default function Home() {
           )}
 
           {authPhase === 'form' && (
-            <div className="text-center pt-2 border-t border-slate-800 space-y-2">
+            <div className="text-center pt-2 border-t border-mistara-brown/15 space-y-2">
               <button
                 onClick={() => setUser({ id: 'guest-local-user', email: 'guest@mistarh.local' })}
-                className="w-full bg-slate-800 hover:bg-slate-700 text-cyan-300 text-sm py-3 rounded-xl border border-cyan-500/20 font-bold"
+                className="w-full bg-mistara-beige hover:bg-mistara-beige/80 text-mistara-warm text-sm py-3 rounded-xl border border-mistara-gold/20 font-bold"
               >
                 🚀 الدخول الفوري وتجربة النظام (بلا حساب)
               </button>
 
               {process.env.NODE_ENV === 'development' && (
-                <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3 text-right space-y-2">
-                  <p className="text-xs font-bold text-amber-300">أدوات المطوّر (DEV فقط)</p>
+                <div className="rounded-xl border border-mistara-gold-dark/35 bg-amber-500/5 p-3 text-right space-y-2">
+                  <p className="text-xs font-bold text-mistara-gold-dark">أدوات المطوّر (DEV فقط)</p>
                   <button
                     type="button"
                     disabled={devDeleteLoading}
                     onClick={() => void handleDevDeleteAuthUser()}
-                    className="w-full bg-amber-500/20 text-amber-200 text-[10px] py-2 rounded-lg border border-amber-500/40 font-mono disabled:opacity-50"
+                    className="w-full bg-mistara-gold/15 text-mistara-warm text-[10px] py-2 rounded-lg border border-amber-500/40 font-mono disabled:opacity-50"
                   >
                     {devDeleteLoading
                       ? 'جاري الحذف عبر Admin API...'
                       : 'حذف Auth: rraddad@hotmail.com'}
                   </button>
                   {devDeleteStatus && (
-                    <p className="text-[10px] text-amber-200/80 font-mono break-all leading-relaxed">
+                    <p className="text-[10px] text-mistara-warm/80 font-mono break-all leading-relaxed">
                       {devDeleteStatus}
                     </p>
                   )}
-                  <p className="text-[9px] text-slate-600">
+                  <p className="text-[9px] text-mistara-brown/50">
                     لا تُخلط بين رسائل أداة DEV أعلاه وبين تنبيهات تسجيل الدخول في النموذج.
                   </p>
                 </div>
@@ -1477,12 +1477,12 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen bg-[#030712] text-slate-100 flex flex-col relative pb-36" dir="rtl">
+    <div className="min-h-screen bg-mistara-sand text-mistara-espresso flex flex-col relative pb-36" dir="rtl">
       {showWelcomeSuccess && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/70 backdrop-blur-sm px-6">
-          <div className="w-full max-w-xs rounded-3xl border border-emerald-500/30 bg-slate-900 p-6 text-center shadow-2xl space-y-3">
-            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-500/15 ring-4 ring-emerald-500/30">
-              <svg className="h-8 w-8 text-emerald-400" viewBox="0 0 24 24" fill="none" aria-hidden>
+        <div className="fixed inset-0 z-[60] flex items-center justify-center glass-modal-backdrop px-6">
+          <div className="w-full max-w-xs rounded-3xl border border-mistara-gold-dark/30 glass-panel p-6 text-center shadow-2xl space-y-3">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-mistara-gold/12 ring-4 ring-mistara-gold/30">
+              <svg className="h-8 w-8 text-mistara-gold-dark" viewBox="0 0 24 24" fill="none" aria-hidden>
                 <path
                   d="M5 13l4 4L19 7"
                   stroke="currentColor"
@@ -1492,18 +1492,18 @@ export default function Home() {
                 />
               </svg>
             </div>
-            <p className="text-base font-bold text-emerald-300">تم التحقق بنجاح</p>
-            <p className="text-sm text-slate-400">مرحباً بك في لوحة مسطرة</p>
+            <p className="text-base font-bold text-mistara-gold-dark">تم التحقق بنجاح</p>
+            <p className="text-sm text-mistara-brown/80">مرحباً بك في لوحة مسطرة</p>
           </div>
         </div>
       )}
       {/* الهيدر العلوي */}
-      <header className="sticky top-0 z-40 bg-[#030712]/90 backdrop-blur-md border-b border-cyan-500/20 px-4 sm:px-6 lg:px-8 py-3">
+      <header className="sticky top-0 z-40 glass-header px-4 sm:px-6 lg:px-8 py-3">
         <div className="max-w-lg sm:max-w-2xl lg:max-w-4xl w-full mx-auto flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <h1 className="font-black text-cyan-400 text-xl">مسطرة 2030</h1>
+          <h1 className="font-black text-mistara-gold text-xl">مسطرة 2030</h1>
           {!isSupabaseConfigured() && (
-            <span className="text-xs bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-full font-mono">وضع التجربة (بلا حساب)</span>
+            <span className="text-xs bg-mistara-gold/15 text-mistara-gold-dark border border-mistara-gold-dark/35 px-2 py-0.5 rounded-full font-mono">وضع التجربة (بلا حساب)</span>
           )}
         </div>
 
@@ -1534,22 +1534,22 @@ export default function Home() {
       <main className="flex-1 max-w-lg sm:max-w-2xl lg:max-w-4xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 space-y-4 sm:space-y-6">
 
         {/* رقم العميل + الاسم — إدخال مباشر */}
-        <section className="bg-slate-900 border border-cyan-500/40 p-4 rounded-3xl space-y-3 shadow-xl">
+        <section className="glass-panel border border-mistara-gold/35 p-4 rounded-3xl space-y-3 shadow-xl">
           <div className="space-y-1.5">
-            <label className="text-sm text-cyan-400 font-bold block">رقم هاتف العميل</label>
+            <label className="text-sm text-mistara-gold font-bold block">رقم هاتف العميل</label>
             <div className="flex gap-2 items-center">
               <input
                 type="tel"
                 value={customerLocalPhone}
                 onChange={(e) => handleCustomerPhoneInput(e.target.value)}
                 placeholder="50123456"
-                className="flex-1 min-w-0 rounded-xl bg-slate-950 border border-slate-800 p-3.5 text-lg font-bold text-white font-mono tnum text-right"
+                className="flex-1 min-w-0 rounded-xl bg-mistara-cream border border-mistara-brown/15 p-3.5 text-lg font-bold text-mistara-espresso font-mono tnum text-right"
                 dir="ltr"
               />
               <select
                 value={customerCountryCode}
                 onChange={(e) => handleCountryCodeChange(e.target.value)}
-                className="bg-slate-950 border border-slate-800 text-sm text-cyan-300 rounded-xl p-3.5 font-mono tnum w-28 text-center shrink-0"
+                className="bg-mistara-cream border border-mistara-brown/15 text-sm text-mistara-warm rounded-xl p-3.5 font-mono tnum w-28 text-center shrink-0"
               >
                 {COUNTRY_CODES.map((c) => (
                   <option key={c.code} value={c.code}>+{c.code}</option>
@@ -1559,7 +1559,7 @@ export default function Home() {
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-sm text-cyan-400 font-bold block">اسم العميل</label>
+            <label className="text-sm text-mistara-gold font-bold block">اسم العميل</label>
             <div className="flex gap-2 items-stretch">
               <input
                 type="text"
@@ -1567,7 +1567,7 @@ export default function Home() {
                 onChange={(e) => setCustomerDisplayName(e.target.value)}
                 readOnly={customerNameLocked && !customerNameEditing}
                 placeholder="اكتب اسم العميل هنا..."
-                className={`flex-1 min-w-0 rounded-xl bg-slate-950 border border-slate-800 p-3.5 text-base font-bold text-white ${
+                className={`flex-1 min-w-0 rounded-xl bg-mistara-cream border border-mistara-brown/15 p-3.5 text-base font-bold text-mistara-espresso ${
                   customerNameLocked && !customerNameEditing ? 'cursor-default opacity-90' : ''
                 }`}
               />
@@ -1580,7 +1580,7 @@ export default function Home() {
                       setCustomerNameEditing(true);
                       setCustomerNameLocked(false);
                     }}
-                    className="shrink-0 rounded-xl bg-slate-900 border border-cyan-500/40 px-3.5 text-cyan-300 font-bold text-sm hover:bg-slate-800 transition-colors"
+                    className="shrink-0 rounded-xl glass-panel border border-mistara-gold/35 px-3.5 text-mistara-warm font-bold text-sm hover:bg-mistara-beige transition-colors"
                     aria-label="تعديل اسم العميل"
                     title="تعديل الاسم"
                   >
@@ -1596,7 +1596,7 @@ export default function Home() {
               <button
                 type="button"
                 onClick={() => void handleSaveCustomerContact()}
-                className="w-full bg-cyan-500 text-slate-950 text-sm font-bold py-3 rounded-xl shadow"
+                className="w-full bg-mistara-gold text-mistara-cream text-sm font-bold py-3 rounded-xl shadow"
               >
                 حفظ الرقم والاسم في دفتر العملاء
               </button>
@@ -1606,18 +1606,18 @@ export default function Home() {
             <button
               type="button"
               onClick={() => void handleSaveCustomerContact()}
-              className="w-full bg-emerald-500 text-slate-950 text-sm font-bold py-3 rounded-xl shadow"
+              className="w-full bg-mistara-gold-dark text-mistara-cream text-sm font-bold py-3 rounded-xl shadow"
             >
               حفظ الاسم المحدّث
             </button>
           )}
 
           {uploadSaveError && customerLocalPhone.length >= 1 && uploadSavePhase === 'idle' && (
-            <p className="text-xs text-rose-400 font-bold">{uploadSaveError}</p>
+            <p className="text-xs text-red-800 font-bold">{uploadSaveError}</p>
           )}
 
           {customerLocalPhone.length >= 1 && (
-            <p className="text-[11px] text-slate-500 font-bold">
+            <p className="text-[11px] text-mistara-brown/60 font-bold">
               {isSearchingInvoices || customerBookStatus === 'searching'
                 ? 'جاري البحث في سجل العملاء والفواتير...'
                 : customerBookStatus === 'known' && customerDisplayName
@@ -1635,7 +1635,7 @@ export default function Home() {
               type="button"
               onClick={handleOpenOpenCvScanner}
               disabled={isUploading || uploadSavePhase !== 'idle'}
-              className="w-full rounded-xl border border-cyan-500/25 bg-slate-950/60 py-2.5 text-xs font-bold text-cyan-400/90 backdrop-blur-sm transition-colors hover:border-cyan-500/40 hover:text-cyan-300 disabled:opacity-50"
+              className="w-full rounded-xl border border-mistara-gold/25 bg-mistara-cream/60 py-2.5 text-xs font-bold text-mistara-gold backdrop-blur-sm transition-colors hover:border-mistara-gold/35 hover:text-mistara-warm disabled:opacity-50"
             >
               ✨ ماسح OpenCV المتقدّم — اكتشاف حي للحواف
             </button>
@@ -1645,7 +1645,7 @@ export default function Home() {
         {/* عرض الفواتير: الفاتورة الحديثة (الأحدث) ضخمة في المقدمة يعقبها الأرشيف */}
         {customerLocalPhone.length >= 1 && customerInvoices.length > 0 && (
           <section className="space-y-4">
-            <h2 className="text-base sm:text-lg text-cyan-400 font-bold">
+            <h2 className="text-base sm:text-lg text-mistara-gold font-bold">
               أرشيف فواتير العميل (<span className="tnum">{customerInvoices.length}</span>)
             </h2>
 
@@ -1656,21 +1656,21 @@ export default function Home() {
               const latestInvoiceNumber = customerInvoices.length;
 
               return (
-                <div className="bg-slate-900 border-2 border-cyan-400/60 rounded-3xl p-4 shadow-2xl space-y-3">
-                  <div className="flex items-center justify-between bg-slate-950 px-4 py-2.5 rounded-2xl border border-cyan-500/30">
+                <div className="glass-panel border-2 border-mistara-gold/50 rounded-3xl p-4 shadow-2xl space-y-3">
+                  <div className="flex items-center justify-between bg-mistara-cream px-4 py-2.5 rounded-2xl border border-mistara-gold/30">
                     <div>
-                      <span className="text-sm sm:text-base font-black text-cyan-300">
+                      <span className="text-sm sm:text-base font-black text-mistara-warm">
                         ⭐ الفاتورة الأحدث (فاتورة #<span className="tnum">{latestInvoiceNumber}</span>)
                       </span>
-                      <span className="text-xs text-slate-400 font-bold font-mono tnum block" dir="ltr">{formatDate(latestInvoice.created_at)}</span>
+                      <span className="text-xs text-mistara-brown/80 font-bold font-mono tnum block" dir="ltr">{formatDate(latestInvoice.created_at)}</span>
                     </div>
                   </div>
 
                   {/* معاينة الفاتورة الكبيرة */}
-                  <div className="w-full bg-slate-950 rounded-2xl border border-slate-800 p-2 flex flex-col items-center space-y-3">
+                  <div className="w-full bg-mistara-cream rounded-2xl border border-mistara-brown/15 p-2 flex flex-col items-center space-y-3">
                     <div 
                       onClick={() => setActiveImageIndex(latestIndex)}
-                      className="w-full h-96 sm:h-[28rem] lg:h-[32rem] rounded-xl overflow-hidden border border-cyan-500/30 bg-slate-900 cursor-pointer relative shadow-inner flex items-center justify-center"
+                      className="w-full h-96 sm:h-[28rem] lg:h-[32rem] rounded-xl overflow-hidden border border-mistara-gold/30 glass-panel cursor-pointer relative shadow-inner flex items-center justify-center"
                     >
                       <img 
                         src={latestInvoice.image_url} 
@@ -1682,7 +1682,7 @@ export default function Home() {
                     <div className="flex gap-2 w-full">
                       <button
                         onClick={() => setActiveImageIndex(latestIndex)}
-                        className="flex-1 bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 text-sm py-3 rounded-xl font-bold"
+                        className="flex-1 bg-mistara-gold/10 text-mistara-gold border border-mistara-gold/30 text-sm py-3 rounded-xl font-bold"
                       >
                         تكبير المعاينة
                       </button>
@@ -1690,7 +1690,7 @@ export default function Home() {
                         type="button"
                         disabled={exportingPdfId === latestInvoice.id}
                         onClick={() => handleDownloadInvoicePdf(latestInvoice, latestInvoiceNumber)}
-                        className="flex-1 bg-cyan-500 text-slate-950 font-bold text-sm py-3 rounded-xl text-center shadow-md flex items-center justify-center gap-1 disabled:opacity-50"
+                        className="flex-1 bg-mistara-gold text-mistara-cream font-bold text-sm py-3 rounded-xl text-center shadow-md flex items-center justify-center gap-1 disabled:opacity-50"
                       >
                         <span>{exportingPdfId === latestInvoice.id ? 'جارٍ التجهيز...' : '📄 تنزيل PDF'}</span>
                       </button>
@@ -1699,25 +1699,25 @@ export default function Home() {
                       type="button"
                       disabled={exportingPdfId === latestInvoice.id}
                       onClick={() => handlePrintInvoicePdf(latestInvoice, latestInvoiceNumber)}
-                      className="w-full bg-slate-900 text-cyan-300 border border-cyan-500/30 text-sm py-3 rounded-xl font-bold flex items-center justify-center gap-1 disabled:opacity-50"
+                      className="w-full glass-panel text-mistara-warm border border-mistara-gold/30 text-sm py-3 rounded-xl font-bold flex items-center justify-center gap-1 disabled:opacity-50"
                     >
                       <span>{exportingPdfId === latestInvoice.id ? 'جارٍ التجهيز...' : '🖨️ معاينة وطباعة PDF'}</span>
                     </button>
                   </div>
 
                   {/* خانة رسالة الواتساب المخصصة تحت الفاتورة الأحدث */}
-                  <div className="bg-slate-950 border border-slate-800 rounded-2xl p-3 space-y-2">
-                    <label className="text-sm text-cyan-400 font-bold block">رسالة الواتساب المخصصة لهذه الفاتورة:</label>
+                  <div className="bg-mistara-cream border border-mistara-brown/15 rounded-2xl p-3 space-y-2">
+                    <label className="text-sm text-mistara-gold font-bold block">رسالة الواتساب المخصصة لهذه الفاتورة:</label>
                     <textarea
                       value={whatsappMessages[latestInvoice.id] || ''}
                       onChange={(e) => setWhatsappMessages({ ...whatsappMessages, [latestInvoice.id]: e.target.value })}
                       rows={3}
-                      className="w-full bg-slate-900 border border-slate-800 rounded-xl p-3 text-sm text-white focus:border-cyan-500 focus:outline-none resize-y"
+                      className="w-full glass-panel border border-mistara-brown/15 rounded-xl p-3 text-sm text-mistara-espresso focus:border-mistara-gold focus:outline-none resize-y"
                       placeholder="اكتب رسالة الواتساب..."
                     />
                     <button
                       onClick={() => sendViaWhatsApp(latestInvoice.customer_phone, latestInvoice.id)}
-                      className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-base py-3.5 rounded-xl flex items-center justify-center gap-2 shadow-lg transition-all"
+                      className="w-full bg-mistara-gold-dark hover:bg-mistara-gold text-mistara-cream font-bold text-base py-3.5 rounded-xl flex items-center justify-center gap-2 shadow-lg transition-all"
                     >
                       <span>💬 إرسال عبر واتساب</span>
                     </button>
@@ -1729,25 +1729,25 @@ export default function Home() {
             {/* الفواتير القديمة والأرشيف: عمود واحد على الجوال، شبكة على الشاشات الأوسع لتفادي الفراغ الجانبي */}
             {customerInvoices.length > 1 && (
               <div className="space-y-3 pt-2">
-                <h3 className="text-sm text-slate-400 font-bold">الفواتير السابقة (الأرشيف)</h3>
+                <h3 className="text-sm text-mistara-brown/80 font-bold">الفواتير السابقة (الأرشيف)</h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
                   {customerInvoices.slice(1).map((inv, subIndex) => {
                     const actualIndex = subIndex + 1;
                     const invoiceNumber = customerInvoices.length - actualIndex;
 
                     return (
-                      <div key={inv.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-3 space-y-2">
+                      <div key={inv.id} className="glass-panel border border-mistara-brown/15 rounded-2xl p-3 space-y-2">
                         <div className="flex items-center justify-between">
-                          <span className="text-sm text-cyan-400 font-bold">
+                          <span className="text-sm text-mistara-gold font-bold">
                             فاتورة #<span className="tnum">{invoiceNumber}</span>
                           </span>
-                          <span className="text-xs text-slate-500 font-bold font-mono tnum" dir="ltr">{formatDate(inv.created_at)}</span>
+                          <span className="text-xs text-mistara-brown/60 font-bold font-mono tnum" dir="ltr">{formatDate(inv.created_at)}</span>
                         </div>
                         
                         <div className="flex gap-3">
                           <div 
                             onClick={() => setActiveImageIndex(actualIndex)}
-                            className="w-24 h-32 shrink-0 rounded-xl overflow-hidden bg-slate-950 border border-slate-800 cursor-pointer relative flex items-center justify-center"
+                            className="w-24 h-32 shrink-0 rounded-xl overflow-hidden bg-mistara-cream border border-mistara-brown/15 cursor-pointer relative flex items-center justify-center"
                           >
                             <img src={inv.image_url} alt="Old Invoice" className="w-full h-full object-contain" />
                           </div>
@@ -1757,12 +1757,12 @@ export default function Home() {
                               value={whatsappMessages[inv.id] || ''}
                               onChange={(e) => setWhatsappMessages({ ...whatsappMessages, [inv.id]: e.target.value })}
                               rows={2}
-                              className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2 text-sm text-white focus:border-cyan-500 focus:outline-none resize-y"
+                              className="w-full bg-mistara-cream border border-mistara-brown/15 rounded-xl p-2 text-sm text-mistara-espresso focus:border-mistara-gold focus:outline-none resize-y"
                             />
                             <div className="flex gap-1.5">
                               <button
                                 onClick={() => sendViaWhatsApp(inv.customer_phone, inv.id)}
-                                className="flex-1 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-xs sm:text-sm font-bold py-2.5 rounded-xl flex items-center justify-center gap-1.5"
+                                className="flex-1 bg-mistara-gold/15 text-mistara-gold-dark border border-mistara-gold-dark/30 text-xs sm:text-sm font-bold py-2.5 rounded-xl flex items-center justify-center gap-1.5"
                               >
                                 <span>💬 واتساب</span>
                               </button>
@@ -1770,7 +1770,7 @@ export default function Home() {
                                 type="button"
                                 disabled={exportingPdfId === inv.id}
                                 onClick={() => handleDownloadInvoicePdf(inv, invoiceNumber)}
-                                className="flex-1 bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-xs sm:text-sm font-bold py-2.5 rounded-xl flex items-center justify-center gap-1.5 disabled:opacity-50"
+                                className="flex-1 bg-mistara-gold/15 text-mistara-warm border border-mistara-gold/30 text-xs sm:text-sm font-bold py-2.5 rounded-xl flex items-center justify-center gap-1.5 disabled:opacity-50"
                               >
                                 <span>{exportingPdfId === inv.id ? '...' : '📄 PDF'}</span>
                               </button>
@@ -1797,13 +1797,13 @@ export default function Home() {
               type="button"
               onClick={handleOpenScannerForCustomer}
               disabled={isUploading}
-              className="pointer-events-auto w-24 h-24 rounded-full bg-gradient-to-tr from-emerald-500 via-teal-400 to-cyan-400 text-slate-950 font-black shadow-[0_0_40px_rgba(16,185,129,0.8)] border-4 border-slate-950 flex flex-col items-center justify-center cursor-pointer transition-transform transform active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
+              className="pointer-events-auto w-24 h-24 rounded-full bg-gradient-to-tr from-mistara-gold via-mistara-gold-light to-mistara-gold-dark text-mistara-cream font-black shadow-[0_0_40px_rgba(166,124,82,0.45)] border-4 border-mistara-sand flex flex-col items-center justify-center cursor-pointer transition-transform transform active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
               title="فتح الكاميرا ومسح فاتورة أو مستند"
             >
               <span className="text-4xl leading-none mb-0.5" aria-hidden>
                 📷
               </span>
-              <span className="text-xs font-black tracking-tight text-slate-950">كاميرا</span>
+              <span className="text-xs font-black tracking-tight text-mistara-cream">كاميرا</span>
             </button>
           )}
         </div>
@@ -1825,28 +1825,28 @@ export default function Home() {
 
       {/* مودال إعدادات الخياط وملاحظات سحابية عامة */}
       {showTailorProfileModal && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-slate-900 border border-cyan-500/40 rounded-3xl p-6 w-full max-w-sm sm:max-w-md space-y-4 shadow-2xl">
-            <div className="flex justify-between items-center border-b border-slate-800 pb-2">
-              <h3 className="font-bold text-white text-base">الإعدادات الشخصية</h3>
-              <button onClick={() => { setShowTailorProfileModal(false); setSettingsFeedback(null); }} className="text-cyan-400 text-lg">✕</button>
+        <div className="fixed inset-0 glass-modal-backdrop flex items-center justify-center p-4 z-50">
+          <div className="glass-panel border border-mistara-gold/35 rounded-3xl p-6 w-full max-w-sm sm:max-w-md space-y-4 shadow-2xl">
+            <div className="flex justify-between items-center border-b border-mistara-brown/15 pb-2">
+              <h3 className="font-bold text-mistara-espresso text-base">الإعدادات الشخصية</h3>
+              <button onClick={() => { setShowTailorProfileModal(false); setSettingsFeedback(null); }} className="text-mistara-gold text-lg">✕</button>
             </div>
             
             <form onSubmit={handleSaveTailorProfile} className="space-y-4">
-              <div className="flex items-center gap-3 rounded-2xl border border-slate-800 bg-slate-950/60 p-3">
+              <div className="flex items-center gap-3 rounded-2xl border border-mistara-brown/15 bg-mistara-cream/60 p-3">
                 {tailorAvatarUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={tailorAvatarUrl}
                     alt="معاينة صورة الحساب"
-                    className="h-14 w-14 shrink-0 rounded-2xl border border-cyan-500/30 object-cover"
+                    className="h-14 w-14 shrink-0 rounded-2xl border border-mistara-gold/30 object-cover"
                   />
                 ) : (
-                  <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-cyan-500/20 text-lg font-black text-cyan-300">
+                  <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-mistara-gold/15 text-lg font-black text-mistara-warm">
                     م
                   </div>
                 )}
-                <p className="text-xs leading-relaxed text-slate-400">
+                <p className="text-xs leading-relaxed text-mistara-brown/80">
                   غيّر صورة الحساب أو الشعار من قائمة أيقونة «م» في الأعلى، أو احفظ الإعدادات بعد إضافة رقمك.
                 </p>
               </div>
@@ -1855,19 +1855,19 @@ export default function Home() {
                   role="alert"
                   className={`flex items-start gap-2 rounded-xl border px-3 py-2.5 text-sm leading-relaxed ${
                     settingsFeedback.type === 'success'
-                      ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-100'
-                      : 'border-rose-500/40 bg-rose-500/10 text-rose-100'
+                      ? 'border-mistara-gold-dark/40 bg-mistara-gold/10 text-mistara-brown'
+                      : 'border-red-800/35 bg-red-800/8 text-red-900'
                   }`}
                 >
                   <span
                     className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${
                       settingsFeedback.type === 'success'
-                        ? 'bg-emerald-500/20 ring-2 ring-emerald-500/30'
-                        : 'bg-rose-500/20 ring-2 ring-rose-500/30'
+                        ? 'bg-mistara-gold/15 ring-2 ring-mistara-gold/30'
+                        : 'bg-red-800/10 ring-2 ring-red-800/25'
                     }`}
                   >
                     {settingsFeedback.type === 'success' ? (
-                      <svg className="h-3.5 w-3.5 text-emerald-300" viewBox="0 0 24 24" fill="none" aria-hidden>
+                      <svg className="h-3.5 w-3.5 text-mistara-gold-dark" viewBox="0 0 24 24" fill="none" aria-hidden>
                         <path
                           d="M5 13l4 4L19 7"
                           stroke="currentColor"
@@ -1877,7 +1877,7 @@ export default function Home() {
                         />
                       </svg>
                     ) : (
-                      <svg className="h-3.5 w-3.5 text-rose-300" viewBox="0 0 24 24" fill="none" aria-hidden>
+                      <svg className="h-3.5 w-3.5 text-red-700" viewBox="0 0 24 24" fill="none" aria-hidden>
                         <path
                           d="M8 8l8 8M16 8l-8 8"
                           stroke="currentColor"
@@ -1891,17 +1891,17 @@ export default function Home() {
                 </div>
               )}
               <div>
-                <label className="block text-sm font-bold text-cyan-400 mb-1">اسم المحل</label>
+                <label className="block text-sm font-bold text-mistara-gold mb-1">اسم المحل</label>
                 <input
                   type="text"
                   value={tailorShopName}
                   onChange={(e) => setTailorShopName(e.target.value)}
                   placeholder="اسم محل الخياطة (اختياري)"
-                  className="w-full rounded-xl bg-slate-950 border border-slate-800 p-3 text-base font-bold text-white"
+                  className="w-full rounded-xl bg-mistara-cream border border-mistara-brown/15 p-3 text-base font-bold text-mistara-espresso"
                 />
               </div>
               <div>
-                <label className="block text-sm font-bold text-cyan-400 mb-1">رقم هاتف الخياط</label>
+                <label className="block text-sm font-bold text-mistara-gold mb-1">رقم هاتف الخياط</label>
                 <div className="flex gap-2 items-center">
                   <input
                     type="tel"
@@ -1909,13 +1909,13 @@ export default function Home() {
                     value={tailorLocalPhone}
                     onChange={(e) => setTailorLocalPhone(e.target.value.replace(/\D/g, ''))}
                     placeholder="رقم الجوال"
-                    className="flex-1 min-w-0 rounded-xl bg-slate-950 border border-slate-800 p-3 text-base font-bold text-white font-mono tnum text-right"
+                    className="flex-1 min-w-0 rounded-xl bg-mistara-cream border border-mistara-brown/15 p-3 text-base font-bold text-mistara-espresso font-mono tnum text-right"
                     dir="ltr"
                   />
                   <select
                     value={tailorCountryCode}
                     onChange={(e) => setTailorCountryCode(e.target.value)}
-                    className="bg-slate-950 border border-slate-800 text-sm text-cyan-300 rounded-xl p-3 font-mono tnum w-24 text-center"
+                    className="bg-mistara-cream border border-mistara-brown/15 text-sm text-mistara-warm rounded-xl p-3 font-mono tnum w-24 text-center"
                   >
                     {COUNTRY_CODES.map((c) => (
                       <option key={c.code} value={c.code}>+{c.code}</option>
@@ -1925,13 +1925,13 @@ export default function Home() {
               </div>
 
               <div>
-                <label className="block text-sm font-bold text-cyan-400 mb-1">ملاحظات سحابية عامة</label>
+                <label className="block text-sm font-bold text-mistara-gold mb-1">ملاحظات سحابية عامة</label>
                 <textarea
                   value={cloudNotes}
                   onChange={(e) => setCloudNotes(e.target.value)}
                   placeholder="اكتب ملاحظات عامة تحفظ في حسابك..."
                   rows={3}
-                  className="w-full rounded-xl bg-slate-950 border border-slate-800 p-3 text-sm text-white focus:border-cyan-500 focus:outline-none resize-none"
+                  className="w-full rounded-xl bg-mistara-cream border border-mistara-brown/15 p-3 text-sm text-mistara-espresso focus:border-mistara-gold focus:outline-none resize-none"
                 />
               </div>
 
@@ -1939,14 +1939,14 @@ export default function Home() {
                 <button
                   type="button"
                   onClick={() => { setShowTailorProfileModal(false); setSettingsFeedback(null); }}
-                  className="flex-1 bg-slate-800 text-white text-sm py-3 rounded-xl font-bold"
+                  className="flex-1 bg-mistara-beige text-mistara-espresso text-sm py-3 rounded-xl font-bold"
                 >
                   إلغاء
                 </button>
                 <button
                   type="submit"
                   disabled={savingSettings}
-                  className="flex-1 bg-cyan-500 text-slate-950 font-bold text-sm py-3 rounded-xl shadow"
+                  className="flex-1 bg-mistara-gold text-mistara-cream font-bold text-sm py-3 rounded-xl shadow"
                 >
                   {savingSettings ? 'جاري الحفظ...' : 'حفظ الإعدادات'}
                 </button>
@@ -1958,17 +1958,17 @@ export default function Home() {
 
       {/* عارض الصور مكبراً (Lightbox) */}
       {activeImageIndex !== null && (
-        <div className="fixed inset-0 bg-slate-950/95 backdrop-blur-md z-50 flex flex-col items-center justify-center p-4">
+        <div className="fixed inset-0 glass-modal-backdrop z-50 flex flex-col items-center justify-center p-4">
           <div className="absolute top-4 right-4 z-10">
             <button 
               onClick={() => setActiveImageIndex(null)}
-              className="w-11 h-11 rounded-full bg-slate-900 border border-cyan-500/30 text-cyan-400 font-bold flex items-center justify-center text-lg shadow-lg"
+              className="w-11 h-11 rounded-full glass-panel border border-mistara-gold/30 text-mistara-gold font-bold flex items-center justify-center text-lg shadow-lg"
             >
               ✕
             </button>
           </div>
 
-          <div className="w-full max-w-lg lg:max-w-2xl h-[70vh] sm:h-[80vh] bg-slate-900 border border-cyan-500/30 rounded-2xl overflow-hidden flex items-center justify-center p-2 shadow-2xl">
+          <div className="w-full max-w-lg lg:max-w-2xl h-[70vh] sm:h-[80vh] glass-panel border border-mistara-gold/30 rounded-2xl overflow-hidden flex items-center justify-center p-2 shadow-2xl">
             <img 
               src={customerInvoices[activeImageIndex]?.image_url} 
               alt="Invoice Large" 
@@ -1980,17 +1980,17 @@ export default function Home() {
             <button
               disabled={activeImageIndex >= customerInvoices.length - 1}
               onClick={() => setActiveImageIndex(activeImageIndex + 1)}
-              className="bg-slate-900 disabled:opacity-30 border border-cyan-500/30 text-cyan-400 text-sm px-4 py-2.5 rounded-xl font-bold"
+              className="glass-panel disabled:opacity-30 border border-mistara-gold/30 text-mistara-gold text-sm px-4 py-2.5 rounded-xl font-bold"
             >
               السابق
             </button>
-            <span className="text-sm text-cyan-400 font-bold font-mono tnum">
+            <span className="text-sm text-mistara-gold font-bold font-mono tnum">
               {activeImageIndex + 1} / {customerInvoices.length}
             </span>
             <button
               disabled={activeImageIndex <= 0}
               onClick={() => setActiveImageIndex(activeImageIndex - 1)}
-              className="bg-slate-900 disabled:opacity-30 border border-cyan-500/30 text-cyan-400 text-sm px-4 py-2.5 rounded-xl font-bold"
+              className="glass-panel disabled:opacity-30 border border-mistara-gold/30 text-mistara-gold text-sm px-4 py-2.5 rounded-xl font-bold"
             >
               التالي
             </button>
@@ -2007,7 +2007,7 @@ export default function Home() {
                     customerInvoices.length - activeImageIndex
                   )
                 }
-                className="flex-1 bg-cyan-500 text-slate-950 font-bold text-sm py-3 rounded-xl shadow-md disabled:opacity-50"
+                className="flex-1 bg-mistara-gold text-mistara-cream font-bold text-sm py-3 rounded-xl shadow-md disabled:opacity-50"
               >
                 {exportingPdfId === customerInvoices[activeImageIndex].id
                   ? 'جارٍ التجهيز...'
@@ -2022,7 +2022,7 @@ export default function Home() {
                     customerInvoices.length - activeImageIndex
                   )
                 }
-                className="flex-1 bg-slate-900 text-cyan-300 border border-cyan-500/30 text-sm py-3 rounded-xl font-bold disabled:opacity-50"
+                className="flex-1 glass-panel text-mistara-warm border border-mistara-gold/30 text-sm py-3 rounded-xl font-bold disabled:opacity-50"
               >
                 {exportingPdfId === customerInvoices[activeImageIndex].id
                   ? 'جارٍ التجهيز...'

@@ -11,8 +11,8 @@ type OtpKeypadProps = {
 const DIGIT_KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9'];
 
 const keyClass =
-  'h-14 sm:h-16 rounded-2xl bg-slate-900 border border-slate-800 text-white text-xl font-black tnum ' +
-  'transition-all duration-100 active:scale-95 active:bg-slate-800 active:border-cyan-500/50 ' +
+  'h-14 sm:h-16 rounded-2xl glass-panel border border-mistara-brown/15 text-mistara-espresso text-xl font-black tnum ' +
+  'transition-all duration-100 active:scale-95 active:bg-mistara-beige active:border-mistara-gold/50 ' +
   'disabled:opacity-30 disabled:active:scale-100 select-none touch-manipulation';
 
 /** لوحة مفاتيح رقمية أنيقة على الشاشة لإدخال رمز التحقق (OTP) بسهولة على الجوال. */
@@ -54,7 +54,7 @@ export function OtpKeypad({ value, onChange, onComplete, disabled, maxLength = 6
         type="button"
         disabled={disabled || value.length === 0}
         onClick={clearAll}
-        className={`${keyClass} text-xs font-bold text-slate-400`}
+        className={`${keyClass} text-xs font-bold text-mistara-brown/80`}
       >
         مسح الكل
       </button>
@@ -68,7 +68,7 @@ export function OtpKeypad({ value, onChange, onComplete, disabled, maxLength = 6
         disabled={disabled || value.length === 0}
         onClick={backspace}
         aria-label="حذف آخر رقم"
-        className={`${keyClass} text-cyan-300 flex items-center justify-center`}
+        className={`${keyClass} text-mistara-warm flex items-center justify-center`}
       >
         <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" aria-hidden>
           <path
