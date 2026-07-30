@@ -1,5 +1,7 @@
 'use client';
 
+/** لوحة مسطرة 2030 — دخول، إعدادات الخياط، ودفتر العملاء بالبحث برقم الجوال. */
+
 import { useState, useEffect, useRef, useMemo } from 'react';
 import type { EmailOtpType } from '@supabase/supabase-js';
 import { mapAuthErrorToArabic } from '@/lib/auth-errors';
