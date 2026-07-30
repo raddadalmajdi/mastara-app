@@ -74,7 +74,7 @@ export function saveLocalTailorProfile(profile: Omit<TailorProfileUpsert, 'user_
   );
 }
 
-/** يحفظ رابط الصورة محلياً على الجهاز (احتياط عند غياب عمود avatar_url في Supabase). */
+/** يحفظ رابط الصورة محلياً على الجهاز (ذاكرة تخزين مؤقتة / احتياط). */
 export function saveLocalAvatarUrl(userId: string, avatarUrl: string): void {
   if (typeof window === 'undefined' || !userId) return;
   try {
@@ -93,11 +93,17 @@ export function loadLocalAvatarUrl(userId: string): string | null {
   }
 }
 
-/** يدمج رابط الصورة من قاعدة البيانات مع النسخة المحلية الاحتياطية. */
+/** يدمج رابط الصورة — قاعدة البيانات أولاً، ثم النسخة المحلية الاحتياطية. */
 export function resolveAvatarUrl(dbUrl: string | null | undefined, userId: string): string {
   const fromDb = dbUrl?.trim();
   if (fromDb) return fromDb;
   return loadLocalAvatarUrl(userId)?.trim() ?? '';
+}
+
+function cacheAvatarLocally(userId: string, avatarUrl: string): void {
+  if (avatarUrl.trim()) {
+    saveLocalAvatarUrl(userId, avatarUrl);
+  }
 }
 
 function enrichProfileWithLocalAvatar(
@@ -115,10 +121,105 @@ function enrichProfileWithLocalAvatar(
       avatar_url: localAvatar,
     };
   }
-  const mergedAvatar = resolveAvatarUrl(record.avatar_url, userId);
-  return mergedAvatar !== (record.avatar_url?.trim() ?? '')
-    ? { ...record, avatar_url: mergedAvatar || null }
-    : record;
+
+  const dbAvatar = record.avatar_url?.trim() ?? '';
+  if (dbAvatar) {
+    cacheAvatarLocally(userId, dbAvatar);
+    return record;
+  }
+
+  const localAvatar = loadLocalAvatarUrl(userId)?.trim();
+  if (!localAvatar) return record;
+
+  return { ...record, avatar_url: localAvatar };
+}
+
+/** يحاول كتابة avatar_url مباشرة في tailor_profiles — المسار الأساسي بعد تفعيل العمود. */
+async function trySaveAvatarUrlToDatabase(
+  supabase: SupabaseClient,
+  userId: string,
+  avatarUrl: string,
+  profile: Omit<TailorProfileUpsert, 'user_id' | 'avatar_url'>
+): Promise<boolean> {
+  const trimmedUrl = avatarUrl.trim();
+  const { exists, error: existsError } = await profileRowExists(supabase, userId);
+  if (existsError && !isTimestampSchemaCacheError(existsError)) {
+    return false;
+  }
+
+  if (exists) {
+    const { error: avatarOnlyError } = await supabase
+      .from('tailor_profiles')
+      .update({ avatar_url: trimmedUrl })
+      .eq('user_id', userId);
+
+    if (!avatarOnlyError) {
+      return true;
+    }
+
+    if (isMissingSchemaColumn(avatarOnlyError, 'avatar_url')) {
+      return false;
+    }
+
+    if (!isTimestampSchemaCacheError(avatarOnlyError)) {
+      /* fall through to upsert */
+    }
+  }
+
+  try {
+    await upsertTailorProfile(supabase, {
+      user_id: userId,
+      phone: profile.phone,
+      cloud_notes: profile.cloud_notes,
+      shop_name: profile.shop_name,
+      avatar_url: trimmedUrl,
+    });
+
+    const { data: verifyRow, error: verifyError } = await supabase
+      .from('tailor_profiles')
+      .select('avatar_url')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (verifyError) {
+      if (isMissingSchemaColumn(verifyError, 'avatar_url')) {
+        return false;
+      }
+      return false;
+    }
+
+    return String((verifyRow as { avatar_url?: string } | null)?.avatar_url ?? '').trim() === trimmedUrl;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * إن وُجدت صورة محلية قديمة ولم تُحفظ بعد في Supabase، تُزامَن تلقائياً عند تسجيل الدخول.
+ */
+export async function syncLocalAvatarToDatabaseIfNeeded(
+  supabase: SupabaseClient,
+  userId: string,
+  profile: Omit<TailorProfileUpsert, 'user_id' | 'avatar_url'>
+): Promise<void> {
+  const localAvatar = loadLocalAvatarUrl(userId)?.trim();
+  if (!localAvatar) return;
+
+  const { data, error } = await supabase
+    .from('tailor_profiles')
+    .select('avatar_url')
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (error && isMissingSchemaColumn(error, 'avatar_url')) {
+    return;
+  }
+
+  if (String((data as { avatar_url?: string } | null)?.avatar_url ?? '').trim()) {
+    return;
+  }
+
+  await trySaveAvatarUrlToDatabase(supabase, userId, localAvatar, profile);
 }
 
 export async function fetchTailorProfile(
@@ -271,8 +372,8 @@ export async function upsertTailorProfile(
 }
 
 /**
- * يحفظ رابط صورة الحساب — يحاول Supabase أولاً، ويخزّن دائماً نسخة محلية
- * احتياطية حتى لا يختفي الأفاتار بعد تحديث الصفحة إن غاب عمود avatar_url.
+ * يحفظ رابط صورة الحساب — Supabase (`tailor_profiles.avatar_url`) أولاً،
+ * مع نسخة محلية احتياطية دائماً لضمان استمرار العرض بعد Refresh.
  */
 export async function persistTailorAvatarUrl(
   supabase: SupabaseClient,
@@ -285,71 +386,10 @@ export async function persistTailorAvatarUrl(
     throw new Error('رابط صورة الحساب فارغ.');
   }
 
-  saveLocalAvatarUrl(userId, trimmedUrl);
+  const savedToDatabase = await trySaveAvatarUrlToDatabase(supabase, userId, trimmedUrl, profile);
+  cacheAvatarLocally(userId, trimmedUrl);
 
-  const { exists, error: existsError } = await profileRowExists(supabase, userId);
-  if (existsError && !isTimestampSchemaCacheError(existsError)) {
-    return 'local';
-  }
-
-  if (exists) {
-    const { error: avatarOnlyError } = await supabase
-      .from('tailor_profiles')
-      .update({ avatar_url: trimmedUrl })
-      .eq('user_id', userId);
-
-    if (!avatarOnlyError) {
-      return 'database';
-    }
-
-    if (
-      isMissingSchemaColumn(avatarOnlyError, 'avatar_url') ||
-      isTimestampSchemaCacheError(avatarOnlyError)
-    ) {
-      return 'local';
-    }
-  }
-
-  try {
-    await upsertTailorProfile(supabase, {
-      user_id: userId,
-      phone: profile.phone,
-      cloud_notes: profile.cloud_notes,
-      shop_name: profile.shop_name,
-      avatar_url: trimmedUrl,
-    });
-
-    const { data: verifyRow, error: verifyError } = await supabase
-      .from('tailor_profiles')
-      .select('avatar_url')
-      .eq('user_id', userId)
-      .maybeSingle();
-
-    if (verifyError && isMissingSchemaColumn(verifyError, 'avatar_url')) {
-      return 'local';
-    }
-
-    const savedInDb = Boolean(
-      verifyRow &&
-        typeof verifyRow === 'object' &&
-        'avatar_url' in verifyRow &&
-        String((verifyRow as { avatar_url?: string }).avatar_url ?? '').trim() === trimmedUrl
-    );
-
-    return savedInDb ? 'database' : 'local';
-  } catch {
-    try {
-      await upsertTailorProfile(supabase, {
-        user_id: userId,
-        phone: profile.phone,
-        cloud_notes: profile.cloud_notes,
-        shop_name: profile.shop_name,
-      });
-    } catch {
-      /* الملف المحلي كافٍ — الصورة مرفوعة إلى Storage */
-    }
-    return 'local';
-  }
+  return savedToDatabase ? 'database' : 'local';
 }
 
 /** يدمج avatar_url في ملف الخياط المحلي (وضع التجربة). */

@@ -62,8 +62,10 @@ import {
   loadLocalTailorProfile,
   persistLocalTailorAvatarUrl,
   persistTailorAvatarUrl,
+  resolveAvatarUrl,
   saveLocalAvatarUrl,
   saveLocalTailorProfile,
+  syncLocalAvatarToDatabaseIfNeeded,
   upsertTailorProfile,
 } from '@/lib/tailor-profile';
 
@@ -397,24 +399,27 @@ export default function Home() {
         } else {
           setTailorShopName('');
         }
-        if (data.avatar_url) {
-          setTailorAvatarUrl(String(data.avatar_url));
-        } else {
-          setTailorAvatarUrl('');
-        }
+        setTailorAvatarUrl(resolveAvatarUrl(data.avatar_url, userId));
         if (data.cloud_notes) {
           setCloudNotes(data.cloud_notes);
         }
+
+        void syncLocalAvatarToDatabaseIfNeeded(supabase, userId, {
+          phone: String(data.phone ?? ''),
+          cloud_notes: data.cloud_notes ?? '',
+          shop_name: String(data.shop_name ?? ''),
+        }).catch(() => undefined);
       } else {
         setIsTailorRegistered(false);
         setTailorShopName('');
-        setTailorAvatarUrl('');
+        setTailorAvatarUrl(resolveAvatarUrl(null, userId));
       }
     } catch (fetchError) {
       if (process.env.NODE_ENV === 'development') {
         console.warn('[tailor_profiles] fetch skipped or timed out', fetchError);
       }
       setIsTailorRegistered(false);
+      setTailorAvatarUrl(resolveAvatarUrl(null, userId));
     } finally {
       setCheckingTailor(false);
       setLoading(false);
@@ -531,8 +536,8 @@ export default function Home() {
         type: 'success',
         message:
           persistTarget === 'database'
-            ? 'تم حفظ الصورة الشخصية بنجاح.'
-            : 'تم حفظ الصورة الشخصية على هذا الجهاز.',
+            ? 'تم حفظ الصورة الشخصية في حسابك.'
+            : 'تم حفظ الصورة على هذا الجهاز — ستُزامَن مع السحابة عند توفر الاتصال.',
       });
     } catch (saveError) {
       setAvatarFeedback({
