@@ -26,6 +26,11 @@ export type ScannedUploadResult = {
   storagePath: string;
 };
 
+export type ScannedUploadOptions = {
+  /** بادئة اختيارية لاسم الملف (مثل رقم جوال العميل) داخل مجلد المستخدم. */
+  label?: string;
+};
+
 /**
  * يرفع مستنداً ممسوحاً (PDF إلزامي + JPEG للمعاينة) إلى Supabase Storage
  * ويُرجع روابطه العامة — PDF هو الملف الرسمي المحفوظ في السجل.
@@ -33,11 +38,13 @@ export type ScannedUploadResult = {
 export async function uploadScannedInvoiceFiles(
   supabase: SupabaseClient,
   userId: string,
-  { jpegBlob, pdfBlob }: ScannedUploadInput
+  { jpegBlob, pdfBlob }: ScannedUploadInput,
+  options?: ScannedUploadOptions
 ): Promise<ScannedUploadResult> {
   await assertSessionMatchesUser(supabase, userId);
 
-  const storagePath = `${userId}/${Date.now()}`;
+  const safeLabel = options?.label?.replace(/[^\d+a-zA-Z_-]/g, '') ?? '';
+  const storagePath = safeLabel ? `${userId}/${safeLabel}_${Date.now()}` : `${userId}/${Date.now()}`;
   const pdfObjectPath = `${storagePath}.pdf`;
   const jpegObjectPath = `${storagePath}.jpg`;
 

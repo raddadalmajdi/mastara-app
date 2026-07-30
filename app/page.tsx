@@ -3,6 +3,7 @@
 /** لوحة مسطرة 2030 — دخول (بريد/كلمة مرور/OTP)، إعدادات الخياط، ودفتر العملاء. */
 
 import { useState, useEffect, useRef, useMemo } from 'react';
+import dynamic from 'next/dynamic';
 import type { EmailOtpType } from '@supabase/supabase-js';
 import { mapAuthErrorToArabic } from '@/lib/auth-errors';
 import {
@@ -37,6 +38,12 @@ import {
 } from '@/lib/upload-scanned-invoice';
 import { DocumentScannerModal } from '@/components/scanner/DocumentScannerModal';
 import type { DocumentScanResult } from '@/lib/document-scanner/scan-result';
+
+const OpenCvDocumentScannerModal = dynamic(
+  () =>
+    import('@/components/scanner/OpenCvDocumentScannerModal').then((m) => m.OpenCvDocumentScannerModal),
+  { ssr: false }
+);
 import {
   InvoiceSaveProgressRing,
   type InvoiceSaveUiPhase,
@@ -118,6 +125,7 @@ export default function Home() {
   const [uploadSavePhase, setUploadSavePhase] = useState<InvoiceSaveUiPhase>('idle');
   const [uploadSaveError, setUploadSaveError] = useState<string | null>(null);
   const [showDocumentScanner, setShowDocumentScanner] = useState(false);
+  const [showOpenCvScanner, setShowOpenCvScanner] = useState(false);
 
   // حفظ رسائل الواتساب المخصصة لكل فاتورة
   const [whatsappMessages, setWhatsappMessages] = useState<{ [key: string]: string }>({});
@@ -870,6 +878,19 @@ export default function Home() {
     setShowDocumentScanner(true);
   };
 
+  const handleOpenOpenCvScanner = () => {
+    if (!customerLocalPhone.trim()) {
+      return;
+    }
+    if (!customerDisplayName.trim()) {
+      setUploadSaveError('أدخل اسم العميل مع رقم الجوال قبل التصوير.');
+      window.setTimeout(() => setUploadSaveError(null), 3500);
+      return;
+    }
+    setUploadSaveError(null);
+    setShowOpenCvScanner(true);
+  };
+
   const handleSaveCustomerContact = async () => {
     const localPhone = customerLocalPhone.trim();
     const name = customerDisplayName.trim();
@@ -1041,10 +1062,12 @@ export default function Home() {
         window.setTimeout(() => setUploadSavePhase('idle'), 2800);
       } else {
         setUploadSavePhase('uploading');
-        const { imageUrl, pdfUrl } = await uploadScannedInvoiceFiles(supabase, user.id, {
-          jpegBlob,
-          pdfBlob,
-        });
+        const { imageUrl, pdfUrl } = await uploadScannedInvoiceFiles(
+          supabase,
+          user.id,
+          { jpegBlob, pdfBlob },
+          { label: fullCustomerPhone }
+        );
 
         await insertInvoiceRecord(supabase, {
           user_id: user.id,
@@ -1059,6 +1082,7 @@ export default function Home() {
         await searchInvoices(localPhone, customerCountryCode);
         setUploadSavePhase('success');
         setShowDocumentScanner(false);
+        setShowOpenCvScanner(false);
         window.setTimeout(() => setUploadSavePhase('idle'), 2800);
       }
     } catch (saveErr) {
@@ -1587,6 +1611,17 @@ export default function Home() {
                       : 'أكمل رقم الجوال (3 أرقام على الأقل) للبحث.'}
             </p>
           )}
+
+          {customerLocalPhone.length >= 3 && customerDisplayName.trim() && (
+            <button
+              type="button"
+              onClick={handleOpenOpenCvScanner}
+              disabled={isUploading || uploadSavePhase !== 'idle'}
+              className="w-full rounded-xl border border-cyan-500/25 bg-slate-950/60 py-2.5 text-xs font-bold text-cyan-400/90 backdrop-blur-sm transition-colors hover:border-cyan-500/40 hover:text-cyan-300 disabled:opacity-50"
+            >
+              ✨ ماسح OpenCV المتقدّم — اكتشاف حي للحواف
+            </button>
+          )}
         </section>
         </div>
 
@@ -1760,6 +1795,13 @@ export default function Home() {
       {showDocumentScanner && (
         <DocumentScannerModal
           onClose={() => setShowDocumentScanner(false)}
+          onConfirm={handleDocumentCaptured}
+        />
+      )}
+
+      {showOpenCvScanner && (
+        <OpenCvDocumentScannerModal
+          onClose={() => setShowOpenCvScanner(false)}
           onConfirm={handleDocumentCaptured}
         />
       )}
