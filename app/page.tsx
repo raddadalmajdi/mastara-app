@@ -1,6 +1,6 @@
 'use client';
 
-/** لوحة مسطرة 2030 — دخول، إعدادات الخياط، ودفتر العملاء بالبحث برقم الجوال. */
+/** لوحة مسطرة 2030 — دخول (بريد/كلمة مرور/OTP)، إعدادات الخياط، ودفتر العملاء. */
 
 import { useState, useEffect, useRef, useMemo } from 'react';
 import type { EmailOtpType } from '@supabase/supabase-js';
@@ -1121,6 +1121,7 @@ export default function Home() {
   }
 
   if (!user && isSupabaseConfigured()) {
+    /* مصادقة قياسية فقط: بريد + كلمة مرور أو OTP — بدون Passkey / Face ID. */
     return (
       <main
         className="relative min-h-screen bg-[#030712] flex flex-col justify-center px-5 sm:px-8 py-8 sm:py-12 overflow-hidden"
