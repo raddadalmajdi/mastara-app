@@ -68,6 +68,8 @@ export type CornerAdjusterProps = {
   /** شبه المنحرف الحالي (بإحداثيات بكسلات الصورة الأصلية) — عنصر متحكَّم به بالكامل من الأب. */
   quad: Quad;
   onQuadChange: (quad: Quad) => void;
+  /** يزداد عند تطبيق اكتشاف تلقائي لتحريك المقابض بانتقال بصري نحو الزوايا المكتشفة. */
+  quadRevision?: number;
 };
 
 /** ترتيب شبه المنحرف ثابت دائماً: [أعلى-يسار، أعلى-يمين، أسفل-يمين، أسفل-يسار] — راجع `lib/document-scanner/geometry.ts`. */
@@ -79,10 +81,27 @@ const HANDLE_LABELS = ['الزاوية العلوية اليسرى', 'الزاو
  * بحرية (لمس أو ماوس عبر Pointer Events موحَّدة) لضبط حواف المستند بدقة قبل
  * القصّ وتصحيح المنظور النهائي.
  */
-export function CornerAdjuster({ imageSrc, naturalWidth, naturalHeight, quad, onQuadChange }: CornerAdjusterProps) {
+export function CornerAdjuster({
+  imageSrc,
+  naturalWidth,
+  naturalHeight,
+  quad,
+  onQuadChange,
+  quadRevision = 0,
+}: CornerAdjusterProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [containRect, setContainRect] = useState<ContainRect>({ renderW: 0, renderH: 0, offsetX: 0, offsetY: 0 });
   const draggingIndexRef = useRef<number | null>(null);
+  const [animateQuad, setAnimateQuad] = useState(false);
+  const prevQuadRevisionRef = useRef(quadRevision);
+
+  useEffect(() => {
+    if (quadRevision === prevQuadRevisionRef.current) return;
+    prevQuadRevisionRef.current = quadRevision;
+    setAnimateQuad(true);
+    const timer = window.setTimeout(() => setAnimateQuad(false), 320);
+    return () => window.clearTimeout(timer);
+  }, [quadRevision]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -180,6 +199,7 @@ export function CornerAdjuster({ imageSrc, naturalWidth, naturalHeight, quad, on
             stroke="#3b82f6"
             strokeWidth={3}
             strokeLinejoin="round"
+            style={animateQuad ? { transition: 'all 0.28s ease-out' } : undefined}
           />
           {screenPoints.map((p, i) => {
             const next = screenPoints[(i + 1) % 4];
@@ -206,8 +226,12 @@ export function CornerAdjuster({ imageSrc, naturalWidth, naturalHeight, quad, on
             tabIndex={0}
             aria-label={`مقبض ${HANDLE_LABELS[i]} — اسحب لضبط حافة المستند`}
             onPointerDown={startDrag(i)}
-            className="absolute w-8 h-8 -translate-x-1/2 -translate-y-1/2 rounded-md bg-blue-500 border-2 border-white shadow-[0_2px_12px_rgba(37,99,235,0.7)] active:scale-110 transition-transform touch-none cursor-grab active:cursor-grabbing"
-            style={{ left: p.x, top: p.y }}
+            className="absolute w-8 h-8 -translate-x-1/2 -translate-y-1/2 rounded-md bg-blue-500 border-2 border-white shadow-[0_2px_12px_rgba(37,99,235,0.7)] active:scale-110 touch-none cursor-grab active:cursor-grabbing"
+            style={{
+              left: p.x,
+              top: p.y,
+              transition: animateQuad ? 'left 0.28s ease-out, top 0.28s ease-out' : undefined,
+            }}
           />
         ))}
     </div>

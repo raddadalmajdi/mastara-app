@@ -108,6 +108,8 @@ export default function Home() {
   const [customerBookStatus, setCustomerBookStatus] = useState<
     'idle' | 'searching' | 'known' | 'new'
   >('idle');
+  const [customerNameLocked, setCustomerNameLocked] = useState(false);
+  const [customerNameEditing, setCustomerNameEditing] = useState(false);
   const [customerInvoices, setCustomerInvoices] = useState<any[]>([]);
   const customerLookupTimerRef = useRef<number | null>(null);
   const profileOnboardingShownRef = useRef(false);
@@ -817,9 +819,13 @@ export default function Home() {
           if (hit) {
             setCustomerDisplayName(hit.customer_name);
             setCustomerBookStatus('known');
+            setCustomerNameLocked(true);
+            setCustomerNameEditing(false);
           } else {
             setCustomerDisplayName('');
             setCustomerBookStatus('new');
+            setCustomerNameLocked(false);
+            setCustomerNameEditing(false);
           }
         } catch (lookupError) {
           if (process.env.NODE_ENV === 'development') {
@@ -837,6 +843,8 @@ export default function Home() {
     if (cleanVal.length < 3) {
       setCustomerDisplayName('');
       setCustomerBookStatus('idle');
+      setCustomerNameLocked(false);
+      setCustomerNameEditing(false);
     } else {
       setCustomerBookStatus('searching');
     }
@@ -883,6 +891,8 @@ export default function Home() {
         name
       );
       setCustomerBookStatus('known');
+      setCustomerNameLocked(true);
+      setCustomerNameEditing(false);
       setUploadSaveError(null);
     } catch (err) {
       setUploadSaveError(err instanceof Error ? err.message : 'تعذّر حفظ بيانات العميل.');
@@ -897,6 +907,8 @@ export default function Home() {
     } else {
       setCustomerDisplayName('');
       setCustomerBookStatus('idle');
+      setCustomerNameLocked(false);
+      setCustomerNameEditing(false);
     }
     if (customerLocalPhone.length >= 1) {
       void searchInvoices(customerLocalPhone, newCode);
@@ -1506,13 +1518,34 @@ export default function Home() {
 
           <div className="space-y-1.5">
             <label className="text-sm text-cyan-400 font-bold block">اسم العميل</label>
-            <input
-              type="text"
-              value={customerDisplayName}
-              onChange={(e) => setCustomerDisplayName(e.target.value)}
-              placeholder="اكتب اسم العميل هنا..."
-              className="w-full rounded-xl bg-slate-950 border border-slate-800 p-3.5 text-base font-bold text-white"
-            />
+            <div className="flex gap-2 items-stretch">
+              <input
+                type="text"
+                value={customerDisplayName}
+                onChange={(e) => setCustomerDisplayName(e.target.value)}
+                readOnly={customerNameLocked && !customerNameEditing}
+                placeholder="اكتب اسم العميل هنا..."
+                className={`flex-1 min-w-0 rounded-xl bg-slate-950 border border-slate-800 p-3.5 text-base font-bold text-white ${
+                  customerNameLocked && !customerNameEditing ? 'cursor-default opacity-90' : ''
+                }`}
+              />
+              {customerBookStatus === 'known' &&
+                customerDisplayName.trim() &&
+                !customerNameEditing && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCustomerNameEditing(true);
+                      setCustomerNameLocked(false);
+                    }}
+                    className="shrink-0 rounded-xl bg-slate-900 border border-cyan-500/40 px-3.5 text-cyan-300 font-bold text-sm hover:bg-slate-800 transition-colors"
+                    aria-label="تعديل اسم العميل"
+                    title="تعديل الاسم"
+                  >
+                    ✏️
+                  </button>
+                )}
+            </div>
           </div>
 
           {customerLocalPhone.length >= 3 &&
@@ -1526,6 +1559,16 @@ export default function Home() {
                 حفظ الرقم والاسم في دفتر العملاء
               </button>
             )}
+
+          {customerNameEditing && customerBookStatus === 'known' && customerDisplayName.trim() && (
+            <button
+              type="button"
+              onClick={() => void handleSaveCustomerContact()}
+              className="w-full bg-emerald-500 text-slate-950 text-sm font-bold py-3 rounded-xl shadow"
+            >
+              حفظ الاسم المحدّث
+            </button>
+          )}
 
           {uploadSaveError && customerLocalPhone.length >= 1 && uploadSavePhase === 'idle' && (
             <p className="text-xs text-rose-400 font-bold">{uploadSaveError}</p>

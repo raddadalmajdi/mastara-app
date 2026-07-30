@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { type Quad } from '@/lib/document-scanner/geometry';
+import { orderCorners, type Quad } from '@/lib/document-scanner/geometry';
 import { processDocumentCanvas } from '@/lib/document-scanner/process-document';
 import { canvasToDocumentPdfBlob } from '@/lib/document-scanner/to-pdf';
 import { CornerAdjuster, detectDocumentEdgesAuto } from './CornerAdjuster';
@@ -126,6 +126,8 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
   const [previewToast, setPreviewToast] = useState<string | null>(null);
   /** رسالة تنبيه قصيرة (تختفي تلقائياً) عند فشل الاكتشاف التلقائي — يبقى شبه المنحرف الحالي كما هو دون تغيير. */
   const [edgesToast, setEdgesToast] = useState<string | null>(null);
+  /** يُزاد عند تطبيق زوايا مكتشفة تلقائياً لتحريك المقابض الزرقاء بانتقال بصري. */
+  const [edgesQuadRevision, setEdgesQuadRevision] = useState(0);
 
   // إخفاء تنبيه فشل الاكتشاف بعد ثانيتين — أو فور نجاح الضبط/السحب اليدوي.
   useEffect(() => {
@@ -240,6 +242,17 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
     setIsAutoDetecting(false);
     setEdgesToast(null);
     setPreviewToast(null);
+    setEdgesQuadRevision(0);
+  }, []);
+
+  /** يطبّق زوايا المستند المكتشفة برمجياً — كأن المستخدم سحب المقابض الأربعة — مع إخفاء التنبيه. */
+  const applyAutoDetectedQuad = useCallback((quad: Quad) => {
+    const ordered = orderCorners(quad);
+    setEdgesQuad(ordered);
+    setEdgesMode('auto');
+    setEdgesToast(null);
+    setEdgesQuadRevision((n) => n + 1);
+    return ordered;
   }, []);
 
   const applyProcessedPreview = useCallback((quad: Quad) => {
@@ -266,20 +279,23 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
 
     const result = detectDocumentEdgesAuto(rawCanvas, vw, vh, getOrCreateCanvas(workCanvasRef));
 
-    setEdgesMode(result ? 'auto' : 'full');
-    setEdgesQuad(result?.quad ?? fullFrameQuad(vw, vh));
+    const detectedQuad = result ? applyAutoDetectedQuad(result.quad) : null;
+    if (!result) {
+      setEdgesMode('full');
+      setEdgesQuad(fullFrameQuad(vw, vh));
+    }
     setEdgesToast(result ? null : 'تعذّر العثور على حواف واضحة تلقائياً — تم اعتماد الصورة كاملة، اضبط الزوايا يدوياً أو اضغط Auto Crop مجدداً.');
     setRawDims({ width: vw, height: vh });
     setRawPreviewUrl(rawCanvas.toDataURL('image/jpeg', 0.92));
 
     if (isClosingRef.current) return;
 
-    if (result && shouldAutoSkipToPreview(result.coverage)) {
+    if (result && detectedQuad && shouldAutoSkipToPreview(result.coverage)) {
       setPhase('processing');
       window.setTimeout(() => {
         try {
           if (isClosingRef.current) return;
-          if (applyProcessedPreview(result.quad)) {
+          if (applyProcessedPreview(detectedQuad)) {
             setPhase('preview');
           } else {
             setPhase('edges');
@@ -293,7 +309,7 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
     }
 
     setPhase('edges');
-  }, [applyProcessedPreview]);
+  }, [applyAutoDetectedQuad, applyProcessedPreview]);
 
   const handleCapture = useCallback(() => {
     const video = videoRef.current;
@@ -352,9 +368,7 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
         if (isClosingRef.current) return;
         const result = detectDocumentEdgesAuto(rawCanvas, rawCanvas.width, rawCanvas.height, getOrCreateCanvas(workCanvasRef));
         if (result) {
-          setEdgesMode('auto');
-          setEdgesQuad(result.quad);
-          setEdgesToast(null);
+          applyAutoDetectedQuad(result.quad);
         } else {
           setEdgesToast('تعذّر العثور على حواف واضحة تلقائياً. جرّب إضاءة أفضل أو خلفية داكنة موحّدة، أو اضبط الزوايا يدوياً.');
         }
@@ -362,7 +376,7 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
         if (!isClosingRef.current) setIsAutoDetecting(false);
       }
     }, 250);
-  }, [isAutoDetecting]);
+  }, [applyAutoDetectedQuad, isAutoDetecting]);
 
   /** زر «Full» في شاشة كشف الحواف: يعتمد الصورة بالكامل حافة-إلى-حافة بلا أي اكتشاف. */
   const handleFullFrameEdges = useCallback(() => {
@@ -429,8 +443,8 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
           getOrCreateCanvas(workCanvasRef)
         );
         if (result) {
-          setEdgesMode('auto');
-          if (applyProcessedPreview(result.quad)) {
+          const ordered = applyAutoDetectedQuad(result.quad);
+          if (applyProcessedPreview(ordered)) {
             setPreviewToast('تم قصّ المستند تلقائياً.');
           }
         } else {
@@ -440,7 +454,7 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
         if (!isClosingRef.current) setIsAutoDetecting(false);
       }
     }, 250);
-  }, [isAutoDetecting, applyProcessedPreview]);
+  }, [applyAutoDetectedQuad, isAutoDetecting, applyProcessedPreview]);
 
   const handleAdjustCropFromPreview = useCallback(() => {
     setPreviewToast(null);
@@ -602,6 +616,7 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
                 naturalWidth={rawDims.width}
                 naturalHeight={rawDims.height}
                 quad={edgesQuad}
+                quadRevision={edgesQuadRevision}
                 onQuadChange={handleEdgesQuadChange}
               />
             </div>
