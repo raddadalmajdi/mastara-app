@@ -108,7 +108,6 @@ export default function Home() {
   const [customerBookStatus, setCustomerBookStatus] = useState<
     'idle' | 'searching' | 'known' | 'new'
   >('idle');
-  const [customerNamePanelOpen, setCustomerNamePanelOpen] = useState(false);
   const [customerInvoices, setCustomerInvoices] = useState<any[]>([]);
   const customerLookupTimerRef = useRef<number | null>(null);
   const profileOnboardingShownRef = useRef(false);
@@ -818,7 +817,6 @@ export default function Home() {
           if (hit) {
             setCustomerDisplayName(hit.customer_name);
             setCustomerBookStatus('known');
-            setCustomerNamePanelOpen(false);
           } else {
             setCustomerDisplayName('');
             setCustomerBookStatus('new');
@@ -836,7 +834,6 @@ export default function Home() {
   const handleCustomerPhoneInput = (val: string) => {
     const cleanVal = val.replace(/\D/g, '');
     setCustomerLocalPhone(cleanVal);
-    setCustomerNamePanelOpen(false);
     if (cleanVal.length < 3) {
       setCustomerDisplayName('');
       setCustomerBookStatus('idle');
@@ -852,24 +849,49 @@ export default function Home() {
     }
   };
 
-  const handleAddCustomerNameClick = () => {
-    setCustomerNamePanelOpen(true);
-  };
-
   const handleOpenScannerForCustomer = () => {
     if (!customerLocalPhone.trim()) {
       return;
     }
-    if (customerBookStatus === 'new' && !customerDisplayName.trim()) {
-      setCustomerNamePanelOpen(true);
+    if (!customerDisplayName.trim()) {
+      setUploadSaveError('أدخل اسم العميل مع رقم الجوال قبل التصوير.');
+      window.setTimeout(() => setUploadSaveError(null), 3500);
       return;
     }
+    setUploadSaveError(null);
     setShowDocumentScanner(true);
+  };
+
+  const handleSaveCustomerContact = async () => {
+    const localPhone = customerLocalPhone.trim();
+    const name = customerDisplayName.trim();
+    if (!localPhone) {
+      setUploadSaveError('أدخل رقم جوال العميل.');
+      window.setTimeout(() => setUploadSaveError(null), 3500);
+      return;
+    }
+    if (!name) {
+      setUploadSaveError('أدخل اسم العميل.');
+      window.setTimeout(() => setUploadSaveError(null), 3500);
+      return;
+    }
+    try {
+      await upsertTailorCustomer(
+        supabase,
+        user?.id ?? 'guest-local-user',
+        `${customerCountryCode}${localPhone}`,
+        name
+      );
+      setCustomerBookStatus('known');
+      setUploadSaveError(null);
+    } catch (err) {
+      setUploadSaveError(err instanceof Error ? err.message : 'تعذّر حفظ بيانات العميل.');
+      window.setTimeout(() => setUploadSaveError(null), 4000);
+    }
   };
 
   const handleCountryCodeChange = (newCode: string) => {
     setCustomerCountryCode(newCode);
-    setCustomerNamePanelOpen(false);
     if (customerLocalPhone.length >= 3) {
       setCustomerBookStatus('searching');
     } else {
@@ -1457,79 +1479,69 @@ export default function Home() {
           </button>
         </div>
 
-        {/* خانة رقم العميل (الرقم يمين ومفتاح الدولة يساراً) */}
+        {/* رقم العميل + الاسم — إدخال مباشر */}
         <section className="bg-slate-900 border border-cyan-500/40 p-4 rounded-3xl space-y-3 shadow-xl">
           <div className="space-y-1.5">
             <label className="text-sm text-cyan-400 font-bold block">رقم هاتف العميل</label>
-            <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
-              <div className="flex gap-2 items-center flex-1 min-w-0">
-                <input
-                  type="tel"
-                  value={customerLocalPhone}
-                  onChange={(e) => handleCustomerPhoneInput(e.target.value)}
-                  placeholder="أدخل رقم الجوال..."
-                  className="flex-1 min-w-0 rounded-xl bg-slate-950 border border-slate-800 p-3.5 text-lg font-bold text-white font-mono tnum text-right"
-                  dir="ltr"
-                />
-                <select
-                  value={customerCountryCode}
-                  onChange={(e) => handleCountryCodeChange(e.target.value)}
-                  className="bg-slate-950 border border-slate-800 text-sm text-cyan-300 rounded-xl p-3.5 font-mono tnum w-28 text-center shrink-0"
-                >
-                  {COUNTRY_CODES.map((c) => (
-                    <option key={c.code} value={c.code}>+{c.code}</option>
-                  ))}
-                </select>
-              </div>
-              {customerBookStatus === 'searching' && customerLocalPhone.length >= 1 ? (
-                <span className="text-xs text-slate-500 font-bold shrink-0">جاري البحث...</span>
-              ) : customerBookStatus === 'known' && customerDisplayName ? (
-                <p className="text-base font-bold text-white truncate sm:max-w-[40%] sm:text-right">
-                  👤 {customerDisplayName}
-                </p>
-              ) : customerBookStatus === 'new' && customerLocalPhone.length >= 3 ? (
-                <button
-                  type="button"
-                  onClick={handleAddCustomerNameClick}
-                  className="shrink-0 flex items-center gap-1.5 bg-cyan-500/15 border border-cyan-500/40 text-cyan-300 text-xs sm:text-sm font-bold px-3 py-2 rounded-xl"
-                >
-                  <span className="text-base leading-none">+</span>
-                  <span>إضافة اسم شخص</span>
-                </button>
-              ) : null}
+            <div className="flex gap-2 items-center">
+              <input
+                type="tel"
+                value={customerLocalPhone}
+                onChange={(e) => handleCustomerPhoneInput(e.target.value)}
+                placeholder="50123456"
+                className="flex-1 min-w-0 rounded-xl bg-slate-950 border border-slate-800 p-3.5 text-lg font-bold text-white font-mono tnum text-right"
+                dir="ltr"
+              />
+              <select
+                value={customerCountryCode}
+                onChange={(e) => handleCountryCodeChange(e.target.value)}
+                className="bg-slate-950 border border-slate-800 text-sm text-cyan-300 rounded-xl p-3.5 font-mono tnum w-28 text-center shrink-0"
+              >
+                {COUNTRY_CODES.map((c) => (
+                  <option key={c.code} value={c.code}>+{c.code}</option>
+                ))}
+              </select>
             </div>
           </div>
-          {customerNamePanelOpen && (
-            <div className="space-y-1.5">
-              <label className="text-sm text-cyan-400 font-bold block">اسم العميل</label>
-              <input
-                type="text"
-                value={customerDisplayName}
-                onChange={(e) => setCustomerDisplayName(e.target.value)}
-                placeholder="اكتب اسم العميل..."
-                autoFocus={customerNamePanelOpen}
-                className="w-full rounded-xl bg-slate-950 border border-slate-800 p-3.5 text-base font-bold text-white"
-              />
-              {customerDisplayName.trim() && (
-                <button
-                  type="button"
-                  onClick={handleOpenScannerForCustomer}
-                  className="w-full bg-emerald-500/15 border border-emerald-500/40 text-emerald-300 text-sm font-bold py-2.5 rounded-xl"
-                >
-                  📷 فتح الكاميرا وحفظ مستند لهذا العميل
-                </button>
-              )}
-            </div>
+
+          <div className="space-y-1.5">
+            <label className="text-sm text-cyan-400 font-bold block">اسم العميل</label>
+            <input
+              type="text"
+              value={customerDisplayName}
+              onChange={(e) => setCustomerDisplayName(e.target.value)}
+              placeholder="اكتب اسم العميل هنا..."
+              className="w-full rounded-xl bg-slate-950 border border-slate-800 p-3.5 text-base font-bold text-white"
+            />
+          </div>
+
+          {customerLocalPhone.length >= 3 &&
+            customerDisplayName.trim() &&
+            customerBookStatus === 'new' && (
+              <button
+                type="button"
+                onClick={() => void handleSaveCustomerContact()}
+                className="w-full bg-cyan-500 text-slate-950 text-sm font-bold py-3 rounded-xl shadow"
+              >
+                حفظ الرقم والاسم في دفتر العملاء
+              </button>
+            )}
+
+          {uploadSaveError && customerLocalPhone.length >= 1 && uploadSavePhase === 'idle' && (
+            <p className="text-xs text-rose-400 font-bold">{uploadSaveError}</p>
           )}
+
           {customerLocalPhone.length >= 1 && (
             <p className="text-[11px] text-slate-500 font-bold">
               {isSearchingInvoices || customerBookStatus === 'searching'
                 ? 'جاري البحث في سجل العملاء والفواتير...'
-                : customerInvoices.length > 0
-                  ? `تم العثور على ${customerInvoices.length} مستند/فاتورة سابقة${customerDisplayName ? ` لـ ${customerDisplayName}` : ''}.`
-                  : customerLocalPhone.length >= 3 && customerBookStatus === 'new'
-                    ? 'لا يوجد سجلات لهذا الرقم — أضف اسم العميل ثم افتح الكاميرا.'
-                    : 'لا توجد فواتير سابقة مسجّلة لهذا الرقم بعد.'}
+                : customerBookStatus === 'known' && customerDisplayName
+                  ? `عميل مسجّل: ${customerDisplayName}`
+                  : customerInvoices.length > 0
+                    ? `تم العثور على ${customerInvoices.length} مستند/فاتورة سابقة.`
+                    : customerLocalPhone.length >= 3
+                      ? 'رقم جديد — اكتب الاسم واحفظ، أو استخدم زر الكاميرا بالأسفل.'
+                      : 'أكمل رقم الجوال (3 أرقام على الأقل) للبحث.'}
             </p>
           )}
         </section>
