@@ -509,20 +509,56 @@ export default function DocumentScanner({ onCapture, onClose, className = '' }: 
   };
 
   return (
-    <div className={`relative flex flex-col bg-mistara-sand text-mistara-espresso ${className}`}>
-      {/* يبقى في DOM دائماً حتى يتوفر videoRef قبل فتح الكاميرا */}
-      <video
-        ref={videoRef}
-        autoPlay
-        playsInline
-        muted
+    <div className={`relative flex min-h-0 flex-1 flex-col bg-mistara-sand text-mistara-espresso ${className}`}>
+      {/* حاوية الفيديو دائماً في DOM — مخفية قبل فتح الكاميرا لضمان videoRef */}
+      <div
         className={
           cameraOn
-            ? 'absolute inset-0 h-full w-full object-cover'
-            : 'pointer-events-none fixed h-px w-px opacity-0'
+            ? 'relative flex min-h-0 flex-1 flex-col'
+            : 'pointer-events-none fixed left-0 top-0 z-[-1] h-px w-px overflow-hidden opacity-0'
         }
         aria-hidden={!cameraOn}
-      />
+      >
+        <div className="relative min-h-0 flex-1 overflow-hidden bg-black">
+          <video
+            ref={videoRef}
+            autoPlay
+            playsInline
+            muted
+            className="absolute inset-0 z-0 h-full w-full object-cover"
+          />
+          {cameraOn && (
+            <>
+              <canvas
+                ref={overlayRef}
+                className="pointer-events-none absolute inset-0 z-10 h-full w-full"
+              />
+              <span
+                className={`absolute left-1/2 top-4 z-20 -translate-x-1/2 rounded-full border px-4 py-2 text-xs font-bold backdrop-blur-md ${
+                  documentFound
+                    ? 'border-mistara-gold/45 bg-mistara-gold/12 text-mistara-warm'
+                    : 'border-mistara-gold/30 bg-mistara-beige/70 text-mistara-gold-light'
+                }`}
+              >
+                {documentFound ? 'تم العثور على المستند ✓' : 'جاري البحث عن المستند...'}
+              </span>
+            </>
+          )}
+        </div>
+
+        {cameraOn && (
+          <div className="flex shrink-0 justify-center bg-gradient-to-t from-black/90 to-transparent px-6 pb-8 pt-4">
+            <button
+              type="button"
+              aria-label="التقاط المستند"
+              onClick={capturePhoto}
+              className={`h-20 w-20 rounded-full border-[6px] shadow-[0_0_30px_rgba(166,124,82,0.4)] transition-transform active:scale-95 ${
+                documentFound ? 'border-mistara-gold bg-white' : 'border-mistara-gold bg-white/95'
+              }`}
+            />
+          </div>
+        )}
+      </div>
 
       {!cameraOn && !resultVisible && (
         <div className="flex flex-1 flex-col items-center justify-center gap-5 px-6 py-10 text-center">
@@ -586,33 +622,6 @@ export default function DocumentScanner({ onCapture, onClose, className = '' }: 
                 </button>
               )}
             </div>
-          </div>
-        </div>
-      )}
-
-      {cameraOn && (
-        <div className="relative flex flex-1 flex-col min-h-0">
-          <div className="relative flex-1 min-h-0 overflow-hidden bg-black">
-            <canvas ref={overlayRef} className="pointer-events-none absolute inset-0 h-full w-full" />
-            <span
-              className={`absolute left-1/2 top-4 -translate-x-1/2 rounded-full border px-4 py-2 text-xs font-bold backdrop-blur-md ${
-                documentFound
-                  ? 'border-mistara-gold/45 bg-mistara-gold/12 text-mistara-warm'
-                  : 'border-mistara-gold/30 bg-mistara-beige/70 text-mistara-gold-light'
-              }`}
-            >
-              {documentFound ? 'تم العثور على المستند ✓' : 'جاري البحث عن المستند...'}
-            </span>
-          </div>
-          <div className="flex shrink-0 justify-center bg-gradient-to-t from-black/90 to-transparent px-6 pb-8 pt-4">
-            <button
-              type="button"
-              aria-label="التقاط المستند"
-              onClick={capturePhoto}
-              className={`h-20 w-20 rounded-full border-[6px] shadow-[0_0_30px_rgba(166,124,82,0.4)] transition-transform active:scale-95 ${
-                documentFound ? 'border-mistara-gold bg-white' : 'border-mistara-gold bg-white/95'
-              }`}
-            />
           </div>
         </div>
       )}
