@@ -18,12 +18,17 @@ export interface DocumentScannerProps {
   autoStartCamera?: boolean;
 }
 
-/** أقل/أعلى نسبة مساحة المستند من الإطار — يدعم فواتير صغيرة (~1.5%) وA4 كامل (~85%). */
-const MIN_DOC_AREA_RATIO = 0.015;
-const MAX_DOC_AREA_RATIO = 0.9;
-const MIN_DOC_ASPECT = 0.18;
-const MAX_DOC_ASPECT = 5.5;
-const DETECTION_FRAME_WIDTH = 560;
+/** أقل/أعلى نسبة مساحة المستند — يدعم إيصالات صغيرة جداً (~0.6%) وA4 (~92%). */
+const MIN_DOC_AREA_RATIO = 0.006;
+const MAX_DOC_AREA_RATIO = 0.92;
+const MIN_DOC_AREA_RATIO_FALLBACK = 0.003;
+const MIN_DOC_ASPECT = 0.1;
+const MAX_DOC_ASPECT = 8;
+const MIN_FILL_RATIO = 0.38;
+const DETECTION_FRAME_WIDTH = 640;
+const CANNY_LOW = 30;
+const CANNY_HIGH = 100;
+const EPSILON_FACTORS = [0.008, 0.012, 0.018, 0.026, 0.035] as const;
 
 type CvQuadMat = {
   rows: number;
@@ -31,6 +36,30 @@ type CvQuadMat = {
   clone: () => { delete: () => void };
   delete: () => void;
 };
+
+type QuadCandidate = {
+  quad: CvQuadMat;
+  area: number;
+  fillRatio: number;
+  centerScore: number;
+  areaRatio: number;
+};
+
+function quadCentroid(quad: CvQuadMat): Point {
+  let sx = 0;
+  let sy = 0;
+  for (let i = 0; i < 4; i++) {
+    sx += quad.data32S[i * 2];
+    sy += quad.data32S[i * 2 + 1];
+  }
+  return { x: sx / 4, y: sy / 4 };
+}
+
+/** يفضّل المستند الأقرب لمركز الإطار، ثم الأصغر بين المرشّحين المتقاربين. */
+function scoreQuadCandidate(candidate: QuadCandidate): number {
+  const smallDocBonus = 1 - Math.sqrt(candidate.areaRatio / MAX_DOC_AREA_RATIO);
+  return candidate.centerScore * 1000 + smallDocBonus * 100 + candidate.fillRatio * 10;
+}
 
 const FILTER_LABELS: Record<FilterMode, string> = {
   color: 'ألوان (مسح ضوئي)',
@@ -133,37 +162,28 @@ export default function DocumentScanner({
     const cv = getOpenCvRuntime();
     let src: { delete: () => void } | undefined;
     let gray: { delete: () => void } | undefined;
+    let enhanced: { delete: () => void } | undefined;
     let blurred: { delete: () => void } | undefined;
     let edged: { delete: () => void } | undefined;
     let dilated: { delete: () => void } | undefined;
     let closed: { delete: () => void } | undefined;
+    let clahe: { delete: () => void } | undefined;
 
-    try {
-      src = cv.imread(canvas);
-      gray = new cv.Mat();
-      cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-      blurred = new cv.Mat();
-      cv.GaussianBlur(gray, blurred, new cv.Size(5, 5), 0);
-      edged = new cv.Mat();
-      cv.Canny(blurred, edged, 35, 110);
-      dilated = new cv.Mat();
-      const kernel = cv.Mat.ones(3, 3, cv.CV_8U);
-      cv.dilate(edged, dilated, kernel, new cv.Point(-1, -1), 1);
-      closed = new cv.Mat();
-      const closeKernel = cv.Mat.ones(5, 5, cv.CV_8U);
-      cv.morphologyEx(dilated, closed, cv.MORPH_CLOSE, closeKernel, new cv.Point(-1, -1), 1);
-      kernel.delete();
-      closeKernel.delete();
+    const collectBestQuad = (minAreaRatio: number): CvQuadMat | null => {
+      if (!closed) return null;
 
       const contours = new cv.MatVector();
       const hierarchy = new cv.Mat();
       cv.findContours(closed, contours, hierarchy, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE);
 
       let bestQuad: CvQuadMat | null = null;
-      let bestScore = 0;
+      let bestScore = -1;
       const imgArea = canvas.width * canvas.height;
-      const minArea = imgArea * MIN_DOC_AREA_RATIO;
+      const minArea = imgArea * minAreaRatio;
       const maxArea = imgArea * MAX_DOC_AREA_RATIO;
+      const frameCx = canvas.width / 2;
+      const frameCy = canvas.height / 2;
+      const maxDist = Math.hypot(frameCx, frameCy);
 
       for (let i = 0; i < contours.size(); i++) {
         const cnt = contours.get(i);
@@ -176,7 +196,7 @@ export default function DocumentScanner({
         const peri = cv.arcLength(cnt, true);
         let matchedApprox: CvQuadMat | null = null;
 
-        for (const epsilonFactor of [0.012, 0.018, 0.024]) {
+        for (const epsilonFactor of EPSILON_FACTORS) {
           const approx = new cv.Mat();
           cv.approxPolyDP(cnt, approx, epsilonFactor * peri, true);
           if (approx.rows === 4 && cv.isContourConvex(approx)) {
@@ -202,13 +222,18 @@ export default function DocumentScanner({
 
         const rectArea = Math.max(1, rect.width * rect.height);
         const fillRatio = area / rectArea;
-        if (fillRatio < 0.45) {
+        if (fillRatio < MIN_FILL_RATIO) {
           matchedApprox.delete();
           cnt.delete();
           continue;
         }
 
-        const score = area * fillRatio;
+        const centroid = quadCentroid(matchedApprox);
+        const dist = Math.hypot(centroid.x - frameCx, centroid.y - frameCy);
+        const centerScore = 1 - Math.min(1, dist / maxDist);
+        const areaRatio = area / imgArea;
+        const score = scoreQuadCandidate({ quad: matchedApprox, area, fillRatio, centerScore, areaRatio });
+
         if (score > bestScore) {
           bestScore = score;
           bestQuad?.delete();
@@ -219,6 +244,37 @@ export default function DocumentScanner({
         cnt.delete();
       }
 
+      contours.delete();
+      hierarchy.delete();
+      return bestQuad;
+    };
+
+    try {
+      src = cv.imread(canvas);
+      gray = new cv.Mat();
+      cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+      enhanced = new cv.Mat();
+      const claheFilter = new cv.CLAHE(2.2, new cv.Size(8, 8));
+      clahe = claheFilter;
+      claheFilter.apply(gray, enhanced);
+      blurred = new cv.Mat();
+      cv.bilateralFilter(enhanced, blurred, 7, 50, 50);
+      edged = new cv.Mat();
+      cv.Canny(blurred, edged, CANNY_LOW, CANNY_HIGH);
+      dilated = new cv.Mat();
+      const kernel = cv.Mat.ones(3, 3, cv.CV_8U);
+      cv.dilate(edged, dilated, kernel, new cv.Point(-1, -1), 1);
+      closed = new cv.Mat();
+      const closeKernel = cv.Mat.ones(5, 5, cv.CV_8U);
+      cv.morphologyEx(dilated, closed, cv.MORPH_CLOSE, closeKernel, new cv.Point(-1, -1), 1);
+      kernel.delete();
+      closeKernel.delete();
+
+      let bestQuad = collectBestQuad(MIN_DOC_AREA_RATIO);
+      if (!bestQuad) {
+        bestQuad = collectBestQuad(MIN_DOC_AREA_RATIO_FALLBACK);
+      }
+
       let points: Point[] | null = null;
       if (bestQuad) {
         points = [];
@@ -227,18 +283,18 @@ export default function DocumentScanner({
         }
         bestQuad.delete();
       }
-      contours.delete();
-      hierarchy.delete();
       return points;
     } catch {
       return null;
     } finally {
       src?.delete();
       gray?.delete();
+      enhanced?.delete();
       blurred?.delete();
       edged?.delete();
       dilated?.delete();
       closed?.delete();
+      clahe?.delete();
     }
   }, []);
 
