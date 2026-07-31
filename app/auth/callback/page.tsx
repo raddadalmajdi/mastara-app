@@ -6,6 +6,7 @@ import { completeAuthFromCallbackParams } from '@/lib/auth-callback';
 import { logSupabaseAuthErrorJson } from '@/lib/auth-debug';
 import { getAuthCallbackUrl, getSupabaseBrowserClient } from '@/lib/supabase-browser';
 import { AuthBootScreen } from '@/components/auth/AuthBootScreen';
+import { AppBrand } from '@/components/brand/AppBrand';
 import { withTimeout } from '@/lib/async-timeout';
 
 function AuthCallbackContent() {
@@ -81,8 +82,8 @@ function AuthCallbackContent() {
         className="pointer-events-none absolute -top-32 left-1/2 h-72 w-72 -translate-x-1/2 rounded-full bg-mistara-gold/15 blur-[100px]"
         aria-hidden
       />
-      <div className="relative w-full max-w-sm sm:max-w-md mx-auto glass-panel/90 backdrop-blur-xl border border-mistara-brown/12 rounded-[2rem] p-8 shadow-[0_25px_70px_-15px_rgba(8,145,178,0.35)] text-center space-y-4">
-        <h1 className="text-3xl font-black text-mistara-gold">مسطرة 2030</h1>
+      <div className="relative w-full max-w-sm sm:max-w-md mx-auto glass-panel/90 backdrop-blur-xl border border-mistara-brown/12 rounded-[2rem] p-8 shadow-[0_25px_70px_-15px_rgba(212,175,55,0.22)] text-center space-y-4">
+        <AppBrand size="md" className="mx-auto" />
 
         {status === 'loading' && (
           <>

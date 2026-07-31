@@ -162,7 +162,7 @@ export default function DocumentScanner({ onCapture, onClose, className = '' }: 
       }));
       lastQuadRef.current = orderedSmall.map((p) => ({ x: p.x / scale, y: p.y / scale }));
 
-      ctx.strokeStyle = '#A67C52';
+      ctx.strokeStyle = '#D4AF37';
       ctx.lineWidth = 3;
       ctx.fillStyle = 'rgba(166,124,82,0.16)';
       ctx.beginPath();

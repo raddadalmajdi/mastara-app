@@ -49,6 +49,7 @@ import {
   type InvoiceSaveUiPhase,
 } from '@/components/invoices/InvoiceSaveProgressRing';
 import { AccountMenuPanel, AccountMenuTrigger, type AvatarSaveFeedback } from '@/components/account/AccountMenuPanel';
+import { AppBrand } from '@/components/brand/AppBrand';
 import { fileToAvatarJpegBlob, uploadTailorAvatar } from '@/lib/upload-tailor-avatar';
 import { useIdleLogout } from '@/lib/use-idle-logout';
 import {
@@ -1310,7 +1311,6 @@ export default function Home() {
     return (
       <main
         className="relative min-h-screen bg-mistara-sand flex flex-col justify-center px-5 sm:px-8 py-8 sm:py-12 overflow-hidden"
-        style={{ backgroundColor: '#EDE4D3', color: '#2C1810' }}
         dir="rtl"
       >
         <div
@@ -1321,16 +1321,18 @@ export default function Home() {
           className="pointer-events-none absolute -bottom-32 left-1/2 h-72 w-72 -translate-x-1/2 rounded-full bg-mistara-gold/10 blur-[100px]"
           aria-hidden
         />
-        <div className="relative w-full max-w-sm sm:max-w-md mx-auto glass-panel/90 backdrop-blur-xl border border-mistara-brown/12 rounded-[2rem] p-6 sm:p-8 shadow-[0_25px_70px_-15px_rgba(8,145,178,0.35)] space-y-6">
-          <div className="text-center mb-1 space-y-2">
-            <h1 className="text-4xl sm:text-5xl font-black bg-gradient-to-l from-mistara-gold-light via-mistara-gold to-mistara-gold-dark bg-clip-text text-transparent tracking-tight">
-              مسطرة 2030
-            </h1>
-            <p className="text-sm sm:text-base text-mistara-brown/80">نظام إدارة فواتير الخياطة الذكي</p>
-            {sessionCheckPending && (
-              <p className="text-xs text-mistara-brown/60 mt-2 animate-pulse">جاري التحقق من جلسة الدخول...</p>
-            )}
-          </div>
+        <div className="relative w-full max-w-sm sm:max-w-md mx-auto glass-panel/90 backdrop-blur-xl border border-mistara-brown/12 rounded-[2rem] p-6 sm:p-8 shadow-[0_25px_70px_-15px_rgba(212,175,55,0.22)] space-y-6">
+          <AppBrand
+            size="lg"
+            subtitle="نظام إدارة فواتير الخياطة الذكي"
+            priority
+            className="mb-1"
+          />
+          {sessionCheckPending && (
+            <p className="text-xs text-mistara-brown/60 -mt-3 text-center animate-pulse">
+              جاري التحقق من جلسة الدخول...
+            </p>
+          )}
 
           {authPhase === 'confirm' ? (
             <AuthConfirmationPanel
@@ -1568,8 +1570,8 @@ export default function Home() {
       {/* الهيدر العلوي */}
       <header className="sticky top-0 z-40 glass-header px-4 sm:px-6 lg:px-8 py-3">
         <div className="max-w-lg sm:max-w-2xl lg:max-w-4xl w-full mx-auto flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <h1 className="font-black text-mistara-gold text-xl">مسطرة 2030</h1>
+        <div className="flex items-center gap-2.5">
+          <AppBrand size="sm" layout="row" showTitle subtitle={undefined} />
           {!isSupabaseConfigured() && (
             <span className="text-xs bg-mistara-gold/15 text-mistara-gold-dark border border-mistara-gold-dark/35 px-2 py-0.5 rounded-full font-mono">وضع التجربة (بلا حساب)</span>
           )}

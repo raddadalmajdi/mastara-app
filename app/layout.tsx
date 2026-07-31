@@ -6,6 +6,10 @@ export const metadata: Metadata = {
   title: 'مسطرة | نظام فواتير الخياطين',
   description: 'النظام الذكي لإدارة فواتير وعملاء الخياطين',
   manifest: '/manifest.json',
+  icons: {
+    icon: '/logo.png',
+    apple: '/logo.png',
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
@@ -14,7 +18,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: '#EDE4D3',
+  themeColor: '#E8EBF0',
   colorScheme: 'light',
   width: 'device-width',
   initialScale: 1,
@@ -23,8 +27,8 @@ export const viewport: Viewport = {
 };
 
 const shellStyle = {
-  backgroundColor: '#EDE4D3',
-  color: '#2C1810',
+  backgroundColor: '#E8EBF0',
+  color: '#1E293B',
   minHeight: '100%',
 } as const;
 

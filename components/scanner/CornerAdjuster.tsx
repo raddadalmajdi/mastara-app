@@ -196,7 +196,7 @@ export function CornerAdjuster({
           <polygon
             points={screenPoints.map((p) => `${p.x},${p.y}`).join(' ')}
             fill="rgba(166,124,82,0.18)"
-            stroke="#A67C52"
+            stroke="#D4AF37"
             strokeWidth={3}
             strokeLinejoin="round"
             style={animateQuad ? { transition: 'all 0.28s ease-out' } : undefined}
@@ -210,7 +210,7 @@ export function CornerAdjuster({
                 cy={(p.y + next.y) / 2}
                 r={5}
                 fill="#8B6914"
-                stroke="#FFF9F0"
+                stroke="#FAFBFC"
                 strokeWidth={1.5}
               />
             );
