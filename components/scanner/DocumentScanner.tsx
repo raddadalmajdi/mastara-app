@@ -66,7 +66,7 @@ export default function DocumentScanner({ onCapture, onClose, className = '' }: 
   const [cameraOn, setCameraOn] = useState(false);
   const [documentFound, setDocumentFound] = useState(false);
   const [resultVisible, setResultVisible] = useState(false);
-  const [activeFilter, setActiveFilter] = useState<FilterMode>('color');
+  const [activeFilter, setActiveFilter] = useState<FilterMode>('original');
 
   const beginOpenCvLoad = useCallback((force = false) => {
     setCvLoading(true);
@@ -452,6 +452,18 @@ export default function DocumentScanner({ onCapture, onClose, className = '' }: 
     enhanced.delete();
   }, []);
 
+  useEffect(() => {
+    if (!resultVisible || !warpedMatRef.current) return;
+
+    const frameId = requestAnimationFrame(() => {
+      if (resultCanvasRef.current) {
+        processAndShow(activeFilter);
+      }
+    });
+
+    return () => cancelAnimationFrame(frameId);
+  }, [resultVisible, activeFilter, processAndShow]);
+
   const capturePhoto = useCallback(() => {
     const video = videoRef.current;
     if (!video) return;
@@ -477,19 +489,19 @@ export default function DocumentScanner({ onCapture, onClose, className = '' }: 
     warpedMatRef.current = warpDocument(fullCanvas, corners);
 
     stopCamera();
+    setActiveFilter('original');
     setResultVisible(true);
-    processAndShow(activeFilter);
-  }, [activeFilter, processAndShow, stopCamera]);
+  }, [stopCamera]);
 
   const handleFilterChange = (mode: FilterMode) => {
     setActiveFilter(mode);
-    processAndShow(mode);
   };
 
   const handleRetake = () => {
     const mat = warpedMatRef.current as { delete?: () => void } | null;
     mat?.delete?.();
     warpedMatRef.current = null;
+    setActiveFilter('original');
     setResultVisible(false);
     void startCamera();
   };
@@ -633,7 +645,7 @@ export default function DocumentScanner({ onCapture, onClose, className = '' }: 
           </div>
 
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            {(['color', 'gray', 'bw', 'original'] as FilterMode[]).map((mode) => (
+            {(['original', 'color', 'gray', 'bw'] as FilterMode[]).map((mode) => (
               <button
                 key={mode}
                 type="button"
