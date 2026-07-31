@@ -14,7 +14,23 @@ export interface DocumentScannerProps {
   onCapture?: (dataUrl: string) => void;
   onClose?: () => void;
   className?: string;
+  /** يبدأ الكاميرا فوراً عند فتح الماسح (ضغطة واحدة من الشاشة الرئيسية). */
+  autoStartCamera?: boolean;
 }
+
+/** أقل/أعلى نسبة مساحة المستند من الإطار — يدعم فواتير صغيرة (~1.5%) وA4 كامل (~85%). */
+const MIN_DOC_AREA_RATIO = 0.015;
+const MAX_DOC_AREA_RATIO = 0.9;
+const MIN_DOC_ASPECT = 0.18;
+const MAX_DOC_ASPECT = 5.5;
+const DETECTION_FRAME_WIDTH = 560;
+
+type CvQuadMat = {
+  rows: number;
+  data32S: Int32Array;
+  clone: () => { delete: () => void };
+  delete: () => void;
+};
 
 const FILTER_LABELS: Record<FilterMode, string> = {
   color: 'ألوان (مسح ضوئي)',
@@ -46,7 +62,12 @@ function mapCameraError(err: unknown): string {
   return err instanceof Error ? err.message : 'تعذّر الوصول إلى الكاميرا.';
 }
 
-export default function DocumentScanner({ onCapture, onClose, className = '' }: DocumentScannerProps) {
+export default function DocumentScanner({
+  onCapture,
+  onClose,
+  className = '',
+  autoStartCamera = false,
+}: DocumentScannerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
   const resultCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -56,6 +77,7 @@ export default function DocumentScanner({ onCapture, onClose, className = '' }: 
   const capturedCornersRef = useRef<Point[] | null>(null);
   const sourceCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const warpedMatRef = useRef<unknown>(null);
+  const autoStartAttemptedRef = useRef(false);
 
   const [cvReady, setCvReady] = useState(false);
   const [cvLoading, setCvLoading] = useState(true);
@@ -97,12 +119,6 @@ export default function DocumentScanner({ onCapture, onClose, className = '' }: 
     beginOpenCvLoad(false);
   }, [beginOpenCvLoad]);
 
-  useEffect(() => {
-    if (cvReady && actionFeedback === 'جاري تجهيز محرك المعالجة، يرجى الانتظار قليلاً...') {
-      setActionFeedback(null);
-    }
-  }, [cvReady, actionFeedback]);
-
   const orderPoints = (pts: Point[]): Point[] => {
     const sum = pts.map((p) => p.x + p.y);
     const diff = pts.map((p) => p.y - p.x);
@@ -120,6 +136,7 @@ export default function DocumentScanner({ onCapture, onClose, className = '' }: 
     let blurred: { delete: () => void } | undefined;
     let edged: { delete: () => void } | undefined;
     let dilated: { delete: () => void } | undefined;
+    let closed: { delete: () => void } | undefined;
 
     try {
       src = cv.imread(canvas);
@@ -128,37 +145,77 @@ export default function DocumentScanner({ onCapture, onClose, className = '' }: 
       blurred = new cv.Mat();
       cv.GaussianBlur(gray, blurred, new cv.Size(5, 5), 0);
       edged = new cv.Mat();
-      cv.Canny(blurred, edged, 50, 150);
+      cv.Canny(blurred, edged, 35, 110);
       dilated = new cv.Mat();
       const kernel = cv.Mat.ones(3, 3, cv.CV_8U);
       cv.dilate(edged, dilated, kernel, new cv.Point(-1, -1), 1);
+      closed = new cv.Mat();
+      const closeKernel = cv.Mat.ones(5, 5, cv.CV_8U);
+      cv.morphologyEx(dilated, closed, cv.MORPH_CLOSE, closeKernel, new cv.Point(-1, -1), 1);
       kernel.delete();
+      closeKernel.delete();
 
       const contours = new cv.MatVector();
       const hierarchy = new cv.Mat();
-      cv.findContours(dilated, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+      cv.findContours(closed, contours, hierarchy, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE);
 
-      let bestQuad: { rows: number; data32S: Int32Array; clone: () => { delete: () => void }; delete: () => void } | null =
-        null;
-      let maxArea = 0;
+      let bestQuad: CvQuadMat | null = null;
+      let bestScore = 0;
       const imgArea = canvas.width * canvas.height;
+      const minArea = imgArea * MIN_DOC_AREA_RATIO;
+      const maxArea = imgArea * MAX_DOC_AREA_RATIO;
 
       for (let i = 0; i < contours.size(); i++) {
         const cnt = contours.get(i);
         const area = cv.contourArea(cnt);
-        if (area < imgArea * 0.15) {
+        if (area < minArea || area > maxArea) {
           cnt.delete();
           continue;
         }
+
         const peri = cv.arcLength(cnt, true);
-        const approx = new cv.Mat();
-        cv.approxPolyDP(cnt, approx, 0.02 * peri, true);
-        if (approx.rows === 4 && area > maxArea) {
-          maxArea = area;
-          bestQuad?.delete();
-          bestQuad = approx.clone();
+        let matchedApprox: CvQuadMat | null = null;
+
+        for (const epsilonFactor of [0.012, 0.018, 0.024]) {
+          const approx = new cv.Mat();
+          cv.approxPolyDP(cnt, approx, epsilonFactor * peri, true);
+          if (approx.rows === 4 && cv.isContourConvex(approx)) {
+            matchedApprox = approx.clone();
+            approx.delete();
+            break;
+          }
+          approx.delete();
         }
-        approx.delete();
+
+        if (!matchedApprox) {
+          cnt.delete();
+          continue;
+        }
+
+        const rect = cv.boundingRect(matchedApprox);
+        const aspect = rect.width / Math.max(rect.height, 1);
+        if (aspect < MIN_DOC_ASPECT || aspect > MAX_DOC_ASPECT) {
+          matchedApprox.delete();
+          cnt.delete();
+          continue;
+        }
+
+        const rectArea = Math.max(1, rect.width * rect.height);
+        const fillRatio = area / rectArea;
+        if (fillRatio < 0.45) {
+          matchedApprox.delete();
+          cnt.delete();
+          continue;
+        }
+
+        const score = area * fillRatio;
+        if (score > bestScore) {
+          bestScore = score;
+          bestQuad?.delete();
+          bestQuad = matchedApprox;
+        } else {
+          matchedApprox.delete();
+        }
         cnt.delete();
       }
 
@@ -181,6 +238,7 @@ export default function DocumentScanner({ onCapture, onClose, className = '' }: 
       blurred?.delete();
       edged?.delete();
       dilated?.delete();
+      closed?.delete();
     }
   }, []);
 
@@ -239,18 +297,17 @@ export default function DocumentScanner({ onCapture, onClose, className = '' }: 
 
   const startDetectionLoop = useCallback(() => {
     const workCanvas = document.createElement('canvas');
-    const SCALE_W = 480;
     let frameCount = 0;
 
     const loop = () => {
       rafRef.current = requestAnimationFrame(loop);
       frameCount++;
-      if (frameCount % 3 !== 0) return;
+      if (frameCount % 2 !== 0) return;
       const video = videoRef.current;
       if (!video || video.videoWidth === 0 || !cvReady) return;
 
-      const scale = SCALE_W / video.videoWidth;
-      workCanvas.width = SCALE_W;
+      const scale = DETECTION_FRAME_WIDTH / video.videoWidth;
+      workCanvas.width = DETECTION_FRAME_WIDTH;
       workCanvas.height = video.videoHeight * scale;
       const wctx = workCanvas.getContext('2d');
       if (!wctx) return;
@@ -324,18 +381,21 @@ export default function DocumentScanner({ onCapture, onClose, className = '' }: 
       return;
     }
 
-    if (cvLoading || !cvReady) {
-      setActionFeedback('جاري تجهيز محرك المعالجة، يرجى الانتظار قليلاً...');
-      return;
-    }
-
     if (cvError) {
-      setActionFeedback('تعذّر تحميل محرك المعالجة. اضغط «إعادة المحاولة» ثم حاول فتح الكاميرا.');
+      setActionFeedback('تعذّر تحميل محرك المعالجة. اضغط «إعادة المحاولة» ثم حاول مجدداً.');
       return;
     }
 
     void startCamera();
-  }, [cameraOpening, cvLoading, cvReady, cvError, startCamera]);
+  }, [cameraOpening, cvError, startCamera]);
+
+  useEffect(() => {
+    if (!autoStartCamera || autoStartAttemptedRef.current || resultVisible) {
+      return;
+    }
+    autoStartAttemptedRef.current = true;
+    void startCamera();
+  }, [autoStartCamera, resultVisible, startCamera]);
 
   useEffect(() => {
     if (cameraOn && cvReady) {
@@ -574,98 +634,89 @@ export default function DocumentScanner({ onCapture, onClose, className = '' }: 
   };
 
   return (
-    <div className={`relative flex min-h-0 flex-1 flex-col bg-mistara-sand text-mistara-espresso ${className}`}>
-      {/* حاوية الفيديو دائماً في DOM — مخفية قبل فتح الكاميرا لضمان videoRef */}
-      <div
-        className={
-          cameraOn
-            ? 'relative flex min-h-0 flex-1 flex-col'
-            : 'pointer-events-none fixed left-0 top-0 z-[-1] h-px w-px overflow-hidden opacity-0'
-        }
-        aria-hidden={!cameraOn}
-      >
-        <div className="relative min-h-0 flex-1 overflow-hidden bg-black">
-          <video
-            ref={videoRef}
-            autoPlay
-            playsInline
-            muted
-            className="absolute inset-0 z-0 h-full w-full object-cover"
-          />
-          {cameraOn && (
-            <>
-              <canvas
-                ref={overlayRef}
-                className="pointer-events-none absolute inset-0 z-10 h-full w-full"
-              />
-              <span
-                className={`absolute left-1/2 top-4 z-20 -translate-x-1/2 rounded-full border px-4 py-2 text-xs font-bold backdrop-blur-md ${
-                  documentFound
-                    ? 'border-mistara-gold/45 bg-mistara-gold/12 text-mistara-warm'
-                    : 'border-mistara-gold/30 bg-mistara-beige/70 text-mistara-gold-light'
-                }`}
-              >
-                {documentFound ? 'تم العثور على المستند ✓' : 'جاري البحث عن المستند...'}
-              </span>
-            </>
-          )}
-        </div>
-      </div>
-
-      {!cameraOn && !resultVisible && (
-        <div className="flex flex-1 flex-col items-center justify-center gap-5 px-6 py-10 pb-36 text-center">
-          <div className="w-full max-w-sm space-y-4 rounded-3xl border border-mistara-gold/30 glass-panel p-6 shadow-2xl backdrop-blur-md">
-            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-mistara-gold/12 ring-4 ring-mistara-gold/25">
-              <span className="text-3xl" aria-hidden>
-                📄
-              </span>
-            </div>
-            <h2 className="text-lg font-black text-mistara-gold">ماسح المستندات</h2>
-            <p className="text-sm leading-relaxed text-mistara-brown/80">
-              اضغط الزر الذهبي بالأسفل لفتح الكاميرا. وجّهها نحو المستند حتى يظهر الإطار السماوي ثم التقط.
-            </p>
-            {cvLoading && !cvError && (
-              <p className="text-xs font-bold text-mistara-brown/70">
-                {cvSlow
-                  ? 'ما زال التحميل جارياً — الملف كبير (~10MB) وقد يستغرق دقيقة على شبكة بطيئة...'
-                  : 'جاري تحميل محرك OpenCV.js...'}
-              </p>
+    <div className={`relative flex min-h-0 flex-1 flex-col bg-black text-mistara-espresso ${className}`}>
+      {!resultVisible && (
+        <div className="relative flex min-h-0 flex-1 flex-col">
+          <div className="relative min-h-0 flex-1 overflow-hidden bg-black">
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              muted
+              className="absolute inset-0 z-0 h-full w-full object-cover"
+            />
+            {cameraOn && (
+              <>
+                <canvas
+                  ref={overlayRef}
+                  className="pointer-events-none absolute inset-0 z-10 h-full w-full"
+                />
+                <span
+                  className={`absolute left-1/2 top-4 z-20 -translate-x-1/2 rounded-full border px-4 py-2 text-xs font-bold backdrop-blur-md ${
+                    documentFound
+                      ? 'border-mistara-gold/45 bg-mistara-gold/12 text-mistara-warm'
+                      : 'border-mistara-gold/30 bg-mistara-beige/70 text-mistara-gold-light'
+                  }`}
+                >
+                  {documentFound ? 'تم العثور على المستند ✓' : 'جاري البحث عن المستند...'}
+                </span>
+              </>
             )}
+
+            {!cameraOn && (
+              <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-black/80 px-6 text-center">
+                {cameraOpening ? (
+                  <>
+                    <span className="h-10 w-10 animate-spin rounded-full border-2 border-mistara-gold/30 border-t-mistara-gold" />
+                    <p className="text-sm font-bold text-mistara-gold-light">جاري تشغيل الكاميرا...</p>
+                  </>
+                ) : cvLoading && !cvError ? (
+                  <>
+                    <span className="h-8 w-8 animate-spin rounded-full border-2 border-mistara-gold/25 border-t-mistara-gold" />
+                    <p className="text-xs font-bold text-mistara-gold-light/90">
+                      {cvSlow ? 'جاري تجهيز محرك OpenCV...' : 'جاري التحميل...'}
+                    </p>
+                  </>
+                ) : null}
+              </div>
+            )}
+
+            {cvLoading && cameraOn && !cvError && (
+              <span className="absolute right-3 top-3 z-20 rounded-full border border-mistara-gold/25 bg-black/50 px-2.5 py-1 text-[10px] font-bold text-mistara-gold-light backdrop-blur-sm">
+                {cvSlow ? 'OpenCV...' : 'تجهيز...'}
+              </span>
+            )}
+
             {cvError && (
               <div
                 role="alert"
-                className="space-y-2 rounded-xl border border-red-800/35 bg-red-800/8 px-3 py-2 text-xs font-bold text-red-700"
+                className="absolute inset-x-4 top-4 z-30 space-y-2 rounded-xl border border-red-800/35 bg-red-900/85 px-3 py-2 text-xs font-bold text-red-100 backdrop-blur-sm"
               >
                 <p>{cvError}</p>
                 <button
                   type="button"
                   onClick={() => beginOpenCvLoad(true)}
-                  className="w-full rounded-lg bg-mistara-gold/15 py-2 text-mistara-warm transition-colors hover:bg-mistara-gold/20"
+                  className="w-full rounded-lg bg-mistara-gold/20 py-2 text-mistara-gold-light transition-colors hover:bg-mistara-gold/30"
                 >
                   إعادة المحاولة
                 </button>
               </div>
             )}
+
             {actionFeedback && (
-              <p role="status" className="rounded-xl border border-mistara-gold/35 bg-mistara-gold/10 px-3 py-2 text-xs font-bold text-mistara-warm">
+              <p
+                role="status"
+                className="absolute inset-x-4 bottom-36 z-20 rounded-xl border border-mistara-gold/35 bg-black/70 px-3 py-2 text-xs font-bold text-mistara-gold-light backdrop-blur-sm"
+              >
                 {actionFeedback}
               </p>
-            )}
-            {onClose && (
-              <button
-                type="button"
-                onClick={onClose}
-                className="w-full rounded-2xl border border-mistara-brown/20 bg-mistara-cream py-3 text-sm font-bold text-mistara-brown"
-              >
-                إلغاء
-              </button>
             )}
           </div>
         </div>
       )}
 
       {resultVisible && (
-        <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-4 py-5 pb-36">
+        <div className="flex flex-1 flex-col gap-4 overflow-y-auto bg-mistara-sand px-4 py-5 pb-36">
           <div className="rounded-2xl border border-mistara-gold/30 glass-panel p-3 shadow-xl backdrop-blur-md">
             <canvas ref={resultCanvasRef} className="mx-auto max-h-[52vh] w-auto max-w-full rounded-xl bg-white object-contain" />
           </div>

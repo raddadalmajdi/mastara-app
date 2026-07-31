@@ -66,7 +66,12 @@ export function OpenCvDocumentScannerModal({ onClose, onConfirm }: OpenCvDocumen
           <p className="text-sm font-bold text-mistara-warm">جاري رفع المستند...</p>
         </div>
       ) : (
-        <DocumentScanner onCapture={handleCapture} onClose={onClose} className="min-h-0 flex-1 overflow-hidden" />
+        <DocumentScanner
+          autoStartCamera
+          onCapture={handleCapture}
+          onClose={onClose}
+          className="min-h-0 flex-1 overflow-hidden"
+        />
       )}
     </div>
   );
