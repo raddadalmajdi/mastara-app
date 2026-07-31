@@ -23,6 +23,29 @@ const FILTER_LABELS: Record<FilterMode, string> = {
   original: 'بدون تحسين',
 };
 
+function mapCameraError(err: unknown): string {
+  if (err instanceof DOMException) {
+    switch (err.name) {
+      case 'NotAllowedError':
+      case 'PermissionDeniedError':
+        return 'تم رفض إذن الكاميرا. فعّل الكاميرا من إعدادات المتصفح ثم أعد المحاولة.';
+      case 'NotFoundError':
+      case 'DevicesNotFoundError':
+        return 'لم يُعثر على كاميرا على هذا الجهاز.';
+      case 'NotReadableError':
+      case 'TrackStartError':
+        return 'الكاميرا مستخدمة من تطبيق آخر. أغلِقه ثم أعد المحاولة.';
+      case 'SecurityError':
+        return 'المتصفح يمنع الوصول للكاميرا. تأكد من فتح الموقع عبر HTTPS.';
+      case 'OverconstrainedError':
+        return 'إعدادات الكاميرا غير مدعومة على هذا الجهاز — جرّب مجدداً.';
+      default:
+        return `تعذّر تشغيل الكاميرا: ${err.message}`;
+    }
+  }
+  return err instanceof Error ? err.message : 'تعذّر الوصول إلى الكاميرا.';
+}
+
 export default function DocumentScanner({ onCapture, onClose, className = '' }: DocumentScannerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
@@ -38,6 +61,8 @@ export default function DocumentScanner({ onCapture, onClose, className = '' }: 
   const [cvLoading, setCvLoading] = useState(true);
   const [cvSlow, setCvSlow] = useState(false);
   const [cvError, setCvError] = useState<string | null>(null);
+  const [actionFeedback, setActionFeedback] = useState<string | null>(null);
+  const [cameraOpening, setCameraOpening] = useState(false);
   const [cameraOn, setCameraOn] = useState(false);
   const [documentFound, setDocumentFound] = useState(false);
   const [resultVisible, setResultVisible] = useState(false);
@@ -71,6 +96,12 @@ export default function DocumentScanner({ onCapture, onClose, className = '' }: 
   useEffect(() => {
     beginOpenCvLoad(false);
   }, [beginOpenCvLoad]);
+
+  useEffect(() => {
+    if (cvReady && actionFeedback === 'جاري تجهيز محرك المعالجة، يرجى الانتظار قليلاً...') {
+      setActionFeedback(null);
+    }
+  }, [cvReady, actionFeedback]);
 
   const orderPoints = (pts: Point[]): Point[] => {
     const sum = pts.map((p) => p.x + p.y);
@@ -242,22 +273,69 @@ export default function DocumentScanner({ onCapture, onClose, className = '' }: 
   }, []);
 
   const startCamera = useCallback(async () => {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setActionFeedback('المتصفح لا يدعم الكاميرا. جرّب Safari أو Chrome على HTTPS.');
+      return;
+    }
+
+    setActionFeedback(null);
+    setCameraOpening(true);
+
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
-        audio: false,
-      });
-      streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-        resizeOverlay();
-        setCameraOn(true);
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+          audio: false,
+        });
+      } catch (primaryErr) {
+        if (
+          primaryErr instanceof DOMException &&
+          (primaryErr.name === 'OverconstrainedError' || primaryErr.name === 'ConstraintNotSatisfiedError')
+        ) {
+          stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        } else {
+          throw primaryErr;
+        }
       }
+
+      streamRef.current = stream;
+      const video = videoRef.current;
+      if (!video) {
+        throw new Error('تعذّر تهيئة معاينة الكاميرا.');
+      }
+
+      video.srcObject = stream;
+      await video.play();
+      resizeOverlay();
+      setCameraOn(true);
     } catch (err) {
-      setCvError('تعذّر الوصول إلى الكاميرا: ' + (err instanceof Error ? err.message : 'خطأ غير معروف'));
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+      setCameraOn(false);
+      setActionFeedback(mapCameraError(err));
+    } finally {
+      setCameraOpening(false);
     }
   }, [resizeOverlay]);
+
+  const handleOpenCameraClick = useCallback(() => {
+    if (cameraOpening) {
+      return;
+    }
+
+    if (cvLoading || !cvReady) {
+      setActionFeedback('جاري تجهيز محرك المعالجة، يرجى الانتظار قليلاً...');
+      return;
+    }
+
+    if (cvError) {
+      setActionFeedback('تعذّر تحميل محرك المعالجة. اضغط «إعادة المحاولة» ثم حاول فتح الكاميرا.');
+      return;
+    }
+
+    void startCamera();
+  }, [cameraOpening, cvLoading, cvReady, cvError, startCamera]);
 
   useEffect(() => {
     if (cameraOn && cvReady) {
@@ -431,7 +509,21 @@ export default function DocumentScanner({ onCapture, onClose, className = '' }: 
   };
 
   return (
-    <div className={`flex flex-col bg-mistara-sand text-mistara-espresso ${className}`}>
+    <div className={`relative flex flex-col bg-mistara-sand text-mistara-espresso ${className}`}>
+      {/* يبقى في DOM دائماً حتى يتوفر videoRef قبل فتح الكاميرا */}
+      <video
+        ref={videoRef}
+        autoPlay
+        playsInline
+        muted
+        className={
+          cameraOn
+            ? 'absolute inset-0 h-full w-full object-cover'
+            : 'pointer-events-none fixed h-px w-px opacity-0'
+        }
+        aria-hidden={!cameraOn}
+      />
+
       {!cameraOn && !resultVisible && (
         <div className="flex flex-1 flex-col items-center justify-center gap-5 px-6 py-10 text-center">
           <div className="w-full max-w-sm space-y-4 rounded-3xl border border-mistara-gold/30 glass-panel p-6 shadow-2xl backdrop-blur-md">
@@ -466,14 +558,23 @@ export default function DocumentScanner({ onCapture, onClose, className = '' }: 
                 </button>
               </div>
             )}
+            {actionFeedback && (
+              <p role="status" className="rounded-xl border border-mistara-gold/35 bg-mistara-gold/10 px-3 py-2 text-xs font-bold text-mistara-warm">
+                {actionFeedback}
+              </p>
+            )}
             <div className="flex flex-col gap-2 pt-1">
               <button
                 type="button"
-                disabled={!cvReady || cvLoading || !!cvError}
-                onClick={() => void startCamera()}
-                className="w-full rounded-2xl bg-gradient-to-r from-mistara-gold to-mistara-gold-light py-3.5 text-sm font-black text-mistara-cream shadow-lg shadow-mistara-gold/20 disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={cameraOpening}
+                onClick={handleOpenCameraClick}
+                className="w-full rounded-2xl bg-gradient-to-r from-mistara-gold to-mistara-gold-light py-3.5 text-sm font-black text-mistara-cream shadow-lg shadow-mistara-gold/20 disabled:cursor-not-allowed disabled:opacity-60 active:scale-[0.98] transition-transform"
               >
-                {cvLoading ? 'جاري تجهيز محرك المعالجة...' : cvReady ? 'فتح الكاميرا' : 'انتظر اكتمال التحميل'}
+                {cameraOpening
+                  ? 'جاري فتح الكاميرا...'
+                  : cvLoading
+                    ? 'جاري تجهيز محرك المعالجة...'
+                    : 'فتح الكاميرا'}
               </button>
               {onClose && (
                 <button
@@ -492,7 +593,6 @@ export default function DocumentScanner({ onCapture, onClose, className = '' }: 
       {cameraOn && (
         <div className="relative flex flex-1 flex-col min-h-0">
           <div className="relative flex-1 min-h-0 overflow-hidden bg-black">
-            <video ref={videoRef} autoPlay playsInline muted className="absolute inset-0 h-full w-full object-cover" />
             <canvas ref={overlayRef} className="pointer-events-none absolute inset-0 h-full w-full" />
             <span
               className={`absolute left-1/2 top-4 -translate-x-1/2 rounded-full border px-4 py-2 text-xs font-bold backdrop-blur-md ${
