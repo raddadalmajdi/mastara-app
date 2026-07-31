@@ -31,6 +31,13 @@ export function normalizeStoredPhone(fullPhone: string): string {
   return fullPhone.replace(/\D/g, '');
 }
 
+/** الحد الأدنى لأرقام الجوال المحلية قبل البحث في الفواتير أو دفتر العملاء. */
+export const MIN_CUSTOMER_PHONE_SEARCH_LENGTH = 6;
+
+export function isCustomerPhoneSearchable(localPhone: string): boolean {
+  return localPhone.replace(/\D/g, '').length >= MIN_CUSTOMER_PHONE_SEARCH_LENGTH;
+}
+
 /** أشكال محتملة لرقم الجوال في الفواتير والدفتر (96550123456، +965…، 50123456). */
 export function phoneMatchVariants(countryCode: string, localPhone: string): string[] {
   const local = localPhone.replace(/\D/g, '');

@@ -55,6 +55,8 @@ import { fileToAvatarJpegBlob, uploadTailorAvatar } from '@/lib/upload-tailor-av
 import { useIdleLogout } from '@/lib/use-idle-logout';
 import {
   lookupTailorCustomerByPhone,
+  isCustomerPhoneSearchable,
+  MIN_CUSTOMER_PHONE_SEARCH_LENGTH,
   phoneMatchVariants,
   phonesMatch,
   upsertTailorCustomer,
@@ -939,7 +941,7 @@ export default function Home() {
     if (customerLookupTimerRef.current !== null) {
       window.clearTimeout(customerLookupTimerRef.current);
     }
-    if (localPhone.length < 3) {
+    if (!isCustomerPhoneSearchable(localPhone)) {
       setCustomerBookStatus('idle');
       return;
     }
@@ -977,20 +979,19 @@ export default function Home() {
   const handleCustomerPhoneInput = (val: string) => {
     const cleanVal = val.replace(/\D/g, '');
     setCustomerLocalPhone(cleanVal);
-    if (cleanVal.length < 3) {
+    if (!isCustomerPhoneSearchable(cleanVal)) {
       setCustomerDisplayName('');
       setCustomerBookStatus('idle');
       setCustomerNameLocked(false);
       setCustomerNameEditing(false);
+      setCustomerInvoices([]);
+      setWhatsappMessages({});
     } else {
       setCustomerBookStatus('searching');
     }
-    if (cleanVal.length >= 1) {
+    if (isCustomerPhoneSearchable(cleanVal)) {
       void searchInvoices(cleanVal, customerCountryCode);
       scheduleCustomerDirectoryLookup(cleanVal, customerCountryCode);
-    } else {
-      setCustomerInvoices([]);
-      setWhatsappMessages({});
     }
   };
 
@@ -1052,21 +1053,29 @@ export default function Home() {
 
   const handleCountryCodeChange = (newCode: string) => {
     setCustomerCountryCode(newCode);
-    if (customerLocalPhone.length >= 3) {
+    if (isCustomerPhoneSearchable(customerLocalPhone)) {
       setCustomerBookStatus('searching');
     } else {
       setCustomerDisplayName('');
       setCustomerBookStatus('idle');
       setCustomerNameLocked(false);
       setCustomerNameEditing(false);
+      setCustomerInvoices([]);
+      setWhatsappMessages({});
     }
-    if (customerLocalPhone.length >= 1) {
+    if (isCustomerPhoneSearchable(customerLocalPhone)) {
       void searchInvoices(customerLocalPhone, newCode);
       scheduleCustomerDirectoryLookup(customerLocalPhone, newCode);
     }
   };
 
   const searchInvoices = async (localPhone: string, cCode: string) => {
+    if (!isCustomerPhoneSearchable(localPhone)) {
+      setCustomerInvoices([]);
+      setWhatsappMessages({});
+      return;
+    }
+
     const variants = phoneMatchVariants(cCode, localPhone);
 
     setIsSearchingInvoices(true);
@@ -1661,7 +1670,7 @@ export default function Home() {
             </div>
           </div>
 
-          {customerLocalPhone.length >= 3 &&
+          {customerLocalPhone.length >= MIN_CUSTOMER_PHONE_SEARCH_LENGTH &&
             customerDisplayName.trim() &&
             customerBookStatus === 'new' && (
               <button
@@ -1687,7 +1696,13 @@ export default function Home() {
             <p className="text-xs text-red-800 font-bold">{uploadSaveError}</p>
           )}
 
-          {customerLocalPhone.length >= 1 && (
+          {customerLocalPhone.length >= 1 && customerLocalPhone.length < MIN_CUSTOMER_PHONE_SEARCH_LENGTH && (
+            <p className="text-[11px] text-mistara-brown/60 font-bold">
+              أكمل رقم الجوال ({MIN_CUSTOMER_PHONE_SEARCH_LENGTH} أرقام على الأقل) للبحث في الفواتير.
+            </p>
+          )}
+
+          {isCustomerPhoneSearchable(customerLocalPhone) && (
             <p className="text-[11px] text-mistara-brown/60 font-bold">
               {isSearchingInvoices || customerBookStatus === 'searching'
                 ? 'جاري البحث في سجل العملاء والفواتير...'
@@ -1695,13 +1710,11 @@ export default function Home() {
                   ? `عميل مسجّل: ${customerDisplayName}`
                   : customerInvoices.length > 0
                     ? `تم العثور على ${customerInvoices.length} مستند/فاتورة سابقة.`
-                    : customerLocalPhone.length >= 3
-                      ? 'رقم جديد — اكتب الاسم واحفظ، أو استخدم زر الكاميرا بالأسفل.'
-                      : 'أكمل رقم الجوال (3 أرقام على الأقل) للبحث.'}
+                    : 'رقم جديد — اكتب الاسم واحفظ، أو استخدم زر الكاميرا بالأسفل.'}
             </p>
           )}
 
-          {customerLocalPhone.length >= 3 && customerDisplayName.trim() && (
+          {isCustomerPhoneSearchable(customerLocalPhone) && customerDisplayName.trim() && (
             <button
               type="button"
               onClick={handleOpenOpenCvScanner}
@@ -1714,7 +1727,7 @@ export default function Home() {
         </section>
 
         {/* عرض الفواتير: الفاتورة الحديثة (الأحدث) ضخمة في المقدمة يعقبها الأرشيف */}
-        {customerLocalPhone.length >= 1 && customerInvoices.length > 0 && (
+        {isCustomerPhoneSearchable(customerLocalPhone) && customerInvoices.length > 0 && (
           <section className="space-y-4">
             <h2 className="text-base sm:text-lg text-mistara-gold font-bold">
               أرشيف فواتير العميل (<span className="tnum">{customerInvoices.length}</span>)
