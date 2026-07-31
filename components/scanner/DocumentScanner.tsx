@@ -716,47 +716,60 @@ export default function DocumentScanner({
       )}
 
       {resultVisible && (
-        <div className="flex flex-1 flex-col gap-4 overflow-y-auto bg-mistara-sand px-4 py-5 pb-36">
-          <div className="rounded-2xl border border-mistara-gold/30 glass-panel p-3 shadow-xl backdrop-blur-md">
-            <canvas ref={resultCanvasRef} className="mx-auto max-h-[52vh] w-auto max-w-full rounded-xl bg-white object-contain" />
+        <>
+          <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto bg-mistara-sand px-4 py-5">
+            <div className="rounded-2xl border border-mistara-gold/30 glass-panel p-3 shadow-xl backdrop-blur-md">
+              <canvas ref={resultCanvasRef} className="mx-auto max-h-[48vh] w-auto max-w-full rounded-xl bg-white object-contain sm:max-h-[52vh]" />
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {(['original', 'color', 'gray', 'bw'] as FilterMode[]).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => handleFilterChange(mode)}
+                  className={`rounded-xl border px-2 py-2.5 text-xs font-bold transition-colors ${
+                    activeFilter === mode
+                      ? 'border-mistara-gold/50 bg-mistara-gold/15 text-mistara-gold-light'
+                      : 'border-mistara-brown/20 bg-mistara-cream/80 text-mistara-brown/80 hover:border-mistara-brown/25'
+                  }`}
+                >
+                  {FILTER_LABELS[mode]}
+                </button>
+              ))}
+            </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            {(['original', 'color', 'gray', 'bw'] as FilterMode[]).map((mode) => (
+          <div className="shrink-0 border-t border-mistara-gold/20 bg-mistara-cream/95 px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(0,0,0,0.08)] backdrop-blur-md">
+            <div className="flex gap-3">
               <button
-                key={mode}
                 type="button"
-                onClick={() => handleFilterChange(mode)}
-                className={`rounded-xl border px-2 py-2.5 text-xs font-bold transition-colors ${
-                  activeFilter === mode
-                    ? 'border-mistara-gold/50 bg-mistara-gold/15 text-mistara-gold-light'
-                    : 'border-mistara-brown/20 bg-mistara-cream/80 text-mistara-brown/80 hover:border-mistara-brown/25'
-                }`}
+                onClick={handleRetake}
+                className="flex-1 rounded-2xl border border-mistara-brown/25 bg-mistara-cream py-3.5 text-sm font-bold text-mistara-brown transition-colors active:scale-[0.98]"
               >
-                {FILTER_LABELS[mode]}
+                إعادة الالتقاط
               </button>
-            ))}
+              <button
+                type="button"
+                onClick={handleSave}
+                className="flex-[1.35] rounded-2xl bg-gradient-to-r from-mistara-gold to-mistara-gold-dark py-3.5 text-sm font-black text-mistara-cream shadow-lg shadow-mistara-gold/20 transition-transform active:scale-[0.98]"
+              >
+                حفظ ورفع الفاتورة
+              </button>
+            </div>
           </div>
-
-          <div className="flex gap-3">
-            <button
-              type="button"
-              onClick={handleSave}
-              className="w-full rounded-2xl bg-gradient-to-r from-mistara-gold to-mistara-gold-dark py-3 text-sm font-black text-mistara-cream shadow-lg shadow-mistara-gold/20"
-            >
-              حفظ ورفع الفاتورة
-            </button>
-          </div>
-        </div>
+        </>
       )}
 
-      <div
-        className={`pointer-events-none absolute inset-x-0 bottom-0 z-30 flex justify-center px-4 ${
-          cameraOn ? 'bg-gradient-to-t from-black/85 via-black/40 to-transparent pb-6 pt-10' : 'pb-6 pt-2'
-        }`}
-      >
-        {renderUnifiedActionButton('pointer-events-auto')}
-      </div>
+      {!resultVisible && (
+        <div
+          className={`pointer-events-none absolute inset-x-0 bottom-0 z-30 flex justify-center px-4 ${
+            cameraOn ? 'bg-gradient-to-t from-black/85 via-black/40 to-transparent pb-6 pt-10' : 'pb-6 pt-2'
+          }`}
+        >
+          {renderUnifiedActionButton('pointer-events-auto')}
+        </div>
+      )}
     </div>
   );
 }
