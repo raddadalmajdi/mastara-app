@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { getOpenCvRuntime, loadOpenCv } from '@/lib/opencv-loader';
+import { getOpenCvRuntime, loadOpenCv, OPENCV_SLOW_HINT_MS, retryLoadOpenCv } from '@/lib/opencv-loader';
 
 type FilterMode = 'color' | 'gray' | 'bw' | 'original';
 
@@ -35,27 +35,42 @@ export default function DocumentScanner({ onCapture, onClose, className = '' }: 
   const warpedMatRef = useRef<unknown>(null);
 
   const [cvReady, setCvReady] = useState(false);
+  const [cvLoading, setCvLoading] = useState(true);
+  const [cvSlow, setCvSlow] = useState(false);
   const [cvError, setCvError] = useState<string | null>(null);
   const [cameraOn, setCameraOn] = useState(false);
   const [documentFound, setDocumentFound] = useState(false);
   const [resultVisible, setResultVisible] = useState(false);
   const [activeFilter, setActiveFilter] = useState<FilterMode>('color');
 
-  useEffect(() => {
-    let cancelled = false;
-    void loadOpenCv()
+  const beginOpenCvLoad = useCallback((force = false) => {
+    setCvLoading(true);
+    setCvSlow(false);
+    setCvError(null);
+    if (force) {
+      setCvReady(false);
+    }
+
+    const slowTimer = window.setTimeout(() => setCvSlow(true), OPENCV_SLOW_HINT_MS);
+    const loader = force ? retryLoadOpenCv() : loadOpenCv();
+
+    void loader
       .then(() => {
-        if (!cancelled) setCvReady(true);
+        setCvReady(true);
       })
       .catch((err) => {
-        if (!cancelled) {
-          setCvError(err instanceof Error ? err.message : 'تعذّر تحميل محرك المعالجة.');
-        }
+        setCvReady(false);
+        setCvError(err instanceof Error ? err.message : 'تعذّر تحميل محرك المعالجة.');
+      })
+      .finally(() => {
+        window.clearTimeout(slowTimer);
+        setCvLoading(false);
       });
-    return () => {
-      cancelled = true;
-    };
   }, []);
+
+  useEffect(() => {
+    beginOpenCvLoad(false);
+  }, [beginOpenCvLoad]);
 
   const orderPoints = (pts: Point[]): Point[] => {
     const sum = pts.map((p) => p.x + p.y);
@@ -429,19 +444,36 @@ export default function DocumentScanner({ onCapture, onClose, className = '' }: 
             <p className="text-sm leading-relaxed text-mistara-brown/80">
               وجّه الكاميرا نحو المستند. عند ظهور الإطار السماوي اضغط زر الالتقاط.
             </p>
-            {cvError && (
-              <p role="alert" className="rounded-xl border border-red-800/35 bg-red-800/8 px-3 py-2 text-xs font-bold text-red-700">
-                {cvError}
+            {cvLoading && !cvError && (
+              <p className="text-xs font-bold text-mistara-brown/70">
+                {cvSlow
+                  ? 'ما زال التحميل جارياً — الملف كبير (~10MB) وقد يستغرق دقيقة على شبكة بطيئة...'
+                  : 'جاري تحميل محرك OpenCV.js...'}
               </p>
+            )}
+            {cvError && (
+              <div
+                role="alert"
+                className="space-y-2 rounded-xl border border-red-800/35 bg-red-800/8 px-3 py-2 text-xs font-bold text-red-700"
+              >
+                <p>{cvError}</p>
+                <button
+                  type="button"
+                  onClick={() => beginOpenCvLoad(true)}
+                  className="w-full rounded-lg bg-mistara-gold/15 py-2 text-mistara-warm transition-colors hover:bg-mistara-gold/20"
+                >
+                  إعادة المحاولة
+                </button>
+              </div>
             )}
             <div className="flex flex-col gap-2 pt-1">
               <button
                 type="button"
-                disabled={!cvReady || !!cvError}
+                disabled={!cvReady || cvLoading || !!cvError}
                 onClick={() => void startCamera()}
                 className="w-full rounded-2xl bg-gradient-to-r from-mistara-gold to-mistara-gold-light py-3.5 text-sm font-black text-mistara-cream shadow-lg shadow-mistara-gold/20 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {cvReady ? 'فتح الكاميرا' : 'جاري تجهيز محرك المعالجة...'}
+                {cvLoading ? 'جاري تجهيز محرك المعالجة...' : cvReady ? 'فتح الكاميرا' : 'انتظر اكتمال التحميل'}
               </button>
               {onClose && (
                 <button
