@@ -56,7 +56,6 @@ import { useIdleLogout } from '@/lib/use-idle-logout';
 import {
   lookupTailorCustomerByPhone,
   isCustomerPhoneSearchable,
-  MIN_CUSTOMER_PHONE_SEARCH_LENGTH,
   phoneMatchVariants,
   phonesMatch,
   upsertTailorCustomer,
@@ -1670,7 +1669,7 @@ export default function Home() {
             </div>
           </div>
 
-          {customerLocalPhone.length >= MIN_CUSTOMER_PHONE_SEARCH_LENGTH &&
+          {isCustomerPhoneSearchable(customerLocalPhone) &&
             customerDisplayName.trim() &&
             customerBookStatus === 'new' && (
               <button
@@ -1694,12 +1693,6 @@ export default function Home() {
 
           {uploadSaveError && customerLocalPhone.length >= 1 && uploadSavePhase === 'idle' && (
             <p className="text-xs text-red-800 font-bold">{uploadSaveError}</p>
-          )}
-
-          {customerLocalPhone.length >= 1 && customerLocalPhone.length < MIN_CUSTOMER_PHONE_SEARCH_LENGTH && (
-            <p className="text-[11px] text-mistara-brown/60 font-bold">
-              أكمل رقم الجوال ({MIN_CUSTOMER_PHONE_SEARCH_LENGTH} أرقام على الأقل) للبحث في الفواتير.
-            </p>
           )}
 
           {isCustomerPhoneSearchable(customerLocalPhone) && (
