@@ -497,14 +497,67 @@ export default function DocumentScanner({ onCapture, onClose, className = '' }: 
     setActiveFilter(mode);
   };
 
-  const handleRetake = () => {
+  const handleRetake = useCallback(() => {
     const mat = warpedMatRef.current as { delete?: () => void } | null;
     mat?.delete?.();
     warpedMatRef.current = null;
     setActiveFilter('original');
     setResultVisible(false);
     void startCamera();
-  };
+  }, [startCamera]);
+
+  const handleUnifiedAction = useCallback(() => {
+    if (resultVisible) {
+      handleRetake();
+      return;
+    }
+
+    if (cameraOn) {
+      capturePhoto();
+      return;
+    }
+
+    handleOpenCameraClick();
+  }, [resultVisible, cameraOn, capturePhoto, handleOpenCameraClick, handleRetake]);
+
+  const unifiedButtonDisabled = cameraOpening;
+  const unifiedPrimaryLine = resultVisible
+    ? 'إعادة الالتقاط'
+    : cameraOn
+      ? 'التقاط المستند'
+      : cameraOpening
+        ? 'جاري فتح الكاميرا...'
+        : cvLoading
+          ? 'جاري التجهيز...'
+          : '✨ ماسح OpenCV المتقدّم';
+  const unifiedSecondaryLine = resultVisible
+    ? 'مسح جديد'
+    : cameraOn
+      ? documentFound
+        ? 'المستند جاهز ✓'
+        : 'وجّه نحو المستند'
+      : 'اكتشاف حي للحواف';
+
+  const renderUnifiedActionButton = (className = '') => (
+    <button
+      type="button"
+      aria-label={unifiedPrimaryLine}
+      disabled={unifiedButtonDisabled}
+      onClick={handleUnifiedAction}
+      className={`flex h-28 w-28 flex-col items-center justify-center gap-0.5 rounded-full border-4 border-mistara-sand/90 bg-gradient-to-br from-amber-400 via-mistara-gold to-amber-600 px-2 text-center shadow-[0_0_36px_rgba(217,119,6,0.45)] transition-transform active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 sm:h-32 sm:w-32 ${className}`}
+    >
+      <span className="relative flex h-9 w-12 items-center justify-center" aria-hidden>
+        <span className="absolute left-0 text-xl opacity-90">📄</span>
+        <span className="absolute right-0 text-2xl drop-shadow-sm">📷</span>
+      </span>
+      <span className="max-w-[6.5rem] text-[10px] font-black leading-tight text-mistara-espresso sm:text-[11px]">
+        {unifiedPrimaryLine}
+      </span>
+      <span className="max-w-[7rem] text-[8px] font-bold leading-tight text-mistara-espresso/85 sm:text-[9px]">
+        {unifiedSecondaryLine}
+      </span>
+    </button>
+  );
 
   const handleSave = () => {
     const canvas = resultCanvasRef.current;
@@ -557,23 +610,10 @@ export default function DocumentScanner({ onCapture, onClose, className = '' }: 
             </>
           )}
         </div>
-
-        {cameraOn && (
-          <div className="flex shrink-0 justify-center bg-gradient-to-t from-black/90 to-transparent px-6 pb-8 pt-4">
-            <button
-              type="button"
-              aria-label="التقاط المستند"
-              onClick={capturePhoto}
-              className={`h-20 w-20 rounded-full border-[6px] shadow-[0_0_30px_rgba(166,124,82,0.4)] transition-transform active:scale-95 ${
-                documentFound ? 'border-mistara-gold bg-white' : 'border-mistara-gold bg-white/95'
-              }`}
-            />
-          </div>
-        )}
       </div>
 
       {!cameraOn && !resultVisible && (
-        <div className="flex flex-1 flex-col items-center justify-center gap-5 px-6 py-10 text-center">
+        <div className="flex flex-1 flex-col items-center justify-center gap-5 px-6 py-10 pb-36 text-center">
           <div className="w-full max-w-sm space-y-4 rounded-3xl border border-mistara-gold/30 glass-panel p-6 shadow-2xl backdrop-blur-md">
             <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-mistara-gold/12 ring-4 ring-mistara-gold/25">
               <span className="text-3xl" aria-hidden>
@@ -582,7 +622,7 @@ export default function DocumentScanner({ onCapture, onClose, className = '' }: 
             </div>
             <h2 className="text-lg font-black text-mistara-gold">ماسح المستندات</h2>
             <p className="text-sm leading-relaxed text-mistara-brown/80">
-              وجّه الكاميرا نحو المستند. عند ظهور الإطار السماوي اضغط زر الالتقاط.
+              اضغط الزر الذهبي بالأسفل لفتح الكاميرا. وجّهها نحو المستند حتى يظهر الإطار السماوي ثم التقط.
             </p>
             {cvLoading && !cvError && (
               <p className="text-xs font-bold text-mistara-brown/70">
@@ -611,35 +651,21 @@ export default function DocumentScanner({ onCapture, onClose, className = '' }: 
                 {actionFeedback}
               </p>
             )}
-            <div className="flex flex-col gap-2 pt-1">
+            {onClose && (
               <button
                 type="button"
-                disabled={cameraOpening}
-                onClick={handleOpenCameraClick}
-                className="w-full rounded-2xl bg-gradient-to-r from-mistara-gold to-mistara-gold-light py-3.5 text-sm font-black text-mistara-cream shadow-lg shadow-mistara-gold/20 disabled:cursor-not-allowed disabled:opacity-60 active:scale-[0.98] transition-transform"
+                onClick={onClose}
+                className="w-full rounded-2xl border border-mistara-brown/20 bg-mistara-cream py-3 text-sm font-bold text-mistara-brown"
               >
-                {cameraOpening
-                  ? 'جاري فتح الكاميرا...'
-                  : cvLoading
-                    ? 'جاري تجهيز محرك المعالجة...'
-                    : 'فتح الكاميرا'}
+                إلغاء
               </button>
-              {onClose && (
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="w-full rounded-2xl border border-mistara-brown/20 bg-mistara-cream py-3 text-sm font-bold text-mistara-brown"
-                >
-                  إلغاء
-                </button>
-              )}
-            </div>
+            )}
           </div>
         </div>
       )}
 
       {resultVisible && (
-        <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-4 py-5">
+        <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-4 py-5 pb-36">
           <div className="rounded-2xl border border-mistara-gold/30 glass-panel p-3 shadow-xl backdrop-blur-md">
             <canvas ref={resultCanvasRef} className="mx-auto max-h-[52vh] w-auto max-w-full rounded-xl bg-white object-contain" />
           </div>
@@ -664,21 +690,22 @@ export default function DocumentScanner({ onCapture, onClose, className = '' }: 
           <div className="flex gap-3">
             <button
               type="button"
-              onClick={handleRetake}
-              className="flex-1 rounded-2xl border border-mistara-brown/20 bg-mistara-cream py-3 text-sm font-bold text-mistara-brown"
-            >
-              إعادة الالتقاط
-            </button>
-            <button
-              type="button"
               onClick={handleSave}
-              className="flex-1 rounded-2xl bg-gradient-to-r from-mistara-gold to-mistara-gold-dark py-3 text-sm font-black text-mistara-cream shadow-lg shadow-mistara-gold/20"
+              className="w-full rounded-2xl bg-gradient-to-r from-mistara-gold to-mistara-gold-dark py-3 text-sm font-black text-mistara-cream shadow-lg shadow-mistara-gold/20"
             >
               حفظ ورفع الفاتورة
             </button>
           </div>
         </div>
       )}
+
+      <div
+        className={`pointer-events-none absolute inset-x-0 bottom-0 z-30 flex justify-center px-4 ${
+          cameraOn ? 'bg-gradient-to-t from-black/85 via-black/40 to-transparent pb-6 pt-10' : 'pb-6 pt-2'
+        }`}
+      >
+        {renderUnifiedActionButton('pointer-events-auto')}
+      </div>
     </div>
   );
 }

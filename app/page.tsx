@@ -36,7 +36,6 @@ import {
   invoiceShareDocumentUrl,
   uploadScannedInvoiceFiles,
 } from '@/lib/upload-scanned-invoice';
-import { DocumentScannerModal } from '@/components/scanner/DocumentScannerModal';
 import type { DocumentScanResult } from '@/lib/document-scanner/scan-result';
 
 const OpenCvDocumentScannerModal = dynamic(
@@ -141,7 +140,6 @@ export default function Home() {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadSavePhase, setUploadSavePhase] = useState<InvoiceSaveUiPhase>('idle');
   const [uploadSaveError, setUploadSaveError] = useState<string | null>(null);
-  const [showDocumentScanner, setShowDocumentScanner] = useState(false);
   const [showOpenCvScanner, setShowOpenCvScanner] = useState(false);
 
   // حفظ رسائل الواتساب المخصصة لكل فاتورة
@@ -994,19 +992,6 @@ export default function Home() {
     }
   };
 
-  const handleOpenScannerForCustomer = () => {
-    if (!customerLocalPhone.trim()) {
-      return;
-    }
-    if (!customerDisplayName.trim()) {
-      setUploadSaveError('أدخل اسم العميل مع رقم الجوال قبل التصوير.');
-      window.setTimeout(() => setUploadSaveError(null), 3500);
-      return;
-    }
-    setUploadSaveError(null);
-    setShowDocumentScanner(true);
-  };
-
   const handleOpenOpenCvScanner = () => {
     if (!customerLocalPhone.trim()) {
       return;
@@ -1218,7 +1203,6 @@ export default function Home() {
 
         await searchInvoices(localPhone, customerCountryCode);
         setUploadSavePhase('success');
-        setShowDocumentScanner(false);
         setShowOpenCvScanner(false);
         window.setTimeout(() => setUploadSavePhase('idle'), 2800);
       }
@@ -1707,16 +1691,6 @@ export default function Home() {
             </p>
           )}
 
-          {isCustomerPhoneSearchable(customerLocalPhone) && customerDisplayName.trim() && (
-            <button
-              type="button"
-              onClick={handleOpenOpenCvScanner}
-              disabled={isUploading || uploadSavePhase !== 'idle'}
-              className="w-full rounded-xl border border-mistara-gold/25 bg-mistara-cream/60 py-2.5 text-xs font-bold text-mistara-gold backdrop-blur-sm transition-colors hover:border-mistara-gold/35 hover:text-mistara-warm disabled:opacity-50"
-            >
-              ✨ ماسح OpenCV المتقدّم — اكتشاف حي للحواف
-            </button>
-          )}
         </section>
 
         {/* عرض الفواتير: الفاتورة الحديثة (الأحدث) ضخمة في المقدمة يعقبها الأرشيف */}
@@ -1864,7 +1838,7 @@ export default function Home() {
         )}
       </main>
 
-      {/* زر الكاميرا / الماسح في منتصف أسفل الشاشة — يفتح ماسح المستندات بأربع زوايا (شبيه HP Smart) */}
+      {/* زر الماسح الموحّد — نقطة الدخول الوحيدة لماسح OpenCV المتقدّم */}
       {customerLocalPhone.trim().length >= 1 && (
         <div className="fixed bottom-4 left-0 right-0 z-40 flex justify-center items-center pointer-events-none">
           {uploadSavePhase !== 'idle' ? (
@@ -1872,25 +1846,25 @@ export default function Home() {
           ) : (
             <button
               type="button"
-              onClick={handleOpenScannerForCustomer}
+              onClick={handleOpenOpenCvScanner}
               disabled={isUploading}
-              className="pointer-events-auto w-24 h-24 rounded-full bg-gradient-to-tr from-mistara-gold via-mistara-gold-light to-mistara-gold-dark text-mistara-cream font-black shadow-[0_0_40px_rgba(166,124,82,0.45)] border-4 border-mistara-sand flex flex-col items-center justify-center cursor-pointer transition-transform transform active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
+              aria-label="✨ ماسح OpenCV المتقدّم — اكتشاف حي للحواف"
+              className="pointer-events-auto flex h-28 w-28 flex-col items-center justify-center gap-0.5 rounded-full border-4 border-mistara-sand/90 bg-gradient-to-br from-amber-400 via-mistara-gold to-amber-600 px-2 text-center shadow-[0_0_36px_rgba(217,119,6,0.45)] transition-transform active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 sm:h-32 sm:w-32"
               title="فتح الكاميرا ومسح فاتورة أو مستند"
             >
-              <span className="text-4xl leading-none mb-0.5" aria-hidden>
-                📷
+              <span className="relative flex h-9 w-12 items-center justify-center" aria-hidden>
+                <span className="absolute left-0 text-xl opacity-90">📄</span>
+                <span className="absolute right-0 text-2xl drop-shadow-sm">📷</span>
               </span>
-              <span className="text-xs font-black tracking-tight text-mistara-cream">كاميرا</span>
+              <span className="max-w-[6.5rem] text-[10px] font-black leading-tight text-mistara-espresso sm:text-[11px]">
+                ✨ ماسح OpenCV المتقدّم
+              </span>
+              <span className="max-w-[7rem] text-[8px] font-bold leading-tight text-mistara-espresso/85 sm:text-[9px]">
+                اكتشاف حي للحواف
+              </span>
             </button>
           )}
         </div>
-      )}
-
-      {showDocumentScanner && (
-        <DocumentScannerModal
-          onClose={() => setShowDocumentScanner(false)}
-          onConfirm={handleDocumentCaptured}
-        />
       )}
 
       {showOpenCvScanner && (
