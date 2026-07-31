@@ -1,7 +1,7 @@
 {
   "name": "إيصالك - لإدارة فواتير الخياطين",
   "short_name": "إيصالك",
-  "description": "نظامك الذكي لإدارة فواتير الخياطة",
+  "description": "نظامك الذكي لإدارة فواتيرك الورقية.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#E8EBF0",
