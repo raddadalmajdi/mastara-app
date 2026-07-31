@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { cairo } from './fonts';
 import './globals.css';
-import { APP_NAME, APP_TAGLINE } from '@/lib/brand';
+import { APP_LOGO_PATH, APP_LOGO_SIZE, APP_NAME, APP_TAGLINE } from '@/lib/brand';
 import { BrandWatermark } from '@/components/brand/BrandWatermark';
 
 export const metadata: Metadata = {
@@ -9,14 +9,19 @@ export const metadata: Metadata = {
   description: APP_TAGLINE,
   manifest: '/manifest.json',
   icons: {
-    icon: '/logo.png',
-    apple: '/logo.png',
+    icon: [
+      { url: APP_LOGO_PATH, type: 'image/png', sizes: APP_LOGO_SIZE },
+      { url: '/favicon.ico', sizes: '32x32', type: 'image/x-icon' },
+    ],
+    shortcut: APP_LOGO_PATH,
+    apple: [{ url: APP_LOGO_PATH, type: 'image/png', sizes: APP_LOGO_SIZE }],
   },
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
     title: APP_NAME,
   },
+  applicationName: APP_NAME,
 };
 
 export const viewport: Viewport = {
