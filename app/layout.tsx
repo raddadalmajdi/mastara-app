@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import { cairo } from './fonts';
 import './globals.css';
 import { APP_NAME, APP_TAGLINE } from '@/lib/brand';
+import { BrandWatermark } from '@/components/brand/BrandWatermark';
 
 export const metadata: Metadata = {
   title: `${APP_NAME} | ${APP_TAGLINE}`,
@@ -48,10 +49,11 @@ export default function RootLayout({
     >
       <body
         style={shellStyle}
-        className="min-h-screen bg-mistara-sand text-mistara-espresso antialiased"
+        className="relative min-h-screen bg-mistara-sand text-mistara-espresso antialiased"
         suppressHydrationWarning
       >
-        {children}
+        <BrandWatermark />
+        <div className="relative z-[1] min-h-screen">{children}</div>
       </body>
     </html>
   );
