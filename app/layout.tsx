@@ -1,10 +1,11 @@
 import type { Metadata, Viewport } from 'next';
 import { cairo } from './fonts';
 import './globals.css';
+import { APP_NAME, APP_TAGLINE } from '@/lib/brand';
 
 export const metadata: Metadata = {
-  title: 'مسطرة | نظام فواتير الخياطين',
-  description: 'النظام الذكي لإدارة فواتير وعملاء الخياطين',
+  title: `${APP_NAME} | ${APP_TAGLINE}`,
+  description: APP_TAGLINE,
   manifest: '/manifest.json',
   icons: {
     icon: '/logo.png',
@@ -13,7 +14,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
-    title: 'مسطرة',
+    title: APP_NAME,
   },
 };
 

@@ -1,11 +1,12 @@
 import Image from 'next/image';
+import { APP_LOGO_PATH, APP_NAME } from '@/lib/brand';
 
 const SIZES = {
   xs: 28,
-  sm: 36,
-  md: 48,
-  lg: 64,
-  xl: 80,
+  sm: 40,
+  md: 52,
+  lg: 72,
+  xl: 88,
 } as const;
 
 type AppLogoProps = {
@@ -19,12 +20,13 @@ export function AppLogo({ size = 'md', className = '', priority = false }: AppLo
 
   return (
     <Image
-      src="/logo.png"
-      alt="مسطرة"
+      src={APP_LOGO_PATH}
+      alt={APP_NAME}
       width={px}
       height={px}
       priority={priority}
-      className={`object-contain drop-shadow-sm ${className}`}
+      className={`object-contain bg-transparent ${className}`}
+      style={{ background: 'transparent' }}
     />
   );
 }

@@ -1,9 +1,11 @@
 import { AppLogo } from './AppLogo';
+import { APP_NAME, APP_TAGLINE } from '@/lib/brand';
 
 type AppBrandProps = {
   size?: 'sm' | 'md' | 'lg' | 'xl';
   showTitle?: boolean;
-  subtitle?: string;
+  /** اتركه `null` لإخفاء الوصف الفرعي (مثل الهيدر). */
+  subtitle?: string | null;
   layout?: 'row' | 'column';
   priority?: boolean;
   className?: string;
@@ -12,29 +14,36 @@ type AppBrandProps = {
 export function AppBrand({
   size = 'lg',
   showTitle = true,
-  subtitle,
+  subtitle = APP_TAGLINE,
   layout = 'column',
   priority = false,
   className = '',
 }: AppBrandProps) {
   const isRow = layout === 'row';
+  const tagline = subtitle === null ? null : (subtitle ?? APP_TAGLINE);
 
   return (
     <div
-      className={`flex ${isRow ? 'flex-row items-center gap-2.5' : 'flex-col items-center gap-2'} ${className}`}
+      className={`flex ${isRow ? 'flex-row items-center gap-2.5' : 'flex-col items-center gap-2.5'} ${className}`}
     >
       <AppLogo size={size} priority={priority} />
       {showTitle && (
-        <div className={isRow ? 'text-right' : 'text-center space-y-1'}>
+        <div className={isRow ? 'text-right min-w-0' : 'text-center space-y-1'}>
           <h1
-            className={`font-black bg-gradient-to-l from-mistara-gold-light via-mistara-gold to-mistara-gold-dark bg-clip-text text-transparent tracking-tight ${
-              isRow ? 'text-xl' : 'text-3xl sm:text-4xl'
+            className={`font-black bg-gradient-to-l from-mistara-gold-light via-mistara-gold to-mistara-gold-dark bg-clip-text text-transparent tracking-tight leading-none ${
+              isRow ? 'text-xl sm:text-2xl' : 'text-3xl sm:text-[2.35rem]'
             }`}
           >
-            مسطرة 2030
+            {APP_NAME}
           </h1>
-          {subtitle && (
-            <p className={`text-mistara-brown/80 ${isRow ? 'text-xs' : 'text-sm sm:text-base'}`}>{subtitle}</p>
+          {tagline && (
+            <p
+              className={`text-mistara-brown/80 leading-snug ${
+                isRow ? 'text-[11px] sm:text-xs max-w-[9rem] sm:max-w-none' : 'text-sm sm:text-base'
+              }`}
+            >
+              {tagline}
+            </p>
           )}
         </div>
       )}

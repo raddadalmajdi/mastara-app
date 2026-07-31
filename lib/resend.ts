@@ -1,7 +1,8 @@
 import { Resend } from 'resend';
+import { APP_NAME, APP_TAGLINE } from '@/lib/brand';
 
 /** المرسل الرسمي المعتمد للمشروع. */
-export const DEFAULT_RESEND_FROM = 'مسطرة <code@malaktout.com>';
+export const DEFAULT_RESEND_FROM = `${APP_NAME} <code@malaktout.com>`;
 
 /**
  * نطاق Resend التجريبي — يعمل دائماً بدون توثيق DNS مسبق.
@@ -9,7 +10,7 @@ export const DEFAULT_RESEND_FROM = 'مسطرة <code@malaktout.com>';
  * (مثلاً قبل اكتمال توثيق malaktout.com في لوحة Resend)، حتى لا يتعطل
  * تسجيل المستخدمين بالكامل بسبب إعداد DNS ناقص.
  */
-const FALLBACK_RESEND_FROM = 'مسطرة (تجريبي) <onboarding@resend.dev>';
+const FALLBACK_RESEND_FROM = `${APP_NAME} (تجريبي) <onboarding@resend.dev>`;
 
 export function isResendConfigured(): boolean {
   const key = process.env.RESEND_API_KEY?.trim();
@@ -62,8 +63,8 @@ function buildVerificationEmailHtml(otp: string): string {
   return `
     <div dir="rtl" style="background:#f1f5f9;padding:32px 16px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Tahoma,Arial,sans-serif;">
       <div style="max-width:440px;margin:0 auto;background:#ffffff;border-radius:24px;overflow:hidden;box-shadow:0 20px 50px -20px rgba(15,23,42,0.25);">
-        <div style="background:linear-gradient(135deg,#0f766e 0%,#0891b2 100%);padding:28px 32px;text-align:center;">
-          <p style="margin:0;color:#ecfeff;font-size:13px;letter-spacing:3px;text-transform:uppercase;font-weight:800;">مسطرة 2030</p>
+        <div style="background:linear-gradient(135deg,#B8860B 0%,#D4AF37 100%);padding:28px 32px;text-align:center;">
+          <p style="margin:0;color:#1E293B;font-size:15px;letter-spacing:1px;font-weight:800;">${APP_NAME}</p>
         </div>
         <div style="padding:36px 32px 28px;">
           <h1 style="margin:0 0 10px;font-size:19px;color:#0f172a;font-weight:800;">رمز تفعيل حسابك</h1>
@@ -78,7 +79,7 @@ function buildVerificationEmailHtml(otp: string): string {
           </p>
         </div>
         <div style="background:#f8fafc;padding:14px 32px;text-align:center;border-top:1px solid #e2e8f0;">
-          <p style="margin:0;color:#94a3b8;font-size:10.5px;">© مسطرة 2030 — نظام إدارة فواتير الخياطة الذكي</p>
+          <p style="margin:0;color:#94a3b8;font-size:10.5px;">© ${APP_NAME} — ${APP_TAGLINE}</p>
         </div>
       </div>
     </div>
@@ -104,7 +105,7 @@ export async function sendSignupVerificationEmail(
   const resend = getResendClient();
   const primaryFrom = getResendFromAddress();
   const html = buildVerificationEmailHtml(params.otp);
-  const subject = 'رمز تفعيل حسابك — مسطرة 2030';
+  const subject = `رمز تفعيل حسابك — ${APP_NAME}`;
 
   const attemptSend = async (from: string) => {
     try {

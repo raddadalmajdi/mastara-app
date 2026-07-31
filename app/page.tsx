@@ -1,6 +1,6 @@
 'use client';
 
-/** لوحة مسطرة 2030 — دخول (بريد/كلمة مرور/OTP)، إعدادات الخياط، ودفتر العملاء. */
+/** لوحة إيصالك — دخول (بريد/كلمة مرور/OTP)، إعدادات الخياط، ودفتر العملاء. */
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import dynamic from 'next/dynamic';
@@ -50,6 +50,7 @@ import {
 } from '@/components/invoices/InvoiceSaveProgressRing';
 import { AccountMenuPanel, AccountMenuTrigger, type AvatarSaveFeedback } from '@/components/account/AccountMenuPanel';
 import { AppBrand } from '@/components/brand/AppBrand';
+import { APP_NAME, APP_TAGLINE } from '@/lib/brand';
 import { fileToAvatarJpegBlob, uploadTailorAvatar } from '@/lib/upload-tailor-avatar';
 import { useIdleLogout } from '@/lib/use-idle-logout';
 import {
@@ -1322,12 +1323,7 @@ export default function Home() {
           aria-hidden
         />
         <div className="relative w-full max-w-sm sm:max-w-md mx-auto glass-panel/90 backdrop-blur-xl border border-mistara-brown/12 rounded-[2rem] p-6 sm:p-8 shadow-[0_25px_70px_-15px_rgba(212,175,55,0.22)] space-y-6">
-          <AppBrand
-            size="lg"
-            subtitle="نظام إدارة فواتير الخياطة الذكي"
-            priority
-            className="mb-1"
-          />
+          <AppBrand size="lg" subtitle={APP_TAGLINE} priority className="mb-1" />
           {sessionCheckPending && (
             <p className="text-xs text-mistara-brown/60 -mt-3 text-center animate-pulse">
               جاري التحقق من جلسة الدخول...
@@ -1563,7 +1559,7 @@ export default function Home() {
               </svg>
             </div>
             <p className="text-base font-bold text-mistara-gold-dark">تم التحقق بنجاح</p>
-            <p className="text-sm text-mistara-brown/80">مرحباً بك في لوحة مسطرة</p>
+            <p className="text-sm text-mistara-brown/80">مرحباً بك في {APP_NAME}</p>
           </div>
         </div>
       )}
@@ -1571,7 +1567,7 @@ export default function Home() {
       <header className="sticky top-0 z-40 glass-header px-4 sm:px-6 lg:px-8 py-3">
         <div className="max-w-lg sm:max-w-2xl lg:max-w-4xl w-full mx-auto flex items-center justify-between">
         <div className="flex items-center gap-2.5">
-          <AppBrand size="sm" layout="row" showTitle subtitle={undefined} />
+          <AppBrand size="sm" layout="row" showTitle subtitle={null} />
           {!isSupabaseConfigured() && (
             <span className="text-xs bg-mistara-gold/15 text-mistara-gold-dark border border-mistara-gold-dark/35 px-2 py-0.5 rounded-full font-mono">وضع التجربة (بلا حساب)</span>
           )}

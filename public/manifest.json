@@ -1,7 +1,7 @@
 {
-  "name": "مسطرة - لإدارة فواتير الخياطين",
-  "short_name": "مسطرة",
-  "description": "النظام الذكي لإدارة فواتير وعملاء الخياطين",
+  "name": "إيصالك - لإدارة فواتير الخياطين",
+  "short_name": "إيصالك",
+  "description": "نظامك الذكي لإدارة فواتير الخياطة",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#E8EBF0",
