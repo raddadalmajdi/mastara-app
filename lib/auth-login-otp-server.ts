@@ -1,4 +1,5 @@
 import { findAuthUserByEmail } from '@/lib/check-email-registered';
+import { extractSupabaseEmailOtp } from '@/lib/supabase-email-otp';
 import { createSupabaseAdminClient } from '@/lib/delete-auth-user-admin';
 import { assertValidEmailRedirectTo } from '@/lib/supabase-browser';
 import { isResendConfigured, sendLoginOtpEmail } from '@/lib/resend';
@@ -109,9 +110,13 @@ async function buildLoginMagicLinkOtp(
   }
 
   const userId = data.user?.id;
-  const otp = data.properties?.email_otp ?? null;
+  const otp = extractSupabaseEmailOtp(data.properties?.email_otp);
 
   if (!userId || !otp) {
+    logAuthFlowStep('server', 'generateLink:magiclink:missing-otp', {
+      hasUserId: Boolean(userId),
+      rawOtp: typeof data.properties?.email_otp,
+    });
     return missingOtpFailure();
   }
 
@@ -188,6 +193,9 @@ async function sendLoginOtpViaResendInner(params: {
     const message =
       sendError instanceof Error ? sendError.message : 'فشل إرسال رمز الدخول عبر Resend.';
     console.error('[auth-login-otp-server] resend_send_failed:', message);
+    if (message === 'INTERNAL_INVALID_SUPABASE_OTP') {
+      return missingOtpFailure();
+    }
     return { ok: false, code: 'resend_send_failed', message, status: 502 };
   }
 

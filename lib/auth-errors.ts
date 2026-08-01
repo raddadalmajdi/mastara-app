@@ -189,6 +189,13 @@ export function mapAuthErrorToArabic(
   const rawMessage = (error.message ?? '').trim();
 
   if (APP_AUTH_ERROR_CODES.has(code) && rawMessage.length > 0) {
+    if (
+      code === 'resend_send_failed' ||
+      rawMessage.includes('INTERNAL_INVALID_SUPABASE_OTP') ||
+      rawMessage.includes('يجب أن يكون 6 أرقام')
+    ) {
+      return context === 'signup' ? SIGNUP_EMAIL_DISPATCH_ERROR : OTP_EMAIL_DISPATCH_ERROR;
+    }
     return rawMessage;
   }
 

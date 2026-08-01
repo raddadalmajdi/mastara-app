@@ -596,6 +596,7 @@ export default function Home() {
 
     setAuthSubmitting(true);
     setAuthFeedback(null);
+    setOtpCode('');
     try {
       const viaResend = await trySendLoginOtpViaResendApi({
         email: trimmedEmail,
@@ -603,19 +604,27 @@ export default function Home() {
       });
 
       if (!('unavailable' in viaResend)) {
-        if (!viaResend.ok) {
+        if (viaResend.ok) {
+          beginConfirmationPhase(
+            'email',
+            'أرسلنا رمز الدخول (6 أرقام) إلى بريدك — أدخله أدناه.'
+          );
+          return;
+        }
+
+        const resendCode = viaResend.error.code ?? '';
+        const canFallbackToSupabase =
+          resendCode === 'resend_send_failed' ||
+          resendCode === 'otp_unavailable' ||
+          resendCode === 'request_timeout';
+
+        if (!canFallbackToSupabase) {
           setAuthFeedback({
             type: 'error',
             message: mapAuthErrorToArabic(viaResend.error, 'otp'),
           });
           return;
         }
-
-        beginConfirmationPhase(
-          'email',
-          'أرسلنا رمز الدخول (6 أرقام) إلى بريدك — أدخله أدناه.'
-        );
-        return;
       }
 
       const { error } = await supabase.auth.signInWithOtp({

@@ -1,4 +1,5 @@
 import { Resend } from 'resend';
+import { extractSupabaseEmailOtp } from '@/lib/supabase-email-otp';
 import { APP_NAME, APP_TAGLINE } from '@/lib/brand';
 
 /** المرسل الرسمي المعتمد للمشروع. */
@@ -104,8 +105,9 @@ async function sendAuthOtpEmail(params: {
   body: string;
   footerNote: string;
 }): Promise<{ id: string | undefined; usedFallbackFrom: boolean }> {
-  if (!/^\d{6}$/.test(params.otp)) {
-    throw new Error('رمز التحقق غير صالح (يجب أن يكون 6 أرقام بالضبط).');
+  const normalizedOtp = extractSupabaseEmailOtp(params.otp);
+  if (!normalizedOtp) {
+    throw new Error('INTERNAL_INVALID_SUPABASE_OTP');
   }
 
   const resend = getResendClient();
@@ -113,7 +115,7 @@ async function sendAuthOtpEmail(params: {
   const html = buildOtpEmailHtml({
     heading: params.heading,
     body: params.body,
-    otp: params.otp,
+    otp: normalizedOtp,
     footerNote: params.footerNote,
   });
 

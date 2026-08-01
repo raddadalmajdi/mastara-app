@@ -3,6 +3,7 @@ import { assertValidEmailRedirectTo } from '@/lib/supabase-browser';
 import { isResendConfigured, sendSignupVerificationEmail } from '@/lib/resend';
 import { AsyncTimeoutError, logAuthFlowStep, withTimeout } from '@/lib/async-timeout';
 import { DUPLICATE_EMAIL_MESSAGE } from '@/lib/check-email-registered';
+import { extractSupabaseEmailOtp } from '@/lib/supabase-email-otp';
 
 export type ServerSignUpResult =
   | { ok: true; email: string; userId: string; emailSent: true }
@@ -115,7 +116,7 @@ async function buildSignupLink(
     };
   }
 
-  const otp = data.properties?.email_otp ?? null;
+  const otp = extractSupabaseEmailOtp(data.properties?.email_otp);
   return { ok: true, actionLink, otp, userId };
 }
 
