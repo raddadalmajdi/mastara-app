@@ -1,4 +1,5 @@
 import { logSupabaseAuthErrorJson } from '@/lib/auth-debug';
+import { OTP_CODE_LENGTH, OTP_LENGTH_AR } from '@/lib/otp-config';
 
 type AuthErrorLike = {
   message?: string;
@@ -191,8 +192,7 @@ export function mapAuthErrorToArabic(
   if (APP_AUTH_ERROR_CODES.has(code) && rawMessage.length > 0) {
     if (
       code === 'resend_send_failed' ||
-      rawMessage.includes('INTERNAL_INVALID_SUPABASE_OTP') ||
-      rawMessage.includes('يجب أن يكون 6 أرقام')
+      rawMessage.includes('INTERNAL_INVALID_SUPABASE_OTP')
     ) {
       return context === 'signup' ? SIGNUP_EMAIL_DISPATCH_ERROR : OTP_EMAIL_DISPATCH_ERROR;
     }
@@ -242,7 +242,7 @@ export function mapAuthErrorToArabic(
     msg.includes('token is invalid') ||
     code === 'validation_failed'
   ) {
-    return 'رمز التحقق غير صحيح. تأكد من إدخال آخر رمز وصلك (6 أرقام)، أو اطلب رمزاً جديداً.';
+    return `رمز التحقق غير صحيح. تأكد من إدخال آخر رمز وصلك (${OTP_LENGTH_AR})، أو اطلب رمزاً جديداً.`;
   }
 
   if (

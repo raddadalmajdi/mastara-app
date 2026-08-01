@@ -3,7 +3,8 @@
 import { useRef } from 'react';
 import { AUTH_CONFIRMATION_LINK_HINT } from '@/lib/auth-confirmation-copy';
 import { AuthAlert } from '@/components/auth/AuthAlert';
-import { OtpCodeInput, OTP_CODE_LENGTH } from '@/components/auth/OtpCodeInput';
+import { OtpCodeInput } from '@/components/auth/OtpCodeInput';
+import { OTP_CODE_LENGTH, OTP_LENGTH_AR } from '@/lib/otp-config';
 import { OtpKeypad } from '@/components/auth/OtpKeypad';
 
 type AuthFeedback = { type: 'success' | 'error'; message: string } | null;
@@ -73,7 +74,7 @@ export function AuthConfirmationPanel({
         </div>
         <h2 className="text-xl sm:text-2xl font-black text-mistara-espresso">تحقق من بريدك الإلكتروني</h2>
         <p className="text-sm text-mistara-brown/80 leading-relaxed">
-          أرسلنا رمز تحقق مكوّناً من 6 أرقام إلى
+          {`أرسلنا رمز تحقق مكوّناً من ${OTP_LENGTH_AR} إلى`}
           <br />
           <span className="font-mono text-primary-dark font-bold" dir="ltr">
             {email}

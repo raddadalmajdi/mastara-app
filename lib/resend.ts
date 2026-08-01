@@ -1,5 +1,6 @@
 import { Resend } from 'resend';
 import { extractSupabaseEmailOtp } from '@/lib/supabase-email-otp';
+import { OTP_CODE_LENGTH, OTP_LENGTH_AR } from '@/lib/otp-config';
 import { APP_NAME, APP_TAGLINE } from '@/lib/brand';
 
 /** المرسل الرسمي المعتمد للمشروع. */
@@ -55,7 +56,7 @@ function isDomainVerificationError(message: string): boolean {
 
 export type SendSignupVerificationParams = {
   to: string;
-  /** رمز التحقق المكوّن من 6 أرقام — الوسيلة الوحيدة للتفعيل (لا روابط سحرية). */
+  /** رمز التحقق الرقمي — الوسيلة الوحيدة للتفعيل (لا روابط سحرية). */
   otp: string;
 };
 
@@ -67,6 +68,8 @@ function buildOtpEmailHtml(params: {
   footerNote: string;
 }): string {
   const { heading, body, otp, footerNote } = params;
+  const otpFontSize = otp.length >= 8 ? '28px' : '36px';
+  const otpLetterSpacing = otp.length >= 8 ? '5px' : '10px';
   return `
     <div dir="rtl" style="background:#f1f5f9;padding:32px 16px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Tahoma,Arial,sans-serif;">
       <div style="max-width:440px;margin:0 auto;background:#ffffff;border-radius:24px;overflow:hidden;box-shadow:0 20px 50px -20px rgba(15,23,42,0.25);">
@@ -79,7 +82,7 @@ function buildOtpEmailHtml(params: {
             ${body}
           </p>
           <div style="background:#f0fdfa;border:1.5px dashed #22d3ee;border-radius:18px;padding:22px 12px;text-align:center;margin-bottom:26px;">
-            <span dir="ltr" style="display:inline-block;font-size:36px;font-weight:800;letter-spacing:10px;color:#0e7490;font-family:'Courier New',Courier,monospace;unicode-bidi:embed;">${otp}</span>
+            <span dir="ltr" style="display:inline-block;font-size:${otpFontSize};font-weight:800;letter-spacing:${otpLetterSpacing};color:#0e7490;font-family:'Courier New',Courier,monospace;unicode-bidi:embed;word-break:keep-all;white-space:nowrap;">${otp}</span>
           </div>
           <p style="margin:0;color:#94a3b8;font-size:11.5px;line-height:1.7;">
             ${footerNote}
@@ -188,7 +191,7 @@ export async function sendSignupVerificationEmail(
     otp: params.otp,
     subject: `رمز تفعيل حسابك — ${APP_NAME}`,
     heading: 'رمز تفعيل حسابك',
-    body: 'مرحباً بك! استخدم الرمز التالي المكوّن من 6 أرقام لإتمام تفعيل حسابك. الرمز صالح لفترة محدودة فقط.',
+    body: `مرحباً بك! استخدم الرمز التالي المكوّن من ${OTP_LENGTH_AR} لإتمام تفعيل حسابك. الرمز صالح لفترة محدودة فقط.`,
     footerNote:
       'لم تطلب إنشاء هذا الحساب؟ تجاهل هذه الرسالة بأمان — لن يُفعَّل أي شيء بدون إدخال هذا الرمز.',
   });
@@ -208,7 +211,7 @@ export async function sendLoginOtpEmail(
     otp: params.otp,
     subject: `رمز تسجيل الدخول — ${APP_NAME}`,
     heading: 'رمز تسجيل الدخول',
-    body: 'استخدم الرمز التالي المكوّن من 6 أرقام لتسجيل الدخول إلى حسابك. الرمز صالح لفترة محدودة فقط.',
+    body: `استخدم الرمز التالي المكوّن من ${OTP_LENGTH_AR} لتسجيل الدخول إلى حسابك. الرمز صالح لفترة محدودة فقط.`,
     footerNote:
       'لم تطلب تسجيل الدخول؟ تجاهل هذه الرسالة بأمان — لن يُمنح أي وصول بدون إدخال هذا الرمز.',
   });

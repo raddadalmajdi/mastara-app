@@ -21,7 +21,7 @@ import {
   getSupabaseBrowserClient,
   isSupabaseConfigured,
 } from '@/lib/supabase-browser';
-import { OTP_CODE_LENGTH } from '@/components/auth/OtpCodeInput';
+import { OTP_CODE_LENGTH, OTP_LENGTH_AR } from '@/lib/otp-config';
 import { AuthConfirmationPanel } from '@/components/auth/AuthConfirmationPanel';
 import { AuthAlert } from '@/components/auth/AuthAlert';
 import { AuthBootScreen } from '@/components/auth/AuthBootScreen';
@@ -607,7 +607,7 @@ export default function Home() {
         if (viaResend.ok) {
           beginConfirmationPhase(
             'email',
-            'أرسلنا رمز الدخول (6 أرقام) إلى بريدك — أدخله أدناه.'
+            `أرسلنا رمز الدخول (${OTP_LENGTH_AR}) إلى بريدك — أدخله أدناه.`
           );
           return;
         }
@@ -911,7 +911,7 @@ export default function Home() {
             await supabase.auth.signOut().catch(() => undefined);
             beginConfirmationPhase(
               'signup',
-              'تم إنشاء حسابك. أدخل رمز التحقق (6 أرقام) المرسل إلى بريدك لإكمال تسجيل الدخول.'
+              `تم إنشاء حسابك. أدخل رمز التحقق (${OTP_LENGTH_AR}) المرسل إلى بريدك لإكمال تسجيل الدخول.`
             );
             setPassword('');
             return;
@@ -929,7 +929,7 @@ export default function Home() {
         }
 
         const confirmMessage = emailSentViaResend
-          ? 'تم إنشاء حسابك. أرسلنا رمز التفعيل (6 أرقام) إلى بريدك عبر Resend — أدخله أدناه.'
+          ? `تم إنشاء حسابك. أرسلنا رمز التفعيل (${OTP_LENGTH_AR}) إلى بريدك عبر Resend — أدخله أدناه.`
           : recoveredAfterServerError
             ? 'تم إنشاء حسابك، لكن إرسال رمز التفعيل قد يكون فشل. استخدم «إعادة إرسال» أو راجع إعداد Resend.'
             : undefined;
@@ -1574,7 +1574,7 @@ export default function Home() {
                 )}
                 {!isSignUp && loginMethod === 'otp' && (
                   <p className="text-xs text-mistara-brown/80 leading-relaxed bg-mistara-cream/50 border border-mistara-brown/15 rounded-xl p-2.5">
-                    سنرسل رمز تحقق مكوّناً من 6 أرقام إلى بريدك لتسجيل الدخول دون كلمة مرور.
+                    {`سنرسل رمز تحقق مكوّناً من ${OTP_LENGTH_AR} إلى بريدك لتسجيل الدخول دون كلمة مرور.`}
                   </p>
                 )}
                 <button

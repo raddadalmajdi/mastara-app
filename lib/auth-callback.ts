@@ -1,12 +1,13 @@
 import type { EmailOtpType, SupabaseClient } from '@supabase/supabase-js';
 import { mapAuthErrorToArabic, type AuthErrorLike } from '@/lib/auth-errors';
+import { OTP_LENGTH_AR } from '@/lib/otp-config';
 
 export type AuthCallbackResult =
   | { ok: true }
   | { ok: false; message: string; error?: AuthErrorLike };
 
 const CALLBACK_NO_SESSION_MESSAGE =
-  'لم نتمكن من تأكيد حسابك تلقائياً. ارجع لصفحة تسجيل الدخول وأدخل رمز التحقق (6 أرقام) المرسل إلى بريدك.';
+  `لم نتمكن من تأكيد حسابك تلقائياً. ارجع لصفحة تسجيل الدخول وأدخل رمز التحقق (${OTP_LENGTH_AR}) المرسل إلى بريدك.`;
 
 function normalizeOtpType(raw: string | null): EmailOtpType {
   const allowed: EmailOtpType[] = ['signup', 'email', 'recovery', 'invite', 'magiclink', 'email_change'];

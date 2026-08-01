@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef } from 'react';
+import { OTP_CODE_LENGTH, OTP_LENGTH_AR } from '@/lib/otp-config';
 
 type OtpCodeInputProps = {
   value: string;
@@ -10,17 +11,15 @@ type OtpCodeInputProps = {
   hasError?: boolean;
 };
 
-const OTP_LENGTH = 6;
-
 export function OtpCodeInput({ value, onChange, onComplete, disabled, hasError }: OtpCodeInputProps) {
   const inputsRef = useRef<Array<HTMLInputElement | null>>([]);
-  const digits = value.padEnd(OTP_LENGTH, ' ').slice(0, OTP_LENGTH).split('');
+  const digits = value.padEnd(OTP_CODE_LENGTH, ' ').slice(0, OTP_CODE_LENGTH).split('');
 
   const commitDigits = useCallback(
     (next: string[]) => {
-      const joined = next.join('').replace(/\s/g, '').slice(0, OTP_LENGTH);
+      const joined = next.join('').replace(/\s/g, '').slice(0, OTP_CODE_LENGTH);
       onChange(joined);
-      if (joined.length === OTP_LENGTH) {
+      if (joined.length === OTP_CODE_LENGTH) {
         onComplete?.(joined);
       }
     },
@@ -34,19 +33,23 @@ export function OtpCodeInput({ value, onChange, onComplete, disabled, hasError }
   }, [value]);
 
   const handlePaste = (raw: string) => {
-    const clean = raw.replace(/\D/g, '').slice(0, OTP_LENGTH);
+    const clean = raw.replace(/\D/g, '').slice(0, OTP_CODE_LENGTH);
     if (!clean) return;
     onChange(clean);
-    if (clean.length === OTP_LENGTH) {
+    if (clean.length === OTP_CODE_LENGTH) {
       onComplete?.(clean);
     }
-    const focusIndex = Math.min(clean.length, OTP_LENGTH - 1);
+    const focusIndex = Math.min(clean.length, OTP_CODE_LENGTH - 1);
     inputsRef.current[focusIndex]?.focus();
   };
 
   return (
     <div className="space-y-3" dir="ltr">
-      <div className="flex justify-center gap-2 sm:gap-2.5" role="group" aria-label="رمز التحقق المكوّن من 6 أرقام">
+      <div
+        className="flex justify-center gap-1.5 sm:gap-2"
+        role="group"
+        aria-label={`رمز التحقق المكوّن من ${OTP_LENGTH_AR}`}
+      >
         {digits.map((digit, index) => {
           const filled = Boolean(digit.trim());
           return (
@@ -56,15 +59,12 @@ export function OtpCodeInput({ value, onChange, onComplete, disabled, hasError }
                 inputsRef.current[index] = el;
               }}
               type="text"
-              // نمنع لوحة المفاتيح الافتراضية للجوال عمداً (inputMode="none") لتشجيع
-              // استخدام لوحة الأرقام المخصّصة (OtpKeypad) أسفل الحقول؛ لا يمنع هذا
-              // الكتابة عبر لوحة مفاتيح فعلية على أجهزة الحاسوب.
               inputMode="none"
               autoComplete={index === 0 ? 'one-time-code' : 'off'}
               maxLength={1}
               disabled={disabled}
               value={digit.trim()}
-              aria-label={`الرقم ${index + 1} من 6`}
+              aria-label={`الرقم ${index + 1} من ${OTP_CODE_LENGTH}`}
               onPaste={(e) => {
                 e.preventDefault();
                 handlePaste(e.clipboardData.getData('text'));
@@ -75,7 +75,7 @@ export function OtpCodeInput({ value, onChange, onComplete, disabled, hasError }
                 const next = [...digits.map((d) => d.trim())];
                 next[index] = char;
                 commitDigits(next);
-                if (char && index < OTP_LENGTH - 1) {
+                if (char && index < OTP_CODE_LENGTH - 1) {
                   inputsRef.current[index + 1]?.focus();
                 }
               }}
@@ -92,11 +92,11 @@ export function OtpCodeInput({ value, onChange, onComplete, disabled, hasError }
                   }
                 } else if (e.key === 'ArrowLeft' && index > 0) {
                   inputsRef.current[index - 1]?.focus();
-                } else if (e.key === 'ArrowRight' && index < OTP_LENGTH - 1) {
+                } else if (e.key === 'ArrowRight' && index < OTP_CODE_LENGTH - 1) {
                   inputsRef.current[index + 1]?.focus();
                 }
               }}
-              className={`h-14 w-11 sm:h-16 sm:w-12 rounded-2xl border-2 bg-mistara-cream text-center text-2xl sm:text-3xl font-black font-mono tnum text-mistara-espresso shadow-inner outline-none transition-all duration-150 ${
+              className={`h-14 w-10 sm:h-16 sm:w-11 rounded-2xl border-2 bg-mistara-cream text-center text-xl sm:text-2xl font-black font-mono tnum text-mistara-espresso shadow-inner outline-none transition-all duration-150 ${
                 hasError
                   ? 'border-red-800/70 shadow-[0_0_0_3px_rgba(244,63,94,0.15)]'
                   : filled
@@ -108,10 +108,10 @@ export function OtpCodeInput({ value, onChange, onComplete, disabled, hasError }
         })}
       </div>
       <p className="text-xs sm:text-sm text-mistara-brown/60 text-center" dir="rtl">
-        أدخل الرمز المكوّن من 6 أرقام المرسل إلى بريدك — يمكنك أيضاً لصقه دفعة واحدة.
+        أدخل الرمز المكوّن من {OTP_LENGTH_AR} المرسل إلى بريدك — يمكنك أيضاً لصقه دفعة واحدة.
       </p>
     </div>
   );
 }
 
-export const OTP_CODE_LENGTH = OTP_LENGTH;
+export { OTP_CODE_LENGTH } from '@/lib/otp-config';

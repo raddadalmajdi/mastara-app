@@ -1,5 +1,7 @@
 'use client';
 
+import { OTP_CODE_LENGTH } from '@/lib/otp-config';
+
 type OtpKeypadProps = {
   value: string;
   onChange: (value: string) => void;
@@ -16,7 +18,7 @@ const keyClass =
   'disabled:opacity-30 disabled:active:scale-100 select-none touch-manipulation';
 
 /** لوحة مفاتيح رقمية أنيقة على الشاشة لإدخال رمز التحقق (OTP) بسهولة على الجوال. */
-export function OtpKeypad({ value, onChange, onComplete, disabled, maxLength = 6 }: OtpKeypadProps) {
+export function OtpKeypad({ value, onChange, onComplete, disabled, maxLength = OTP_CODE_LENGTH }: OtpKeypadProps) {
   const appendDigit = (digit: string) => {
     if (disabled || value.length >= maxLength) return;
     const next = (value + digit).slice(0, maxLength);
