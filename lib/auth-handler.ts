@@ -17,7 +17,7 @@ export function resolveSignUpFlow(
   if (error) {
     logSupabaseAuthErrorJson(error, 'signUp');
     logSupabaseAuthError(error, 'signUp');
-    return { kind: 'error', message: mapAuthErrorToArabic(error) };
+    return { kind: 'error', message: mapAuthErrorToArabic(error, 'signup') };
   }
 
   if (!data) {

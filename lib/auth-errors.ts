@@ -10,6 +10,73 @@ export type { AuthErrorLike };
 
 const GENERIC_ERROR = 'حدث خطأ غير متوقع، يرجى المحاولة مرة أخرى.';
 
+export const OTP_EMAIL_DISPATCH_ERROR =
+  'تعذّر إرسال رمز التحقق إلى بريدك الإلكتروني. جرّب مجدداً بعد دقيقة، أو استخدم تسجيل الدخول بكلمة المرور.';
+
+export const SIGNUP_EMAIL_DISPATCH_ERROR =
+  'تعذّر إرسال بريد التفعيل. جرّب مجدداً بعد دقيقة، أو استخدم «تسجيل الدخول» إن كان حسابك موجوداً.';
+
+const APP_AUTH_ERROR_CODES = new Set([
+  'user_exists',
+  'user_not_found',
+  'resend_send_failed',
+  'resend_not_configured',
+  'validation',
+  'invalid_redirect',
+  'generate_link_failed',
+  'missing_link',
+  'otp_unavailable',
+  'create_user_failed',
+  'invalid_response',
+  'internal_error',
+  'invalid_json',
+  'network_error',
+  'request_timeout',
+]);
+
+/** يكتشف أخطاء إرسال البريد (SMTP Supabase / Resend / 5xx). */
+export function isEmailDeliveryFailure(error: AuthErrorLike | null | undefined): boolean {
+  if (!error) return false;
+
+  const code = error.code ?? '';
+  const msg = (error.message ?? '').toLowerCase();
+  const name = (error as { name?: string }).name ?? '';
+  const status = error.status ?? 0;
+
+  return (
+    name === 'AuthRetryableFetchError' ||
+    code === 'resend_send_failed' ||
+    code === 'unexpected_failure' ||
+    (status >= 500 && !APP_AUTH_ERROR_CODES.has(code)) ||
+    msg.includes('retryablefetch') ||
+    msg.includes('smtp') ||
+    msg.includes('resend') ||
+    msg.includes('mail server') ||
+    msg.includes('error sending') ||
+    msg.includes('confirmation email') ||
+    msg.includes('send email') ||
+    msg.includes('email address is not authorized') ||
+    (msg.includes('hook') && msg.includes('fail'))
+  );
+}
+
+/** يسجّل تفاصيل تشخيصية لأخطاء SMTP/Resend (للمطورين — لا يُعرض للمستخدم). */
+export function logEmailDeliveryDiagnostic(
+  error: AuthErrorLike | null | undefined,
+  context: string
+): void {
+  if (!error) return;
+
+  console.error('[auth/email-delivery]', context, {
+    code: error.code,
+    status: error.status,
+    name: (error as { name?: string }).name,
+    message: error.message,
+    hint:
+      'تحقق من Supabase → Authentication → SMTP (Host/User/Pass/Port) وResend API key + توثيق malaktout.com.',
+  });
+}
+
 function hasArabic(text: string): boolean {
   return /[\u0600-\u06FF]/.test(text);
 }
@@ -108,24 +175,10 @@ export function sanitizeAuthUserMessage(message: string): string {
   return GENERIC_ERROR;
 }
 
-const APP_AUTH_ERROR_CODES = new Set([
-  'user_exists',
-  'resend_send_failed',
-  'resend_not_configured',
-  'validation',
-  'invalid_redirect',
-  'generate_link_failed',
-  'missing_link',
-  'otp_unavailable',
-  'create_user_failed',
-  'invalid_response',
-  'internal_error',
-  'invalid_json',
-  'network_error',
-  'request_timeout',
-]);
-
-export function mapAuthErrorToArabic(error: AuthErrorLike | null | undefined): string {
+export function mapAuthErrorToArabic(
+  error: AuthErrorLike | null | undefined,
+  context: 'signup' | 'login' | 'otp' = 'login'
+): string {
   logSupabaseAuthError(error);
 
   if (!error) {
@@ -143,15 +196,21 @@ export function mapAuthErrorToArabic(error: AuthErrorLike | null | undefined): s
   const name = (error as { name?: string }).name ?? '';
   const status = error.status ?? 0;
 
+  if (isEmailDeliveryFailure(error)) {
+    logEmailDeliveryDiagnostic(error, context);
+    if (context === 'signup') {
+      return SIGNUP_EMAIL_DISPATCH_ERROR;
+    }
+    return OTP_EMAIL_DISPATCH_ERROR;
+  }
+
   if (
     name === 'AuthRetryableFetchError' ||
     (status >= 500 && !APP_AUTH_ERROR_CODES.has(code)) ||
     msg.includes('retryablefetch')
   ) {
-    return (
-      '\u062a\u0639\u0630\u0651\u0631 \u0625\u0643\u0645\u0627\u0644 \u0627\u0644\u062a\u0633\u062c\u064a\u0644: \u062e\u0627\u062f\u0645 Supabase \u0623\u0648 SMTP (Resend) \u0641\u0634\u0644 \u063a\u0627\u0644\u0628\u0627\u064b \u0641\u064a \u0625\u0631\u0633\u0627\u0644 \u0628\u0631\u064a\u062f \u0627\u0644\u062a\u0641\u0639\u064a\u0644. ' +
-      'راجع Authentication → SMTP في Supabase. إن وُجد حسابك، جرّب «تسجيل الدخول» أو «إعادة إرسال» التفعيل.'
-    );
+    logEmailDeliveryDiagnostic(error, context);
+    return context === 'signup' ? SIGNUP_EMAIL_DISPATCH_ERROR : OTP_EMAIL_DISPATCH_ERROR;
   }
 
   if (code === 'unexpected_failure' || code === 'bad_json') {
@@ -241,7 +300,8 @@ export function mapAuthErrorToArabic(error: AuthErrorLike | null | undefined): s
     msg.includes('confirmation') ||
     msg.includes('email address is not authorized')
   ) {
-    return 'تعذّر إرسال بريد التفعيل عبر SMTP. راجع Resend وSupabase Auth → SMTP، ثم حاول مجدداً.';
+    logEmailDeliveryDiagnostic(error, context);
+    return context === 'signup' ? SIGNUP_EMAIL_DISPATCH_ERROR : OTP_EMAIL_DISPATCH_ERROR;
   }
 
   if (

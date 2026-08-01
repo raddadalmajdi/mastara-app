@@ -59,7 +59,13 @@ export type SendSignupVerificationParams = {
 };
 
 /** يبني قالب بريد HTML أنيقاً بأسلوب SaaS حديث يعرض رمز الـ OTP بخط عريض وواضح فقط. */
-function buildVerificationEmailHtml(otp: string): string {
+function buildOtpEmailHtml(params: {
+  heading: string;
+  body: string;
+  otp: string;
+  footerNote: string;
+}): string {
+  const { heading, body, otp, footerNote } = params;
   return `
     <div dir="rtl" style="background:#f1f5f9;padding:32px 16px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Tahoma,Arial,sans-serif;">
       <div style="max-width:440px;margin:0 auto;background:#ffffff;border-radius:24px;overflow:hidden;box-shadow:0 20px 50px -20px rgba(15,23,42,0.25);">
@@ -67,15 +73,15 @@ function buildVerificationEmailHtml(otp: string): string {
           <p style="margin:0;color:#FFFFFF;font-size:15px;letter-spacing:1px;font-weight:800;">${APP_NAME}</p>
         </div>
         <div style="padding:36px 32px 28px;">
-          <h1 style="margin:0 0 10px;font-size:19px;color:#0f172a;font-weight:800;">رمز تفعيل حسابك</h1>
+          <h1 style="margin:0 0 10px;font-size:19px;color:#0f172a;font-weight:800;">${heading}</h1>
           <p style="margin:0 0 26px;color:#64748b;font-size:13.5px;line-height:1.8;">
-            مرحباً بك! استخدم الرمز التالي المكوّن من 6 أرقام لإتمام تفعيل حسابك. الرمز صالح لفترة محدودة فقط.
+            ${body}
           </p>
           <div style="background:#f0fdfa;border:1.5px dashed #22d3ee;border-radius:18px;padding:22px 12px;text-align:center;margin-bottom:26px;">
             <span dir="ltr" style="display:inline-block;font-size:36px;font-weight:800;letter-spacing:10px;color:#0e7490;font-family:'Courier New',Courier,monospace;unicode-bidi:embed;">${otp}</span>
           </div>
           <p style="margin:0;color:#94a3b8;font-size:11.5px;line-height:1.7;">
-            لم تطلب إنشاء هذا الحساب؟ تجاهل هذه الرسالة بأمان — لن يُفعَّل أي شيء بدون إدخال هذا الرمز.
+            ${footerNote}
           </p>
         </div>
         <div style="background:#f8fafc;padding:14px 32px;text-align:center;border-top:1px solid #e2e8f0;">
@@ -87,29 +93,38 @@ function buildVerificationEmailHtml(otp: string): string {
 }
 
 /**
- * إرسال بريد تفعيل الحساب عبر Resend API (بدون SMTP Supabase).
- *
- * - لا يرمي استثناءً غير مُتوقَّع أبداً: أي فشل شبكة أو استجابة خطأ من Resend
- *   يُحوَّل إلى `Error` برسالة عربية واضحة يلتقطها الاستدعاء الأعلى.
- * - إن فشل الإرسال من النطاق الرسمي `malaktout.com` تحديداً بسبب عدم توثيق
- *   النطاق في Resend، يُعاد المحاولة تلقائياً عبر نطاق Resend التجريبي
- *   حتى لا يتعطل تسجيل المستخدمين بالكامل.
+ * إرسال بريد OTP عبر Resend API (بدون SMTP Supabase).
+ * يُستخدم لرسائل التفعيل وتسجيل الدخول.
  */
-export async function sendSignupVerificationEmail(
-  params: SendSignupVerificationParams
-): Promise<{ id: string | undefined; usedFallbackFrom: boolean }> {
+async function sendAuthOtpEmail(params: {
+  to: string;
+  otp: string;
+  subject: string;
+  heading: string;
+  body: string;
+  footerNote: string;
+}): Promise<{ id: string | undefined; usedFallbackFrom: boolean }> {
   if (!/^\d{6}$/.test(params.otp)) {
     throw new Error('رمز التحقق غير صالح (يجب أن يكون 6 أرقام بالضبط).');
   }
 
   const resend = getResendClient();
   const primaryFrom = getResendFromAddress();
-  const html = buildVerificationEmailHtml(params.otp);
-  const subject = `رمز تفعيل حسابك — ${APP_NAME}`;
+  const html = buildOtpEmailHtml({
+    heading: params.heading,
+    body: params.body,
+    otp: params.otp,
+    footerNote: params.footerNote,
+  });
 
   const attemptSend = async (from: string) => {
     try {
-      return await resend.emails.send({ from, to: params.to, subject, html });
+      return await resend.emails.send({
+        from,
+        to: params.to,
+        subject: params.subject,
+        html,
+      });
     } catch (networkError) {
       const detail =
         networkError instanceof Error ? networkError.message : 'خطأ شبكة غير معروف';
@@ -146,10 +161,53 @@ export async function sendSignupVerificationEmail(
 
   if (fallbackResult.error) {
     throw new Error(
-      `تعذّر إرسال بريد التفعيل. النطاق الرسمي (${primaryFrom}) غير موثّق بعد في Resend: "${primaryMessage}". ` +
+      `تعذّر إرسال بريد التحقق. النطاق الرسمي (${primaryFrom}) غير موثّق بعد في Resend: "${primaryMessage}". ` +
         'راجع Resend Dashboard → Domains → أضف malaktout.com وتحقق من سجلات DNS (SPF/DKIM)، ثم أعد المحاولة.'
     );
   }
 
   return { id: fallbackResult.data?.id, usedFallbackFrom: true };
+}
+
+/**
+ * إرسال بريد تفعيل الحساب عبر Resend API (بدون SMTP Supabase).
+ *
+ * - لا يرمي استثناءً غير مُتوقَّع أبداً: أي فشل شبكة أو استجابة خطأ من Resend
+ *   يُحوَّل إلى `Error` برسالة عربية واضحة يلتقطها الاستدعاء الأعلى.
+ * - إن فشل الإرسال من النطاق الرسمي `malaktout.com` تحديداً بسبب عدم توثيق
+ *   النطاق في Resend، يُعاد المحاولة تلقائياً عبر نطاق Resend التجريبي
+ *   حتى لا يتعطل تسجيل المستخدمين بالكامل.
+ */
+export async function sendSignupVerificationEmail(
+  params: SendSignupVerificationParams
+): Promise<{ id: string | undefined; usedFallbackFrom: boolean }> {
+  return sendAuthOtpEmail({
+    to: params.to,
+    otp: params.otp,
+    subject: `رمز تفعيل حسابك — ${APP_NAME}`,
+    heading: 'رمز تفعيل حسابك',
+    body: 'مرحباً بك! استخدم الرمز التالي المكوّن من 6 أرقام لإتمام تفعيل حسابك. الرمز صالح لفترة محدودة فقط.',
+    footerNote:
+      'لم تطلب إنشاء هذا الحساب؟ تجاهل هذه الرسالة بأمان — لن يُفعَّل أي شيء بدون إدخال هذا الرمز.',
+  });
+}
+
+export type SendLoginOtpParams = {
+  to: string;
+  otp: string;
+};
+
+/** إرسال رمز تسجيل الدخول (OTP) عبر Resend — بديل لـ Supabase SMTP. */
+export async function sendLoginOtpEmail(
+  params: SendLoginOtpParams
+): Promise<{ id: string | undefined; usedFallbackFrom: boolean }> {
+  return sendAuthOtpEmail({
+    to: params.to,
+    otp: params.otp,
+    subject: `رمز تسجيل الدخول — ${APP_NAME}`,
+    heading: 'رمز تسجيل الدخول',
+    body: 'استخدم الرمز التالي المكوّن من 6 أرقام لتسجيل الدخول إلى حسابك. الرمز صالح لفترة محدودة فقط.',
+    footerNote:
+      'لم تطلب تسجيل الدخول؟ تجاهل هذه الرسالة بأمان — لن يُمنح أي وصول بدون إدخال هذا الرمز.',
+  });
 }

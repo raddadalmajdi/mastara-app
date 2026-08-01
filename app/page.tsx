@@ -6,6 +6,7 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import type { EmailOtpType } from '@supabase/supabase-js';
 import { mapAuthErrorToArabic } from '@/lib/auth-errors';
+import { trySendLoginOtpViaResendApi } from '@/lib/auth-login-otp-api';
 import {
   resolveSignUpFlow,
   verifyEmailOtpFlexible,
@@ -22,6 +23,7 @@ import {
 } from '@/lib/supabase-browser';
 import { OTP_CODE_LENGTH } from '@/components/auth/OtpCodeInput';
 import { AuthConfirmationPanel } from '@/components/auth/AuthConfirmationPanel';
+import { AuthAlert } from '@/components/auth/AuthAlert';
 import { AuthBootScreen } from '@/components/auth/AuthBootScreen';
 import { AuthModeTabs } from '@/components/auth/AuthModeTabs';
 import { withTimeout } from '@/lib/async-timeout';
@@ -584,26 +586,51 @@ export default function Home() {
 
   const handleSendLoginOtp = async () => {
     if (!supabase) return;
-    const trimmedEmail = email.trim();
+    const trimmedEmail = email.trim().toLowerCase();
     if (!trimmedEmail) {
       setAuthFeedback({ type: 'error', message: 'أدخل بريدك الإلكتروني أولاً.' });
       return;
     }
 
+    const redirectTo = getAuthCallbackUrl();
+
     setAuthSubmitting(true);
     setAuthFeedback(null);
     try {
+      const viaResend = await trySendLoginOtpViaResendApi({
+        email: trimmedEmail,
+        emailRedirectTo: redirectTo,
+      });
+
+      if (!('unavailable' in viaResend)) {
+        if (!viaResend.ok) {
+          setAuthFeedback({
+            type: 'error',
+            message: mapAuthErrorToArabic(viaResend.error, 'otp'),
+          });
+          return;
+        }
+
+        beginConfirmationPhase(
+          'email',
+          'أرسلنا رمز الدخول (6 أرقام) إلى بريدك — أدخله أدناه.'
+        );
+        return;
+      }
+
       const { error } = await supabase.auth.signInWithOtp({
         email: trimmedEmail,
         options: {
           shouldCreateUser: false,
-          emailRedirectTo: getAuthCallbackUrl(),
+          emailRedirectTo: redirectTo,
         },
       });
+
       if (error) {
-        setAuthFeedback({ type: 'error', message: mapAuthErrorToArabic(error) });
+        setAuthFeedback({ type: 'error', message: mapAuthErrorToArabic(error, 'otp') });
         return;
       }
+
       beginConfirmationPhase('email');
     } finally {
       setAuthSubmitting(false);
@@ -647,19 +674,43 @@ export default function Home() {
           options: { emailRedirectTo: getAuthCallbackUrl() },
         });
         if (error) {
-          setAuthFeedback({ type: 'error', message: mapAuthErrorToArabic(error) });
+          setAuthFeedback({ type: 'error', message: mapAuthErrorToArabic(error, 'signup') });
           return;
         }
       } else {
+        const redirectTo = getAuthCallbackUrl();
+        const normalized = trimmedEmail.toLowerCase();
+
+        const viaResend = await trySendLoginOtpViaResendApi({
+          email: normalized,
+          emailRedirectTo: redirectTo,
+        });
+
+        if (!('unavailable' in viaResend)) {
+          if (!viaResend.ok) {
+            setAuthFeedback({
+              type: 'error',
+              message: mapAuthErrorToArabic(viaResend.error, 'otp'),
+            });
+            return;
+          }
+          setAuthFeedback({
+            type: 'success',
+            message: `${AUTH_CONFIRMATION_RESENT} (Resend)`,
+          });
+          setOtpResendCooldown(60);
+          return;
+        }
+
         const { error } = await supabase.auth.signInWithOtp({
           email: trimmedEmail,
           options: {
             shouldCreateUser: isSignUp,
-            emailRedirectTo: getAuthCallbackUrl(),
+            emailRedirectTo: redirectTo,
           },
         });
         if (error) {
-          setAuthFeedback({ type: 'error', message: mapAuthErrorToArabic(error) });
+          setAuthFeedback({ type: 'error', message: mapAuthErrorToArabic(error, 'otp') });
           return;
         }
       }
@@ -698,7 +749,7 @@ export default function Home() {
       if (!result.ok) {
         setAuthFeedback({
           type: 'error',
-          message: mapAuthErrorToArabic(result.error),
+          message: mapAuthErrorToArabic(result.error, 'otp'),
         });
         return;
       }
@@ -889,7 +940,10 @@ export default function Home() {
           setAuthFeedback({ type: 'success', message: AUTH_UNCONFIRMED_LOGIN });
           return;
         }
-        setAuthFeedback({ type: 'error', message: mapAuthErrorToArabic(error) });
+        setAuthFeedback({
+          type: 'error',
+          message: mapAuthErrorToArabic(error, isSignUp ? 'signup' : 'login'),
+        });
         return;
       }
 
@@ -1371,46 +1425,7 @@ export default function Home() {
                 onModeChange={(mode) => switchAuthMode(mode === 'signup')}
               />
 
-              {authFeedback && (
-                <div
-                  role="alert"
-                  className={`flex items-start gap-3 rounded-2xl border px-3 py-3 text-sm leading-relaxed ${
-                    authFeedback.type === 'success'
-                      ? 'border-primary-dark/35 bg-primary/8 text-mistara-brown'
-                      : 'border-red-800/35 bg-red-800/8 text-red-900'
-                  }`}
-                >
-                  <span
-                    className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${
-                      authFeedback.type === 'success'
-                        ? 'bg-primary/12 ring-2 ring-primary/30'
-                        : 'bg-red-800/10 ring-2 ring-rose-500/40'
-                    }`}
-                  >
-                    {authFeedback.type === 'success' ? (
-                      <svg className="h-4 w-4 text-primary-dark" viewBox="0 0 24 24" fill="none" aria-hidden>
-                        <path
-                          d="M5 13l4 4L19 7"
-                          stroke="currentColor"
-                          strokeWidth="2.5"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                      </svg>
-                    ) : (
-                      <svg className="h-4 w-4 text-red-700" viewBox="0 0 24 24" fill="none" aria-hidden>
-                        <path
-                          d="M8 8l8 8M16 8l-8 8"
-                          stroke="currentColor"
-                          strokeWidth="2.5"
-                          strokeLinecap="round"
-                        />
-                      </svg>
-                    )}
-                  </span>
-                  <p>{authFeedback.message}</p>
-                </div>
-              )}
+              {authFeedback && <AuthAlert type={authFeedback.type} message={authFeedback.message} />}
 
               <form
                 id="auth-panel-form"

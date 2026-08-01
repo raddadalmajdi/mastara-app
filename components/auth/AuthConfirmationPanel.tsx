@@ -2,6 +2,7 @@
 
 import { useRef } from 'react';
 import { AUTH_CONFIRMATION_LINK_HINT } from '@/lib/auth-confirmation-copy';
+import { AuthAlert } from '@/components/auth/AuthAlert';
 import { OtpCodeInput, OTP_CODE_LENGTH } from '@/components/auth/OtpCodeInput';
 import { OtpKeypad } from '@/components/auth/OtpKeypad';
 
@@ -80,18 +81,7 @@ export function AuthConfirmationPanel({
         </p>
       </div>
 
-      {authFeedback && (
-        <div
-          role="alert"
-          className={`flex items-start gap-3 rounded-2xl border px-3.5 py-3 text-sm leading-relaxed ${
-            authFeedback.type === 'success'
-              ? 'border-primary-dark/35 bg-primary/8 text-mistara-brown'
-              : 'border-red-800/35 bg-red-800/8 text-red-900'
-          }`}
-        >
-          <p className="flex-1">{authFeedback.message}</p>
-        </div>
-      )}
+      {authFeedback && <AuthAlert type={authFeedback.type} message={authFeedback.message} />}
 
       <form ref={formRef} onSubmit={onVerifyOtp} className="space-y-6">
         <OtpCodeInput
