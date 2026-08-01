@@ -2,6 +2,7 @@ import { createSupabaseAdminClient } from '@/lib/delete-auth-user-admin';
 import { assertValidEmailRedirectTo } from '@/lib/supabase-browser';
 import { isResendConfigured, sendSignupVerificationEmail } from '@/lib/resend';
 import { AsyncTimeoutError, logAuthFlowStep, withTimeout } from '@/lib/async-timeout';
+import { DUPLICATE_EMAIL_MESSAGE } from '@/lib/check-email-registered';
 
 export type ServerSignUpResult =
   | { ok: true; email: string; userId: string; emailSent: true }
@@ -95,8 +96,7 @@ async function buildSignupLink(
       return {
         ok: false,
         code: 'user_exists',
-        message:
-          'هذا البريد مسجّل مسبقاً. انتقل إلى «تسجيل الدخول» أو استخدم «إعادة إرسال» التفعيل.',
+        message: DUPLICATE_EMAIL_MESSAGE,
         status: 409,
       };
     }

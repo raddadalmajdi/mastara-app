@@ -1,6 +1,7 @@
 import type { AuthResponse } from '@supabase/supabase-js';
 import { mapAuthErrorToArabic, logSupabaseAuthError, type AuthErrorLike } from '@/lib/auth-errors';
 import { logSupabaseAuthErrorJson } from '@/lib/auth-debug';
+import { DUPLICATE_EMAIL_MESSAGE } from '@/lib/check-email-registered';
 
 export type SignUpFlowResult =
   | { kind: 'logged_in' }
@@ -34,8 +35,7 @@ export function resolveSignUpFlow(
   if (identities && identities.length === 0) {
     return {
       kind: 'error',
-      message:
-        'هذا البريد مسجّل مسبقاً. انتقل إلى «تسجيل الدخول» أو استخدم «رمز الدخول (OTP)» إن نسيت كلمة المرور.',
+      message: DUPLICATE_EMAIL_MESSAGE,
     };
   }
 

@@ -67,7 +67,7 @@ export function sanitizeAuthUserMessage(message: string): string {
   }
 
   if (lower.includes('already registered') || lower.includes('already been registered')) {
-    return 'هذا البريد مسجّل مسبقاً. انتقل إلى «تسجيل الدخول».';
+    return 'هذا البريد الإلكتروني مسجل مسبقاً، يرجى استخدام بريد آخر أو تسجيل الدخول.';
   }
 
   if (
@@ -197,7 +197,7 @@ export function mapAuthErrorToArabic(error: AuthErrorLike | null | undefined): s
     msg.includes('already registered') ||
     msg.includes('already been registered')
   ) {
-    return 'هذا البريد مسجّل مسبقاً. انتقل إلى «تسجيل الدخول».';
+    return 'هذا البريد الإلكتروني مسجل مسبقاً، يرجى استخدام بريد آخر أو تسجيل الدخول.';
   }
 
   if (

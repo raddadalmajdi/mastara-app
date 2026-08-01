@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { findAuthUserByEmail } from '@/lib/check-email-registered';
 import { looksLikeJwt, normalizeSupabaseProjectUrl } from '@/lib/supabase/env';
 
 export type DeleteAuthUserResult =
@@ -51,31 +52,13 @@ export function createSupabaseAdminClient(): SupabaseClient {
 }
 
 export async function deleteAuthUserByEmail(email: string): Promise<DeleteAuthUserResult> {
-  const admin = createSupabaseAdminClient();
   const normalized = email.trim().toLowerCase();
 
   if (!normalized) {
     return { ok: false, email: normalized, message: 'البريد الإلكتروني فارغ.' };
   }
 
-  let page = 1;
-  const perPage = 200;
-  let matchedUser: { id: string; email?: string } | null = null;
-
-  while (true) {
-    const { data, error } = await admin.auth.admin.listUsers({ page, perPage });
-    if (error) {
-      throw error;
-    }
-
-    matchedUser =
-      data.users.find((user) => user.email?.trim().toLowerCase() === normalized) ?? null;
-
-    if (matchedUser || data.users.length < perPage) {
-      break;
-    }
-    page += 1;
-  }
+  const matchedUser = await findAuthUserByEmail(normalized);
 
   if (!matchedUser) {
     return {
@@ -85,6 +68,7 @@ export async function deleteAuthUserByEmail(email: string): Promise<DeleteAuthUs
     };
   }
 
+  const admin = createSupabaseAdminClient();
   const { error: deleteError } = await admin.auth.admin.deleteUser(matchedUser.id);
   if (deleteError) {
     throw deleteError;

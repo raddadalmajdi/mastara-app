@@ -13,6 +13,8 @@ import {
 import { logAuthRedirectDiagnostics, logSupabaseAuthErrorJson } from '@/lib/auth-debug';
 import { executeSignUp } from '@/lib/auth-sign-up';
 import { resendVerificationViaResendApi } from '@/lib/auth-sign-up-api';
+import { checkEmailRegistered } from '@/lib/check-email-api';
+import { DUPLICATE_EMAIL_MESSAGE, isDuplicateEmailMessage } from '@/lib/check-email-registered';
 import {
   getAuthCallbackUrl,
   getSupabaseBrowserClient,
@@ -95,6 +97,8 @@ export default function Home() {
   const [otpVerifyType, setOtpVerifyType] = useState<EmailOtpType>('email');
   const [otpResendCooldown, setOtpResendCooldown] = useState(0);
   const [authFeedback, setAuthFeedback] = useState<AuthFeedback>(null);
+  const [emailDuplicateError, setEmailDuplicateError] = useState<string | null>(null);
+  const [emailCheckPending, setEmailCheckPending] = useState(false);
   const [authSubmitting, setAuthSubmitting] = useState(false);
   const [showWelcomeSuccess, setShowWelcomeSuccess] = useState(false);
   const [settingsFeedback, setSettingsFeedback] = useState<AuthFeedback>(null);
@@ -561,6 +565,7 @@ export default function Home() {
     setLoginMethod('password');
     setAuthPhase('form');
     setAuthFeedback(null);
+    setEmailDuplicateError(null);
     setPassword('');
     setOtpCode('');
     setAuthSubmitting(false);
@@ -763,6 +768,22 @@ export default function Home() {
       if (isSignUp) {
         const normalizedEmail = trimmedEmail.toLowerCase();
 
+        setEmailCheckPending(true);
+        const emailCheck = await checkEmailRegistered(normalizedEmail);
+        setEmailCheckPending(false);
+
+        if (!emailCheck.ok) {
+          setAuthFeedback({ type: 'error', message: emailCheck.message });
+          return;
+        }
+
+        if (emailCheck.exists) {
+          setEmailDuplicateError(DUPLICATE_EMAIL_MESSAGE);
+          return;
+        }
+
+        setEmailDuplicateError(null);
+
         logAuthRedirectDiagnostics(redirectTo);
 
         if (process.env.NODE_ENV === 'development') {
@@ -813,9 +834,11 @@ export default function Home() {
         });
 
         if (flow.kind === 'error') {
-          setAuthFeedback({ type: 'error', message: flow.message });
-          if (flow.message.includes('مسج')) {
-            switchAuthMode(false);
+          if (isDuplicateEmailMessage(flow.message)) {
+            setEmailDuplicateError(DUPLICATE_EMAIL_MESSAGE);
+            setAuthFeedback(null);
+          } else {
+            setAuthFeedback({ type: 'error', message: flow.message });
           }
           setPassword('');
           return;
@@ -1406,13 +1429,52 @@ export default function Home() {
                     onChange={(e) => {
                       setEmail(e.target.value);
                       if (authFeedback) setAuthFeedback(null);
+                      if (emailDuplicateError) setEmailDuplicateError(null);
                     }}
+                    onBlur={() => {
+                      if (!isSignUp) return;
+                      const trimmed = email.trim().toLowerCase();
+                      if (!trimmed || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) return;
+                      void (async () => {
+                        setEmailCheckPending(true);
+                        const check = await checkEmailRegistered(trimmed);
+                        setEmailCheckPending(false);
+                        if (check.ok && check.exists) {
+                          setEmailDuplicateError(DUPLICATE_EMAIL_MESSAGE);
+                        }
+                      })();
+                    }}
+                    aria-invalid={Boolean(emailDuplicateError)}
+                    aria-describedby={emailDuplicateError ? 'email-duplicate-error' : undefined}
                     className={`w-full rounded-2xl bg-mistara-cream/70 border p-3.5 text-base text-mistara-espresso placeholder:text-mistara-brown/50 outline-none transition-all focus:ring-4 ${
-                      authFeedback?.type === 'error'
+                      emailDuplicateError
+                        ? 'border-primary-dark/45 focus:border-primary-dark focus:ring-primary/20'
+                        : authFeedback?.type === 'error'
                         ? 'border-red-800/50 focus:border-rose-400 focus:ring-rose-500/10'
                         : 'border-mistara-brown/15 focus:border-primary focus:ring-primary/15'
                     }`}
                   />
+                  {emailCheckPending && isSignUp && (
+                    <p className="mt-1.5 text-[11px] font-bold text-primary/75 animate-pulse">
+                      جاري التحقق من البريد...
+                    </p>
+                  )}
+                  {emailDuplicateError && (
+                    <div
+                      id="email-duplicate-error"
+                      role="alert"
+                      className="mt-2 rounded-xl border border-primary/30 bg-primary/8 px-3 py-2.5 text-xs font-bold leading-relaxed text-primary-dark"
+                    >
+                      {emailDuplicateError}{' '}
+                      <button
+                        type="button"
+                        onClick={() => switchAuthMode(false)}
+                        className="underline underline-offset-2 decoration-primary/50 hover:text-primary"
+                      >
+                        تسجيل الدخول
+                      </button>
+                    </div>
+                  )}
                 </div>
                 {!isSignUp && (
                   <div className="grid grid-cols-2 gap-1 p-1 rounded-2xl bg-white/70 border border-primary/10">
@@ -1477,7 +1539,7 @@ export default function Home() {
                 )}
                 <button
                   type="submit"
-                  disabled={authSubmitting}
+                  disabled={authSubmitting || emailCheckPending || Boolean(emailDuplicateError)}
                   className="auth-primary-btn w-full rounded-2xl py-3.5 font-black text-base disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none flex items-center justify-center gap-2 transition-all active:scale-[0.99]"
                 >
                   {authSubmitting && (
