@@ -1448,7 +1448,7 @@ export default function Home() {
                     aria-describedby={emailDuplicateError ? 'email-duplicate-error' : undefined}
                     className={`w-full rounded-2xl bg-mistara-cream/70 border p-3.5 text-base text-mistara-espresso placeholder:text-mistara-brown/50 outline-none transition-all focus:ring-4 ${
                       emailDuplicateError
-                        ? 'border-primary-dark/45 focus:border-primary-dark focus:ring-primary/20'
+                        ? 'border-red-500/50 focus:border-red-600 focus:ring-red-500/15'
                         : authFeedback?.type === 'error'
                         ? 'border-red-800/50 focus:border-rose-400 focus:ring-rose-500/10'
                         : 'border-mistara-brown/15 focus:border-primary focus:ring-primary/15'
@@ -1463,16 +1463,32 @@ export default function Home() {
                     <div
                       id="email-duplicate-error"
                       role="alert"
-                      className="mt-2 rounded-xl border border-primary/30 bg-primary/8 px-3 py-2.5 text-xs font-bold leading-relaxed text-primary-dark"
+                      className="mt-2 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-xs font-bold leading-relaxed text-red-600"
                     >
-                      {emailDuplicateError}{' '}
-                      <button
-                        type="button"
-                        onClick={() => switchAuthMode(false)}
-                        className="underline underline-offset-2 decoration-primary/50 hover:text-primary"
+                      <svg
+                        className="mt-0.5 h-4 w-4 shrink-0 text-red-600"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        aria-hidden
                       >
-                        تسجيل الدخول
-                      </button>
+                        <path
+                          d="M8 8l8 8M16 8l-8 8"
+                          stroke="currentColor"
+                          strokeWidth="2.5"
+                          strokeLinecap="round"
+                        />
+                      </svg>
+                      <p>
+                        <span>هذا البريد الإلكتروني مسجل مسبقاً</span>
+                        ، يرجى استخدام بريد آخر أو{' '}
+                        <button
+                          type="button"
+                          onClick={() => switchAuthMode(false)}
+                          className="underline underline-offset-2 decoration-red-400 hover:text-red-700"
+                        >
+                          تسجيل الدخول
+                        </button>
+                      </p>
                     </div>
                   )}
                 </div>
