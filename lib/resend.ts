@@ -1,6 +1,6 @@
 import { Resend } from 'resend';
 import { extractSupabaseEmailOtp } from '@/lib/supabase-email-otp';
-import { OTP_CODE_LENGTH, OTP_LENGTH_AR } from '@/lib/otp-config';
+import { OTP_LENGTH_AR } from '@/lib/otp-config';
 import { APP_NAME, APP_TAGLINE } from '@/lib/brand';
 
 /** المرسل الرسمي المعتمد للمشروع. */

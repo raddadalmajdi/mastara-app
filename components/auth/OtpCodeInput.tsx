@@ -46,7 +46,7 @@ export function OtpCodeInput({ value, onChange, onComplete, disabled, hasError }
   return (
     <div className="space-y-3" dir="ltr">
       <div
-        className="flex justify-center gap-1.5 sm:gap-2"
+        className="mx-auto grid w-full max-w-[min(100%,20.5rem)] grid-cols-8 gap-1 px-0.5 sm:max-w-[22rem] sm:gap-1.5"
         role="group"
         aria-label={`رمز التحقق المكوّن من ${OTP_LENGTH_AR}`}
       >
@@ -96,7 +96,7 @@ export function OtpCodeInput({ value, onChange, onComplete, disabled, hasError }
                   inputsRef.current[index + 1]?.focus();
                 }
               }}
-              className={`h-14 w-10 sm:h-16 sm:w-11 rounded-2xl border-2 bg-mistara-cream text-center text-xl sm:text-2xl font-black font-mono tnum text-mistara-espresso shadow-inner outline-none transition-all duration-150 ${
+              className={`aspect-square h-12 w-full min-w-0 rounded-xl border-2 bg-mistara-cream text-center text-lg font-black font-mono tnum text-mistara-espresso shadow-inner outline-none transition-all duration-150 sm:h-14 sm:rounded-2xl sm:text-2xl ${
                 hasError
                   ? 'border-red-800/70 shadow-[0_0_0_3px_rgba(244,63,94,0.15)]'
                   : filled

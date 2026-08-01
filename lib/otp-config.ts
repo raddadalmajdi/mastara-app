@@ -4,5 +4,5 @@
  */
 export const OTP_CODE_LENGTH = 8;
 
-/** للاستخدام في النصوص العربية: «7 أرقام» */
+/** للاستخدام في النصوص العربية — يُشتق تلقائياً من OTP_CODE_LENGTH (مثلاً «8 أرقام»). */
 export const OTP_LENGTH_AR = `${OTP_CODE_LENGTH} أرقام`;

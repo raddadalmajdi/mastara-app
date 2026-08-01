@@ -12,14 +12,5 @@ export function extractSupabaseEmailOtp(raw: unknown): string | null {
     return digitsOnly;
   }
 
-  // قبول 6–8 أرقام مؤقتاً أثناء انتقال إعدادات Supabase
-  if (digitsOnly.length >= 6 && digitsOnly.length <= 8) {
-    return digitsOnly;
-  }
-
-  if (/^\d{6,8}$/.test(trimmed)) {
-    return trimmed;
-  }
-
   return null;
 }
