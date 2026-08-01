@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Quad } from '@/lib/document-scanner/geometry';
 import { detectDocumentQuad } from '@/lib/document-scanner/detect-document';
 import { CAPTURE_DETECTION_SAMPLE_WIDTH } from '@/lib/document-scanner/constants';
+import { BRAND_COLORS } from '@/lib/brand-colors';
 
 export type AutoDetectResult = { quad: Quad; coverage: number } | null;
 
@@ -195,8 +196,8 @@ export function CornerAdjuster({
         <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ overflow: 'visible' }}>
           <polygon
             points={screenPoints.map((p) => `${p.x},${p.y}`).join(' ')}
-            fill="rgba(166,124,82,0.18)"
-            stroke="#D4AF37"
+            fill="rgba(24,119,242,0.14)"
+            stroke={BRAND_COLORS.primary}
             strokeWidth={3}
             strokeLinejoin="round"
             style={animateQuad ? { transition: 'all 0.28s ease-out' } : undefined}
@@ -209,7 +210,7 @@ export function CornerAdjuster({
                 cx={(p.x + next.x) / 2}
                 cy={(p.y + next.y) / 2}
                 r={5}
-                fill="#8B6914"
+                fill={BRAND_COLORS.primaryDark}
                 stroke="#FAFBFC"
                 strokeWidth={1.5}
               />
@@ -226,7 +227,7 @@ export function CornerAdjuster({
             tabIndex={0}
             aria-label={`مقبض ${HANDLE_LABELS[i]} — اسحب لضبط حافة المستند`}
             onPointerDown={startDrag(i)}
-            className="absolute w-8 h-8 -translate-x-1/2 -translate-y-1/2 rounded-md bg-mistara-gold border-2 border-mistara-cream shadow-[0_2px_12px_rgba(139,105,20,0.35)] active:scale-110 touch-none cursor-grab active:cursor-grabbing"
+            className="absolute w-8 h-8 -translate-x-1/2 -translate-y-1/2 rounded-md bg-primary border-2 border-mistara-cream shadow-[0_2px_12px_rgba(24,119,242,0.35)] active:scale-110 touch-none cursor-grab active:cursor-grabbing"
             style={{
               left: p.x,
               top: p.y,

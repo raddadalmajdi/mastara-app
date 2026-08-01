@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getOpenCvRuntime, loadOpenCv, OPENCV_SLOW_HINT_MS, retryLoadOpenCv } from '@/lib/opencv-loader';
+import { BRAND_COLORS } from '@/lib/brand-colors';
+import { CameraScanIcon, ReceiptIcon } from '@/components/icons/BrandIcons';
 
 type FilterMode = 'color' | 'gray' | 'bw' | 'original';
 
@@ -322,9 +324,9 @@ export default function DocumentScanner({
       }));
       lastQuadRef.current = orderedSmall.map((p) => ({ x: p.x / scale, y: p.y / scale }));
 
-      ctx.strokeStyle = '#D4AF37';
+      ctx.strokeStyle = BRAND_COLORS.primary;
       ctx.lineWidth = 3;
-      ctx.fillStyle = 'rgba(166,124,82,0.16)';
+      ctx.fillStyle = 'rgba(24,119,242,0.14)';
       ctx.beginPath();
       ctx.moveTo(displayPts[0].x, displayPts[0].y);
       for (let i = 1; i < 4; i++) ctx.lineTo(displayPts[i].x, displayPts[i].y);
@@ -334,7 +336,7 @@ export default function DocumentScanner({
       displayPts.forEach((p) => {
         ctx.beginPath();
         ctx.arc(p.x, p.y, 6, 0, Math.PI * 2);
-        ctx.fillStyle = '#8B6914';
+        ctx.fillStyle = BRAND_COLORS.primaryDark;
         ctx.fill();
       });
       setDocumentFound(true);
@@ -645,7 +647,7 @@ export default function DocumentScanner({
         ? 'جاري فتح الكاميرا...'
         : cvLoading
           ? 'جاري التجهيز...'
-          : '✨ ماسح OpenCV المتقدّم';
+          : 'ماسح OpenCV المتقدّم';
   const unifiedSecondaryLine = resultVisible
     ? 'مسح جديد'
     : cameraOn
@@ -660,16 +662,16 @@ export default function DocumentScanner({
       aria-label={unifiedPrimaryLine}
       disabled={unifiedButtonDisabled}
       onClick={handleUnifiedAction}
-      className={`flex h-28 w-28 flex-col items-center justify-center gap-0.5 rounded-full border-4 border-mistara-sand/90 bg-gradient-to-br from-amber-400 via-mistara-gold to-amber-600 px-2 text-center shadow-[0_0_36px_rgba(217,119,6,0.45)] transition-transform active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 sm:h-32 sm:w-32 ${className}`}
+      className={`flex h-28 w-28 flex-col items-center justify-center gap-0.5 rounded-full border-4 border-accent/90 bg-gradient-to-br from-primary-light via-primary to-primary-dark px-2 text-center text-primary-foreground shadow-[0_0_36px_rgba(24,119,242,0.38)] transition-transform active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 sm:h-32 sm:w-32 ${className}`}
     >
-      <span className="relative flex h-9 w-12 items-center justify-center" aria-hidden>
-        <span className="absolute left-0 text-xl opacity-90">📄</span>
-        <span className="absolute right-0 text-2xl drop-shadow-sm">📷</span>
+      <span className="relative flex h-9 w-12 items-center justify-center text-primary-foreground" aria-hidden>
+        <ReceiptIcon className="absolute left-0 h-5 w-5 opacity-90" />
+        <CameraScanIcon className="absolute right-0 h-6 w-6 drop-shadow-sm" />
       </span>
-      <span className="max-w-[6.5rem] text-[10px] font-black leading-tight text-mistara-espresso sm:text-[11px]">
+      <span className="max-w-[6.5rem] text-[10px] font-black leading-tight sm:text-[11px]">
         {unifiedPrimaryLine}
       </span>
-      <span className="max-w-[7rem] text-[8px] font-bold leading-tight text-mistara-espresso/85 sm:text-[9px]">
+      <span className="max-w-[7rem] text-[8px] font-bold leading-tight opacity-85 sm:text-[9px]">
         {unifiedSecondaryLine}
       </span>
     </button>

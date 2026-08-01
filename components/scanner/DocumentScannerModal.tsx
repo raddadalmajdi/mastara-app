@@ -625,7 +625,7 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
                 className="absolute inset-x-4 flex justify-center pointer-events-none z-10"
                 style={{ top: EDGES_SAFE_TOP_PX + 8 }}
               >
-                <div className="pointer-events-none max-w-sm rounded-2xl border border-amber-400/40 bg-amber-500/15 backdrop-blur px-3.5 py-2.5 text-center shadow-lg">
+                <div className="pointer-events-none max-w-sm rounded-2xl border border-primary/40 bg-primary/10 backdrop-blur px-3.5 py-2.5 text-center shadow-lg">
                   <p className="text-xs sm:text-sm font-bold text-mistara-brown">⚠️ {edgesToast}</p>
                 </div>
               </div>
@@ -710,7 +710,7 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
             <button
               type="button"
               onClick={handleCapture}
-              className="w-20 h-20 rounded-full bg-white border-[6px] border-mistara-gold shadow-[0_0_30px_rgba(166,124,82,0.4)] active:scale-95 transition-transform"
+              className="w-20 h-20 rounded-full bg-white border-[6px] border-primary shadow-[0_0_30px_rgba(24,119,242,0.35)] active:scale-95 transition-transform"
               aria-label="التقاط المستند"
             />
 

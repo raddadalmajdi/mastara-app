@@ -2,8 +2,9 @@ import type { Metadata, Viewport } from 'next';
 import { cairo } from './fonts';
 import './globals.css';
 import {
+  APP_APPLE_TOUCH_ICON_PATH,
+  APP_FAVICON_16_PATH,
   APP_FAVICON_PATH,
-  APP_LOGO_SIZE,
   APP_MANIFEST_PATH,
   APP_NAME,
   APP_TAGLINE,
@@ -15,9 +16,12 @@ export const metadata: Metadata = {
   description: APP_TAGLINE,
   manifest: APP_MANIFEST_PATH,
   icons: {
-    icon: [{ url: APP_FAVICON_PATH, type: 'image/png', sizes: APP_LOGO_SIZE }],
+    icon: [
+      { url: APP_FAVICON_16_PATH, type: 'image/png', sizes: '16x16' },
+      { url: APP_FAVICON_PATH, type: 'image/png', sizes: '32x32' },
+    ],
     shortcut: APP_FAVICON_PATH,
-    apple: [{ url: APP_FAVICON_PATH, type: 'image/png', sizes: APP_LOGO_SIZE }],
+    apple: [{ url: APP_APPLE_TOUCH_ICON_PATH, type: 'image/png', sizes: '180x180' }],
   },
   appleWebApp: {
     capable: true,
@@ -28,7 +32,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: '#E8EBF0',
+  themeColor: '#1877F2',
   colorScheme: 'light',
   width: 'device-width',
   initialScale: 1,
@@ -37,8 +41,8 @@ export const viewport: Viewport = {
 };
 
 const shellStyle = {
-  backgroundColor: '#E8EBF0',
-  color: '#1E293B',
+  backgroundColor: '#F0F7FF',
+  color: '#0A2463',
   minHeight: '100%',
 } as const;
 
@@ -56,8 +60,9 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <head>
-        <link rel="icon" href={APP_FAVICON_PATH} type="image/png" sizes={APP_LOGO_SIZE} />
-        <link rel="apple-touch-icon" href={APP_FAVICON_PATH} />
+        <link rel="icon" href={APP_FAVICON_16_PATH} type="image/png" sizes="16x16" />
+        <link rel="icon" href={APP_FAVICON_PATH} type="image/png" sizes="32x32" />
+        <link rel="apple-touch-icon" href={APP_APPLE_TOUCH_ICON_PATH} sizes="180x180" />
       </head>
       <body
         style={shellStyle}

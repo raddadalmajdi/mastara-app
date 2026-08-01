@@ -49,6 +49,7 @@ import {
 } from '@/components/invoices/InvoiceSaveProgressRing';
 import { AccountMenuPanel, AccountMenuTrigger, type AvatarSaveFeedback } from '@/components/account/AccountMenuPanel';
 import { AppBrand } from '@/components/brand/AppBrand';
+import { CameraScanIcon, DocumentStackIcon, ReceiptIcon } from '@/components/icons/BrandIcons';
 import { APP_NAME, APP_TAGLINE } from '@/lib/brand';
 import { fileToAvatarJpegBlob, uploadTailorAvatar } from '@/lib/upload-tailor-avatar';
 import { useIdleLogout } from '@/lib/use-idle-logout';
@@ -1505,13 +1506,13 @@ export default function Home() {
               </button>
 
               {process.env.NODE_ENV === 'development' && (
-                <div className="rounded-xl border border-mistara-gold-dark/35 bg-amber-500/5 p-3 text-right space-y-2">
+                <div className="rounded-xl border border-primary-dark/35 bg-primary/5 p-3 text-right space-y-2">
                   <p className="text-xs font-bold text-mistara-gold-dark">أدوات المطوّر (DEV فقط)</p>
                   <button
                     type="button"
                     disabled={devDeleteLoading}
                     onClick={() => void handleDevDeleteAuthUser()}
-                    className="w-full bg-mistara-gold/15 text-mistara-warm text-[10px] py-2 rounded-lg border border-amber-500/40 font-mono disabled:opacity-50"
+                    className="w-full bg-primary/10 text-mistara-warm text-[10px] py-2 rounded-lg border border-primary/35 font-mono disabled:opacity-50"
                   >
                     {devDeleteLoading
                       ? 'جاري الحذف عبر Admin API...'
@@ -1741,9 +1742,16 @@ export default function Home() {
                         type="button"
                         disabled={exportingPdfId === latestInvoice.id}
                         onClick={() => handleDownloadInvoicePdf(latestInvoice, latestInvoiceNumber)}
-                        className="flex-1 bg-mistara-gold text-mistara-cream font-bold text-sm py-3 rounded-xl text-center shadow-md flex items-center justify-center gap-1 disabled:opacity-50"
+                        className="flex-1 bg-primary text-primary-foreground font-bold text-sm py-3 rounded-xl text-center shadow-md flex items-center justify-center gap-1.5 disabled:opacity-50"
                       >
-                        <span>{exportingPdfId === latestInvoice.id ? 'جارٍ التجهيز...' : '📄 تنزيل PDF'}</span>
+                        {exportingPdfId === latestInvoice.id ? (
+                          <span>جارٍ التجهيز...</span>
+                        ) : (
+                          <>
+                            <DocumentStackIcon className="h-4 w-4 shrink-0" />
+                            <span>تنزيل PDF</span>
+                          </>
+                        )}
                       </button>
                     </div>
                     <button
@@ -1821,9 +1829,16 @@ export default function Home() {
                                 type="button"
                                 disabled={exportingPdfId === inv.id}
                                 onClick={() => handleDownloadInvoicePdf(inv, invoiceNumber)}
-                                className="flex-1 bg-mistara-gold/15 text-mistara-warm border border-mistara-gold/30 text-xs sm:text-sm font-bold py-2.5 rounded-xl flex items-center justify-center gap-1.5 disabled:opacity-50"
+                                className="flex-1 bg-primary/10 text-primary-dark border border-primary/30 text-xs sm:text-sm font-bold py-2.5 rounded-xl flex items-center justify-center gap-1.5 disabled:opacity-50"
                               >
-                                <span>{exportingPdfId === inv.id ? '...' : '📄 PDF'}</span>
+                                {exportingPdfId === inv.id ? (
+                                  <span>...</span>
+                                ) : (
+                                  <>
+                                    <DocumentStackIcon className="h-3.5 w-3.5 shrink-0" />
+                                    <span>PDF</span>
+                                  </>
+                                )}
                               </button>
                             </div>
                           </div>
@@ -1848,18 +1863,18 @@ export default function Home() {
               type="button"
               onClick={handleOpenOpenCvScanner}
               disabled={isUploading}
-              aria-label="✨ ماسح OpenCV المتقدّم — اكتشاف حي للحواف"
-              className="pointer-events-auto flex h-28 w-28 flex-col items-center justify-center gap-0.5 rounded-full border-4 border-mistara-sand/90 bg-gradient-to-br from-amber-400 via-mistara-gold to-amber-600 px-2 text-center shadow-[0_0_36px_rgba(217,119,6,0.45)] transition-transform active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 sm:h-32 sm:w-32"
+              aria-label="ماسح OpenCV المتقدّم — اكتشاف حي للحواف"
+              className="pointer-events-auto flex h-28 w-28 flex-col items-center justify-center gap-0.5 rounded-full border-4 border-accent/90 bg-gradient-to-br from-primary-light via-primary to-primary-dark px-2 text-center text-primary-foreground shadow-[0_0_36px_rgba(24,119,242,0.38)] transition-transform active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 sm:h-32 sm:w-32"
               title="فتح الكاميرا ومسح فاتورة أو مستند"
             >
               <span className="relative flex h-9 w-12 items-center justify-center" aria-hidden>
-                <span className="absolute left-0 text-xl opacity-90">📄</span>
-                <span className="absolute right-0 text-2xl drop-shadow-sm">📷</span>
+                <ReceiptIcon className="absolute left-0 h-5 w-5 opacity-90" />
+                <CameraScanIcon className="absolute right-0 h-6 w-6 drop-shadow-sm" />
               </span>
-              <span className="max-w-[6.5rem] text-[10px] font-black leading-tight text-mistara-espresso sm:text-[11px]">
-                ✨ ماسح OpenCV المتقدّم
+              <span className="max-w-[6.5rem] text-[10px] font-black leading-tight sm:text-[11px]">
+                ماسح OpenCV المتقدّم
               </span>
-              <span className="max-w-[7rem] text-[8px] font-bold leading-tight text-mistara-espresso/85 sm:text-[9px]">
+              <span className="max-w-[7rem] text-[8px] font-bold leading-tight opacity-85 sm:text-[9px]">
                 اكتشاف حي للحواف
               </span>
             </button>
@@ -2058,11 +2073,16 @@ export default function Home() {
                     customerInvoices.length - activeImageIndex
                   )
                 }
-                className="flex-1 bg-mistara-gold text-mistara-cream font-bold text-sm py-3 rounded-xl shadow-md disabled:opacity-50"
+                className="flex-1 bg-primary text-primary-foreground font-bold text-sm py-3 rounded-xl shadow-md disabled:opacity-50 flex items-center justify-center gap-1.5"
               >
-                {exportingPdfId === customerInvoices[activeImageIndex].id
-                  ? 'جارٍ التجهيز...'
-                  : '📄 تنزيل PDF'}
+                {exportingPdfId === customerInvoices[activeImageIndex].id ? (
+                  'جارٍ التجهيز...'
+                ) : (
+                  <>
+                    <DocumentStackIcon className="h-4 w-4 shrink-0" />
+                    <span>تنزيل PDF</span>
+                  </>
+                )}
               </button>
               <button
                 type="button"

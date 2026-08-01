@@ -30,7 +30,7 @@ export function AppBrand({
       {showTitle && (
         <div className={isRow ? 'text-right min-w-0' : 'text-center space-y-1'}>
           <h1
-            className={`font-black bg-gradient-to-l from-mistara-gold-light via-mistara-gold to-mistara-gold-dark bg-clip-text text-transparent tracking-tight leading-none ${
+            className={`font-black bg-gradient-to-l from-primary-light via-primary to-primary-dark bg-clip-text text-transparent tracking-tight leading-none ${
               isRow ? 'text-xl sm:text-2xl' : 'text-3xl sm:text-[2.35rem]'
             }`}
           >

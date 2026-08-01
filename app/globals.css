@@ -1,35 +1,47 @@
 @import "tailwindcss";
 
-/* ─── Gray & Gold — Platinum glass + metallic accents ─── */
+/* ─── Esalak (إيصالك) — Royal blue lock + receipt ─── */
 @theme {
-  --color-background: #E8EBF0;
-  --color-foreground: #1E293B;
+  --color-background: #F0F7FF;
+  --color-foreground: #0A2463;
 
-  --color-mistara-sand: #E8EBF0;
-  --color-mistara-beige: #F2F4F7;
-  --color-mistara-cream: #FAFBFC;
-  --color-mistara-espresso: #1E293B;
-  --color-mistara-brown: #475569;
+  /* Semantic brand tokens */
+  --color-primary: #1877F2;
+  --color-primary-light: #4DA3FF;
+  --color-primary-dark: #0045A5;
+  --color-primary-foreground: #FFFFFF;
+  --color-accent: #CCEAFF;
+  --color-accent-foreground: #0045A5;
+  --color-ring: rgba(24, 119, 242, 0.38);
+
+  /* Component aliases (mistara-* retained for compatibility) */
+  --color-mistara-sand: #EFF6FF;
+  --color-mistara-beige: #F5F9FF;
+  --color-mistara-cream: #FFFFFF;
+  --color-mistara-espresso: #0A2463;
+  --color-mistara-brown: #334155;
   --color-mistara-warm: #64748B;
-  --color-mistara-gold: #D4AF37;
-  --color-mistara-gold-light: #E8C547;
-  --color-mistara-gold-dark: #B8860B;
+  --color-mistara-gold: #1877F2;
+  --color-mistara-gold-light: #4DA3FF;
+  --color-mistara-gold-dark: #0045A5;
+  --color-mistara-platinum: #CBD5E1;
+  --color-mistara-navy: #003399;
 
   --font-sans: var(--font-cairo), ui-sans-serif, system-ui, sans-serif, "Segoe UI", "Noto Sans Arabic", sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
 html {
-  background-color: var(--color-mistara-sand);
-  color: var(--color-mistara-espresso);
+  background-color: var(--color-background);
+  color: var(--color-foreground);
   min-height: 100%;
   font-size: 16px;
   -webkit-text-size-adjust: 100%;
 }
 
 body {
-  background-color: var(--color-mistara-sand);
-  color: var(--color-mistara-espresso);
+  background-color: var(--color-background);
+  color: var(--color-foreground);
   min-height: 100%;
   margin: 0;
   font-family: var(--font-sans);
@@ -52,44 +64,43 @@ h1, h2, h3, h4, h5, h6 {
   letter-spacing: 0.01em;
 }
 
-/* بطاقات زجاجية — Platinum Glassmorphism */
 .glass-panel {
-  background: rgba(250, 251, 252, 0.78);
+  background: rgba(255, 255, 255, 0.84);
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
-  border: 1px solid rgba(100, 116, 139, 0.14);
-  box-shadow: 0 4px 32px rgba(30, 41, 59, 0.08);
+  border: 1px solid rgba(24, 119, 242, 0.12);
+  box-shadow: 0 4px 32px rgba(0, 69, 165, 0.08);
 }
 
 .glass-header {
-  background: rgba(242, 244, 247, 0.9);
+  background: rgba(245, 249, 255, 0.92);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  border-bottom: 1px solid rgba(100, 116, 139, 0.12);
+  border-bottom: 1px solid rgba(24, 119, 242, 0.14);
 }
 
 .glass-modal-backdrop {
-  background: rgba(30, 41, 59, 0.42);
+  background: rgba(0, 51, 153, 0.42);
   backdrop-filter: blur(8px);
 }
 
 .glass-input {
-  background: rgba(250, 251, 252, 0.92);
-  border: 1px solid rgba(100, 116, 139, 0.2);
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(100, 116, 139, 0.22);
   color: var(--color-mistara-espresso);
 }
 
 .glass-input:focus {
-  border-color: rgba(212, 175, 55, 0.55);
+  border-color: rgba(24, 119, 242, 0.58);
   outline: none;
-  box-shadow: 0 0 0 2px rgba(212, 175, 55, 0.18);
+  box-shadow: 0 0 0 3px var(--color-ring);
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, #E8C547 0%, #D4AF37 45%, #B8860B 100%);
-  color: #1E293B;
+  background: linear-gradient(135deg, #4DA3FF 0%, #1877F2 50%, #0045A5 100%);
+  color: #FFFFFF;
   font-weight: 700;
-  box-shadow: 0 4px 18px rgba(212, 175, 55, 0.28);
+  box-shadow: 0 4px 18px rgba(24, 119, 242, 0.28);
 }
 
 .btn-primary:active {
@@ -102,7 +113,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .text-muted {
-  color: rgba(71, 85, 105, 0.78);
+  color: rgba(51, 65, 85, 0.78);
 }
 
 @keyframes auth-boot-slide {
