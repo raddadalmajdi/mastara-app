@@ -1308,14 +1308,14 @@ export default function Home() {
         dir="rtl"
       >
         <div
-          className="pointer-events-none absolute -top-32 left-1/2 h-72 w-72 -translate-x-1/2 rounded-full bg-mistara-gold/15 blur-[100px]"
+          className="pointer-events-none absolute -top-32 left-1/2 h-72 w-72 -translate-x-1/2 rounded-full bg-primary/12 blur-[100px]"
           aria-hidden
         />
         <div
-          className="pointer-events-none absolute -bottom-32 left-1/2 h-72 w-72 -translate-x-1/2 rounded-full bg-mistara-gold/10 blur-[100px]"
+          className="pointer-events-none absolute -bottom-32 left-1/2 h-72 w-72 -translate-x-1/2 rounded-full bg-primary/8 blur-[100px]"
           aria-hidden
         />
-        <div className="relative w-full max-w-sm sm:max-w-md mx-auto glass-panel/90 backdrop-blur-xl border border-mistara-brown/12 rounded-[2rem] p-6 sm:p-8 shadow-[0_25px_70px_-15px_rgba(0,115,207,0.18)] space-y-6">
+        <div className="auth-shell-card relative w-full max-w-sm sm:max-w-md mx-auto glass-panel backdrop-blur-xl rounded-[2rem] p-6 sm:p-8 space-y-6">
           <AppBrand size="hero" subtitle={APP_TAGLINE} priority className="mb-1" />
           {sessionCheckPending && (
             <p className="text-xs text-mistara-brown/60 -mt-3 text-center animate-pulse">
@@ -1352,19 +1352,19 @@ export default function Home() {
                   role="alert"
                   className={`flex items-start gap-3 rounded-2xl border px-3 py-3 text-sm leading-relaxed ${
                     authFeedback.type === 'success'
-                      ? 'border-mistara-gold-dark/40 bg-mistara-gold/10 text-mistara-brown'
+                      ? 'border-primary-dark/35 bg-primary/8 text-mistara-brown'
                       : 'border-red-800/35 bg-red-800/8 text-red-900'
                   }`}
                 >
                   <span
                     className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${
                       authFeedback.type === 'success'
-                        ? 'bg-mistara-gold/15 ring-2 ring-mistara-gold/40'
+                        ? 'bg-primary/12 ring-2 ring-primary/30'
                         : 'bg-red-800/10 ring-2 ring-rose-500/40'
                     }`}
                   >
                     {authFeedback.type === 'success' ? (
-                      <svg className="h-4 w-4 text-mistara-gold-dark" viewBox="0 0 24 24" fill="none" aria-hidden>
+                      <svg className="h-4 w-4 text-primary-dark" viewBox="0 0 24 24" fill="none" aria-hidden>
                         <path
                           d="M5 13l4 4L19 7"
                           stroke="currentColor"
@@ -1396,7 +1396,7 @@ export default function Home() {
                 className="space-y-4 relative z-10"
               >
                 <div>
-                  <label className="block text-sm font-bold text-mistara-gold mb-1.5">البريد الإلكتروني</label>
+                  <label className="block text-sm font-bold text-primary mb-1.5">البريد الإلكتروني</label>
                   <input
                     type="email"
                     required
@@ -1409,12 +1409,12 @@ export default function Home() {
                     className={`w-full rounded-2xl bg-mistara-cream/70 border p-3.5 text-base text-mistara-espresso placeholder:text-mistara-brown/50 outline-none transition-all focus:ring-4 ${
                       authFeedback?.type === 'error'
                         ? 'border-red-800/50 focus:border-rose-400 focus:ring-rose-500/10'
-                        : 'border-mistara-brown/15 focus:border-mistara-gold focus:ring-mistara-gold/15'
+                        : 'border-mistara-brown/15 focus:border-primary focus:ring-primary/15'
                     }`}
                   />
                 </div>
                 {!isSignUp && (
-                  <div className="grid grid-cols-2 gap-1 p-1 rounded-2xl bg-mistara-cream/70 border border-mistara-brown/15">
+                  <div className="grid grid-cols-2 gap-1 p-1 rounded-2xl bg-white/70 border border-primary/10">
                     <button
                       type="button"
                       onClick={() => {
@@ -1423,7 +1423,7 @@ export default function Home() {
                       }}
                       className={`rounded-xl py-2.5 text-xs sm:text-sm font-bold transition-all ${
                         loginMethod === 'password'
-                          ? 'bg-mistara-gold text-mistara-cream shadow-md shadow-mistara-gold/15'
+                          ? 'auth-tab-active'
                           : 'text-mistara-brown/60 hover:text-mistara-brown'
                       }`}
                     >
@@ -1437,7 +1437,7 @@ export default function Home() {
                       }}
                       className={`rounded-xl py-2.5 text-xs sm:text-sm font-bold transition-all ${
                         loginMethod === 'otp'
-                          ? 'bg-mistara-gold text-mistara-cream shadow-md shadow-mistara-gold/15'
+                          ? 'auth-tab-active'
                           : 'text-mistara-brown/60 hover:text-mistara-brown'
                       }`}
                     >
@@ -1447,7 +1447,7 @@ export default function Home() {
                 )}
                 {(isSignUp || loginMethod === 'password') && (
                 <div>
-                  <label className="block text-sm font-bold text-mistara-gold mb-1.5">كلمة المرور</label>
+                  <label className="block text-sm font-bold text-primary mb-1.5">كلمة المرور</label>
                   <input
                     type="password"
                     required={isSignUp || loginMethod === 'password'}
@@ -1461,7 +1461,7 @@ export default function Home() {
                     className={`w-full rounded-2xl bg-mistara-cream/70 border p-3.5 text-base text-mistara-espresso placeholder:text-mistara-brown/50 outline-none transition-all focus:ring-4 ${
                       authFeedback?.type === 'error'
                         ? 'border-red-800/50 focus:border-rose-400 focus:ring-rose-500/10'
-                        : 'border-mistara-brown/15 focus:border-mistara-gold focus:ring-mistara-gold/15'
+                        : 'border-mistara-brown/15 focus:border-primary focus:ring-primary/15'
                     }`}
                   />
                   {isSignUp && (
@@ -1477,10 +1477,10 @@ export default function Home() {
                 <button
                   type="submit"
                   disabled={authSubmitting}
-                  className="w-full rounded-2xl bg-gradient-to-l from-mistara-gold to-mistara-gold-dark py-3.5 text-mistara-cream font-black text-base shadow-lg shadow-mistara-gold/15 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none flex items-center justify-center gap-2 transition-all active:scale-[0.99]"
+                  className="auth-primary-btn w-full rounded-2xl py-3.5 font-black text-base disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none flex items-center justify-center gap-2 transition-all active:scale-[0.99]"
                 >
                   {authSubmitting && (
-                    <span className="h-4 w-4 rounded-full border-2 border-mistara-brown/20 border-t-mistara-espresso animate-spin" />
+                    <span className="h-4 w-4 rounded-full border-2 border-primary-foreground/25 border-t-primary-foreground animate-spin" />
                   )}
                   {authSubmitting
                     ? isSignUp
@@ -1500,14 +1500,14 @@ export default function Home() {
             <div className="text-center pt-2 border-t border-mistara-brown/15 space-y-2">
               <button
                 onClick={() => setUser({ id: 'guest-local-user', email: 'guest@mistarh.local' })}
-                className="w-full bg-mistara-beige hover:bg-mistara-beige/80 text-mistara-warm text-sm py-3 rounded-xl border border-mistara-gold/20 font-bold"
+                className="w-full bg-white/80 hover:bg-white text-mistara-warm text-sm py-3 rounded-xl border border-primary/15 font-bold"
               >
-                🚀 الدخول الفوري وتجربة النظام (بلا حساب)
+                الدخول الفوري وتجربة النظام (بلا حساب)
               </button>
 
               {process.env.NODE_ENV === 'development' && (
                 <div className="rounded-xl border border-primary-dark/35 bg-primary/5 p-3 text-right space-y-2">
-                  <p className="text-xs font-bold text-mistara-gold-dark">أدوات المطوّر (DEV فقط)</p>
+                  <p className="text-xs font-bold text-primary-dark">أدوات المطوّر (DEV فقط)</p>
                   <button
                     type="button"
                     disabled={devDeleteLoading}
@@ -1539,9 +1539,9 @@ export default function Home() {
     <div className="min-h-screen bg-mistara-sand text-mistara-espresso flex flex-col relative pb-36" dir="rtl">
       {showWelcomeSuccess && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center glass-modal-backdrop px-6">
-          <div className="w-full max-w-xs rounded-3xl border border-mistara-gold-dark/30 glass-panel p-6 text-center shadow-2xl space-y-3">
-            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-mistara-gold/12 ring-4 ring-mistara-gold/30">
-              <svg className="h-8 w-8 text-mistara-gold-dark" viewBox="0 0 24 24" fill="none" aria-hidden>
+          <div className="w-full max-w-xs rounded-3xl border border-primary/25 glass-panel p-6 text-center shadow-2xl space-y-3">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-primary/10 ring-4 ring-primary/25">
+              <svg className="h-8 w-8 text-primary-dark" viewBox="0 0 24 24" fill="none" aria-hidden>
                 <path
                   d="M5 13l4 4L19 7"
                   stroke="currentColor"
@@ -1551,7 +1551,7 @@ export default function Home() {
                 />
               </svg>
             </div>
-            <p className="text-base font-bold text-mistara-gold-dark">تم التحقق بنجاح</p>
+            <p className="text-base font-bold text-primary-dark">تم التحقق بنجاح</p>
             <p className="text-sm text-mistara-brown/80">مرحباً بك في {APP_NAME}</p>
           </div>
         </div>
@@ -1562,7 +1562,7 @@ export default function Home() {
         <div className="flex items-center gap-2.5">
           <AppBrand size="sm" layout="row" showTitle subtitle={null} />
           {!isSupabaseConfigured() && (
-            <span className="text-xs bg-mistara-gold/15 text-mistara-gold-dark border border-mistara-gold-dark/35 px-2 py-0.5 rounded-full font-mono">وضع التجربة (بلا حساب)</span>
+            <span className="text-xs bg-primary/10 text-primary-dark border border-primary/30 px-2 py-0.5 rounded-full font-mono">وضع التجربة (بلا حساب)</span>
           )}
         </div>
 

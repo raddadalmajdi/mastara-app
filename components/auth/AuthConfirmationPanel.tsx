@@ -51,7 +51,6 @@ export function AuthConfirmationPanel({
   };
 
   const handleComplete = () => {
-    // إرسال تلقائي فور اكتمال الرمز (6 أرقام) — تجربة أسرع من الضغط اليدوي على الزر.
     window.setTimeout(() => {
       if (!authSubmitting) formRef.current?.requestSubmit();
     }, 150);
@@ -60,8 +59,8 @@ export function AuthConfirmationPanel({
   return (
     <div className="space-y-6">
       <div className="text-center space-y-2.5">
-        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-mistara-gold/10 ring-1 ring-mistara-gold/30 shadow-[0_0_25px_-5px_rgba(34,211,238,0.5)]">
-          <svg className="h-7 w-7 text-mistara-gold" viewBox="0 0 24 24" fill="none" aria-hidden>
+        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 ring-1 ring-primary/25 shadow-[0_0_25px_-5px_rgba(0,115,207,0.35)]">
+          <svg className="h-7 w-7 text-primary" viewBox="0 0 24 24" fill="none" aria-hidden>
             <path
               d="M3.5 8.5 12 14l8.5-5.5M4.5 6.5h15A1.5 1.5 0 0 1 21 8v9a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17V8a1.5 1.5 0 0 1 1.5-1.5Z"
               stroke="currentColor"
@@ -75,7 +74,7 @@ export function AuthConfirmationPanel({
         <p className="text-sm text-mistara-brown/80 leading-relaxed">
           أرسلنا رمز تحقق مكوّناً من 6 أرقام إلى
           <br />
-          <span className="font-mono text-mistara-warm font-bold" dir="ltr">
+          <span className="font-mono text-primary-dark font-bold" dir="ltr">
             {email}
           </span>
         </p>
@@ -86,7 +85,7 @@ export function AuthConfirmationPanel({
           role="alert"
           className={`flex items-start gap-3 rounded-2xl border px-3.5 py-3 text-sm leading-relaxed ${
             authFeedback.type === 'success'
-              ? 'border-mistara-gold-dark/40 bg-mistara-gold/10 text-mistara-brown'
+              ? 'border-primary-dark/35 bg-primary/8 text-mistara-brown'
               : 'border-red-800/35 bg-red-800/8 text-red-900'
           }`}
         >
@@ -108,10 +107,10 @@ export function AuthConfirmationPanel({
         <button
           type="submit"
           disabled={authSubmitting || !canSubmitOtp}
-          className="w-full rounded-2xl bg-gradient-to-l from-mistara-gold to-mistara-gold-dark py-3.5 text-mistara-cream font-black text-base shadow-lg shadow-mistara-gold/15 disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none flex items-center justify-center gap-2 transition-all active:scale-[0.99]"
+          className="auth-primary-btn w-full rounded-2xl py-3.5 font-black text-base disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none flex items-center justify-center gap-2 transition-all active:scale-[0.99]"
         >
           {authSubmitting && (
-            <span className="h-4 w-4 rounded-full border-2 border-mistara-brown/20 border-t-mistara-espresso animate-spin" />
+            <span className="h-4 w-4 rounded-full border-2 border-primary-foreground/25 border-t-primary-foreground animate-spin" />
           )}
           {authSubmitting ? 'جاري التحقق...' : 'تأكيد الرمز والدخول'}
         </button>
@@ -121,7 +120,7 @@ export function AuthConfirmationPanel({
         {otpResendCooldown > 0 ? (
           <p className="text-sm text-mistara-brown/60" dir="ltr">
             <span dir="rtl">إعادة الإرسال خلال</span>{' '}
-            <span className="font-mono font-bold text-mistara-gold text-base tnum">
+            <span className="font-mono font-bold text-primary text-base tnum">
               {formatCooldown(otpResendCooldown)}
             </span>
           </p>
@@ -130,7 +129,7 @@ export function AuthConfirmationPanel({
             type="button"
             disabled={authSubmitting}
             onClick={onResend}
-            className="text-sm font-bold text-mistara-gold disabled:text-mistara-brown/50 py-1 underline-offset-4 hover:underline"
+            className="text-sm font-bold text-primary disabled:text-mistara-brown/50 py-1 underline-offset-4 hover:underline"
           >
             لم يصلك الرمز؟ إعادة الإرسال
           </button>
@@ -142,7 +141,7 @@ export function AuthConfirmationPanel({
       <button
         type="button"
         onClick={onBack}
-        className="w-full rounded-2xl bg-mistara-beige/80 hover:bg-mistara-beige py-3 text-sm text-mistara-espresso font-bold transition-colors"
+        className="w-full rounded-2xl bg-mistara-beige/80 hover:bg-mistara-beige py-3 text-sm text-mistara-espresso font-bold transition-colors border border-primary/10"
       >
         تعديل البريد أو العودة
       </button>

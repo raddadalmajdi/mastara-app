@@ -12,7 +12,7 @@ const DIGIT_KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9'];
 
 const keyClass =
   'h-14 sm:h-16 rounded-2xl glass-panel border border-mistara-brown/15 text-mistara-espresso text-xl font-black tnum ' +
-  'transition-all duration-100 active:scale-95 active:bg-mistara-beige active:border-mistara-gold/50 ' +
+  'transition-all duration-100 active:scale-95 active:bg-mistara-beige active:border-primary/40 ' +
   'disabled:opacity-30 disabled:active:scale-100 select-none touch-manipulation';
 
 /** لوحة مفاتيح رقمية أنيقة على الشاشة لإدخال رمز التحقق (OTP) بسهولة على الجوال. */

@@ -4,10 +4,10 @@ export function AuthBootScreen({ message = 'جاري التحميل...' }: { mes
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-mistara-sand px-5" dir="rtl">
       <div
-        className="fixed top-0 left-0 right-0 h-1 bg-mistara-gold/20 overflow-hidden"
+        className="fixed top-0 left-0 right-0 h-1 bg-primary/15 overflow-hidden"
         aria-hidden
       >
-        <div className="h-full w-1/3 bg-mistara-gold animate-[auth-boot-slide_1.2s_ease-in-out_infinite]" />
+        <div className="h-full w-1/3 bg-primary animate-[auth-boot-slide_1.2s_ease-in-out_infinite]" />
       </div>
       <AppLogo size="hero" priority className="mb-5" />
       <div className="h-10 w-10 rounded-full border-2 border-primary/30 border-t-primary animate-spin mb-4" />

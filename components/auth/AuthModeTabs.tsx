@@ -8,30 +8,19 @@ type AuthModeTabsProps = {
   disabled?: boolean;
 };
 
-/**
- * تبويبات "تسجيل الدخول" / "إنشاء حساب".
- *
- * ترتيب ثابت ومقصود (لا يتغير مع اتجاه الصفحة):
- *   - "تسجيل الدخول" أولاً (يمين الشاشة في RTL) — الوضع الافتراضي عند فتح التطبيق.
- *   - "إنشاء حساب" ثانياً (يسار الشاشة في RTL).
- *
- * كل زر مستقل بالكامل: onClick يستدعي onModeChange مباشرة بقيمة صريحة
- * ('signin' | 'signup') — لا يوجد اعتماد على toggle أو state ضمني هنا،
- * لذا لا يمكن أن "يعلق" على وضع واحد.
- */
 export function AuthModeTabs({ mode, onModeChange, disabled = false }: AuthModeTabsProps) {
   const baseTabClass =
     'relative z-10 w-full rounded-xl py-3 text-sm font-bold transition-all duration-150 ' +
     'touch-manipulation select-none disabled:opacity-50 disabled:cursor-not-allowed';
 
-  const activeClass = 'bg-mistara-gold text-mistara-cream shadow-md shadow-mistara-gold/15';
-  const inactiveClass = 'text-mistara-brown/80 hover:text-mistara-espresso hover:glass-panel';
+  const activeClass = 'auth-tab-active';
+  const inactiveClass = 'text-mistara-brown/80 hover:text-mistara-espresso hover:bg-white/60';
 
   return (
     <div
       role="tablist"
       aria-label="وضع المصادقة: تسجيل الدخول أو إنشاء حساب"
-      className="grid grid-cols-2 gap-1 p-1 rounded-2xl bg-mistara-cream/70 border border-mistara-brown/15"
+      className="grid grid-cols-2 gap-1 p-1 rounded-2xl bg-white/70 border border-primary/10"
     >
       <button
         type="button"

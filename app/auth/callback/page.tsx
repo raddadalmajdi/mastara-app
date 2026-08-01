@@ -79,23 +79,23 @@ function AuthCallbackContent() {
       dir="rtl"
     >
       <div
-        className="pointer-events-none absolute -top-32 left-1/2 h-72 w-72 -translate-x-1/2 rounded-full bg-mistara-gold/15 blur-[100px]"
+        className="pointer-events-none absolute -top-32 left-1/2 h-72 w-72 -translate-x-1/2 rounded-full bg-primary/12 blur-[100px]"
         aria-hidden
       />
-      <div className="relative w-full max-w-sm sm:max-w-md mx-auto glass-panel/90 backdrop-blur-xl border border-mistara-brown/12 rounded-[2rem] p-8 shadow-[0_25px_70px_-15px_rgba(212,175,55,0.22)] text-center space-y-4">
-        <AppBrand size="lg" className="mx-auto" />
+      <div className="auth-shell-card relative w-full max-w-sm sm:max-w-md mx-auto glass-panel backdrop-blur-xl rounded-[2rem] p-8 text-center space-y-4">
+        <AppBrand size="hero" className="mx-auto" priority />
 
         {status === 'loading' && (
           <>
-            <div className="mx-auto h-12 w-12 rounded-full border-2 border-mistara-gold/30 border-t-mistara-gold animate-spin" />
+            <div className="mx-auto h-12 w-12 rounded-full border-2 border-primary/30 border-t-primary animate-spin" />
             <p className="text-base text-mistara-brown">جاري تأكيد حسابك بأمان...</p>
           </>
         )}
 
         {status === 'success' && (
           <>
-            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-mistara-gold/12 ring-4 ring-mistara-gold/30">
-              <svg className="h-8 w-8 text-mistara-gold-dark" viewBox="0 0 24 24" fill="none" aria-hidden>
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-primary/10 ring-4 ring-primary/25">
+              <svg className="h-8 w-8 text-primary-dark" viewBox="0 0 24 24" fill="none" aria-hidden>
                 <path
                   d="M5 13l4 4L19 7"
                   stroke="currentColor"
@@ -105,7 +105,7 @@ function AuthCallbackContent() {
                 />
               </svg>
             </div>
-            <p className="text-base font-bold text-mistara-gold-dark">تم تأكيد حسابك بنجاح!</p>
+            <p className="text-base font-bold text-primary-dark">تم تأكيد حسابك بنجاح!</p>
             <p className="text-sm text-mistara-brown/80">سيتم تحويلك إلى لوحة التحكم...</p>
           </>
         )}
@@ -122,7 +122,7 @@ function AuthCallbackContent() {
             <button
               type="button"
               onClick={() => router.replace('/')}
-              className="w-full rounded-xl bg-mistara-gold py-3 text-mistara-cream font-bold text-base"
+              className="auth-primary-btn w-full rounded-xl py-3 font-bold text-base"
             >
               العودة لإدخال رمز التحقق
             </button>

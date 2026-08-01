@@ -116,6 +116,23 @@ h1, h2, h3, h4, h5, h6 {
   color: rgba(51, 65, 85, 0.78);
 }
 
+.auth-shell-card {
+  border: 1px solid rgba(0, 115, 207, 0.14);
+  box-shadow: 0 25px 70px -15px rgba(0, 115, 207, 0.18);
+}
+
+.auth-primary-btn {
+  background: linear-gradient(to left, var(--color-primary-light), var(--color-primary), var(--color-primary-dark));
+  color: var(--color-primary-foreground);
+  box-shadow: 0 10px 24px rgba(0, 115, 207, 0.22);
+}
+
+.auth-tab-active {
+  background: var(--color-primary);
+  color: var(--color-primary-foreground);
+  box-shadow: 0 4px 14px rgba(0, 115, 207, 0.2);
+}
+
 @keyframes auth-boot-slide {
   0% {
     transform: translateX(-100%);
