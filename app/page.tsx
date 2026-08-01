@@ -1315,10 +1315,11 @@ export default function Home() {
           className="pointer-events-none absolute -bottom-32 left-1/2 h-72 w-72 -translate-x-1/2 rounded-full bg-primary/8 blur-[100px]"
           aria-hidden
         />
-        <div className="auth-shell-card relative w-full max-w-sm sm:max-w-md mx-auto glass-panel backdrop-blur-xl rounded-[2rem] p-6 sm:p-8 space-y-6">
-          <AppBrand size="hero" subtitle={APP_TAGLINE} priority className="mb-1" />
+        <div className="auth-shell-card relative mx-auto w-full max-w-sm sm:max-w-md glass-panel rounded-[2rem] p-6 backdrop-blur-xl sm:p-8">
+          <div className="space-y-5">
+          <AppBrand size="hero" subtitle={APP_TAGLINE} priority className="w-full" />
           {sessionCheckPending && (
-            <p className="text-xs text-mistara-brown/60 -mt-3 text-center animate-pulse">
+            <p className="text-xs text-mistara-brown/60 text-center animate-pulse">
               جاري التحقق من جلسة الدخول...
             </p>
           )}
@@ -1530,6 +1531,7 @@ export default function Home() {
               )}
             </div>
           )}
+          </div>
         </div>
       </main>
     );

@@ -21,7 +21,28 @@ export function AppBrand({
 }: AppBrandProps) {
   const isRow = layout === 'row';
   const tagline = subtitle === null ? null : (subtitle ?? APP_TAGLINE);
-  const gapClass = size === 'hero' ? 'gap-3' : 'gap-2.5';
+
+  if (size === 'hero' && !isRow) {
+    return (
+      <header className={`mx-auto flex w-full flex-col items-center text-center ${className}`}>
+        <div className="flex flex-col items-center">
+          <AppLogo size="hero" priority={priority} />
+          {showTitle && (
+            <h1 className="-mt-1 font-black text-[1.85rem] leading-none tracking-tight text-primary-dark sm:text-[2rem]">
+              {APP_NAME}
+            </h1>
+          )}
+        </div>
+        {showTitle && tagline && (
+          <p className="mt-2 max-w-[18rem] text-[13px] leading-[1.45] text-mistara-brown/75 sm:text-sm sm:leading-snug">
+            {tagline}
+          </p>
+        )}
+      </header>
+    );
+  }
+
+  const gapClass = size === 'hero' ? 'gap-2' : 'gap-2.5';
 
   return (
     <div
@@ -29,10 +50,10 @@ export function AppBrand({
     >
       <AppLogo size={size} priority={priority} />
       {showTitle && (
-        <div className={isRow ? 'text-right min-w-0' : 'text-center space-y-1.5'}>
+        <div className={isRow ? 'min-w-0 text-right' : 'space-y-1 text-center'}>
           <h1
             className={`font-black bg-gradient-to-l from-primary-light via-primary to-primary-dark bg-clip-text text-transparent tracking-tight leading-none ${
-              isRow ? 'text-xl sm:text-2xl' : size === 'hero' ? 'text-3xl sm:text-4xl' : 'text-3xl sm:text-[2.35rem]'
+              isRow ? 'text-xl sm:text-2xl' : 'text-3xl sm:text-[2.35rem]'
             }`}
           >
             {APP_NAME}
@@ -40,7 +61,7 @@ export function AppBrand({
           {tagline && (
             <p
               className={`text-mistara-brown/80 leading-snug ${
-                isRow ? 'text-[11px] sm:text-xs max-w-[9rem] sm:max-w-none' : 'text-sm sm:text-base max-w-xs mx-auto'
+                isRow ? 'max-w-[9rem] text-[11px] sm:max-w-none sm:text-xs' : 'mx-auto max-w-xs text-sm sm:text-base'
               }`}
             >
               {tagline}
