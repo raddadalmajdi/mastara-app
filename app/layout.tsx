@@ -5,16 +5,26 @@ import {
   APP_APPLE_TOUCH_ICON_PATH,
   APP_FAVICON_16_PATH,
   APP_FAVICON_PATH,
+  APP_LOGO_OG_PATH,
   APP_MANIFEST_PATH,
   APP_NAME,
+  APP_SITE_URL,
   APP_TAGLINE,
 } from '@/lib/brand';
 import { BrandWatermark } from '@/components/brand/BrandWatermark';
 
 export const metadata: Metadata = {
-  title: `${APP_NAME} | ${APP_TAGLINE}`,
+  metadataBase: new URL(APP_SITE_URL),
+  title: {
+    default: `${APP_NAME} | ${APP_TAGLINE}`,
+    template: `%s | ${APP_NAME}`,
+  },
   description: APP_TAGLINE,
+  applicationName: APP_NAME,
   manifest: APP_MANIFEST_PATH,
+  alternates: {
+    canonical: '/',
+  },
   icons: {
     icon: [
       { url: APP_FAVICON_16_PATH, type: 'image/png', sizes: '16x16' },
@@ -28,11 +38,36 @@ export const metadata: Metadata = {
     statusBarStyle: 'default',
     title: APP_NAME,
   },
-  applicationName: APP_NAME,
+  openGraph: {
+    type: 'website',
+    locale: 'ar_SA',
+    url: APP_SITE_URL,
+    siteName: APP_NAME,
+    title: `${APP_NAME} | ${APP_TAGLINE}`,
+    description: APP_TAGLINE,
+    images: [
+      {
+        url: APP_LOGO_OG_PATH,
+        width: 1024,
+        height: 916,
+        alt: APP_NAME,
+      },
+    ],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: `${APP_NAME} | ${APP_TAGLINE}`,
+    description: APP_TAGLINE,
+    images: [APP_LOGO_OG_PATH],
+  },
+  robots: {
+    index: true,
+    follow: true,
+  },
 };
 
 export const viewport: Viewport = {
-  themeColor: '#1877F2',
+  themeColor: '#0073CF',
   colorScheme: 'light',
   width: 'device-width',
   initialScale: 1,
@@ -60,9 +95,12 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <head>
+        <link rel="canonical" href={APP_SITE_URL} />
         <link rel="icon" href={APP_FAVICON_16_PATH} type="image/png" sizes="16x16" />
         <link rel="icon" href={APP_FAVICON_PATH} type="image/png" sizes="32x32" />
         <link rel="apple-touch-icon" href={APP_APPLE_TOUCH_ICON_PATH} sizes="180x180" />
+        <meta property="og:url" content={APP_SITE_URL} />
+        <meta property="og:image" content={APP_LOGO_OG_PATH} />
       </head>
       <body
         style={shellStyle}

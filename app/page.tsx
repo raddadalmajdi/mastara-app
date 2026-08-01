@@ -1315,8 +1315,8 @@ export default function Home() {
           className="pointer-events-none absolute -bottom-32 left-1/2 h-72 w-72 -translate-x-1/2 rounded-full bg-mistara-gold/10 blur-[100px]"
           aria-hidden
         />
-        <div className="relative w-full max-w-sm sm:max-w-md mx-auto glass-panel/90 backdrop-blur-xl border border-mistara-brown/12 rounded-[2rem] p-6 sm:p-8 shadow-[0_25px_70px_-15px_rgba(212,175,55,0.22)] space-y-6">
-          <AppBrand size="lg" subtitle={APP_TAGLINE} priority className="mb-1" />
+        <div className="relative w-full max-w-sm sm:max-w-md mx-auto glass-panel/90 backdrop-blur-xl border border-mistara-brown/12 rounded-[2rem] p-6 sm:p-8 shadow-[0_25px_70px_-15px_rgba(0,115,207,0.18)] space-y-6">
+          <AppBrand size="hero" subtitle={APP_TAGLINE} priority className="mb-1" />
           {sessionCheckPending && (
             <p className="text-xs text-mistara-brown/60 -mt-3 text-center animate-pulse">
               جاري التحقق من جلسة الدخول...
@@ -1864,7 +1864,7 @@ export default function Home() {
               onClick={handleOpenOpenCvScanner}
               disabled={isUploading}
               aria-label="ماسح OpenCV المتقدّم — اكتشاف حي للحواف"
-              className="pointer-events-auto flex h-28 w-28 flex-col items-center justify-center gap-0.5 rounded-full border-4 border-accent/90 bg-gradient-to-br from-primary-light via-primary to-primary-dark px-2 text-center text-primary-foreground shadow-[0_0_36px_rgba(24,119,242,0.38)] transition-transform active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 sm:h-32 sm:w-32"
+              className="pointer-events-auto flex h-28 w-28 flex-col items-center justify-center gap-0.5 rounded-full border-4 border-accent/90 bg-gradient-to-br from-primary-light via-primary to-primary-dark px-2 text-center text-primary-foreground shadow-[0_0_36px_rgba(0,115,207,0.38)] transition-transform active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 sm:h-32 sm:w-32"
               title="فتح الكاميرا ومسح فاتورة أو مستند"
             >
               <span className="relative flex h-9 w-12 items-center justify-center" aria-hidden>

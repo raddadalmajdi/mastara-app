@@ -710,7 +710,7 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
             <button
               type="button"
               onClick={handleCapture}
-              className="w-20 h-20 rounded-full bg-white border-[6px] border-primary shadow-[0_0_30px_rgba(24,119,242,0.35)] active:scale-95 transition-transform"
+              className="w-20 h-20 rounded-full bg-white border-[6px] border-primary shadow-[0_0_30px_rgba(0,115,207,0.35)] active:scale-95 transition-transform"
               aria-label="التقاط المستند"
             />
 

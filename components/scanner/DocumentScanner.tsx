@@ -326,7 +326,7 @@ export default function DocumentScanner({
 
       ctx.strokeStyle = BRAND_COLORS.primary;
       ctx.lineWidth = 3;
-      ctx.fillStyle = 'rgba(24,119,242,0.14)';
+      ctx.fillStyle = 'rgba(0,115,207,0.14)';
       ctx.beginPath();
       ctx.moveTo(displayPts[0].x, displayPts[0].y);
       for (let i = 1; i < 4; i++) ctx.lineTo(displayPts[i].x, displayPts[i].y);
@@ -662,7 +662,7 @@ export default function DocumentScanner({
       aria-label={unifiedPrimaryLine}
       disabled={unifiedButtonDisabled}
       onClick={handleUnifiedAction}
-      className={`flex h-28 w-28 flex-col items-center justify-center gap-0.5 rounded-full border-4 border-accent/90 bg-gradient-to-br from-primary-light via-primary to-primary-dark px-2 text-center text-primary-foreground shadow-[0_0_36px_rgba(24,119,242,0.38)] transition-transform active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 sm:h-32 sm:w-32 ${className}`}
+      className={`flex h-28 w-28 flex-col items-center justify-center gap-0.5 rounded-full border-4 border-accent/90 bg-gradient-to-br from-primary-light via-primary to-primary-dark px-2 text-center text-primary-foreground shadow-[0_0_36px_rgba(0,115,207,0.38)] transition-transform active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 sm:h-32 sm:w-32 ${className}`}
     >
       <span className="relative flex h-9 w-12 items-center justify-center text-primary-foreground" aria-hidden>
         <ReceiptIcon className="absolute left-0 h-5 w-5 opacity-90" />

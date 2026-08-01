@@ -100,8 +100,8 @@ export function OtpCodeInput({ value, onChange, onComplete, disabled, hasError }
                 hasError
                   ? 'border-red-800/70 shadow-[0_0_0_3px_rgba(244,63,94,0.15)]'
                   : filled
-                    ? 'border-primary shadow-[0_0_0_3px_rgba(24,119,242,0.22)]'
-                    : 'border-mistara-brown/15 focus:border-primary focus:shadow-[0_0_0_3px_rgba(24,119,242,0.18)]'
+                    ? 'border-primary shadow-[0_0_0_3px_rgba(0,115,207,0.22)]'
+                    : 'border-mistara-brown/15 focus:border-primary focus:shadow-[0_0_0_3px_rgba(0,115,207,0.18)]'
               }`}
             />
           );

@@ -1,12 +1,12 @@
-/** ألوان العلامة المستخرجة من شعار إيصالك الرسمي (أزرق ملكي + كحلي). */
+/** ألوان العلامة المستخرجة من شعار إيصالك الرسمي. */
 export const BRAND_COLORS = {
-  primary: '#1877F2',
-  primaryLight: '#4DA3FF',
-  primaryDark: '#0045A5',
-  primaryMuted: '#1877F2',
+  primary: '#0073CF',
+  primaryLight: '#4FA4F3',
+  primaryDark: '#003B73',
+  primaryMuted: '#0073CF',
   accent: '#CCEAFF',
-  accentForeground: '#0045A5',
-  navy: '#003399',
+  accentForeground: '#003B73',
+  navy: '#002855',
   slate: '#0A2463',
   slateMuted: '#334155',
   sand: '#EFF6FF',

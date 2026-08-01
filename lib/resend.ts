@@ -63,7 +63,7 @@ function buildVerificationEmailHtml(otp: string): string {
   return `
     <div dir="rtl" style="background:#f1f5f9;padding:32px 16px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Tahoma,Arial,sans-serif;">
       <div style="max-width:440px;margin:0 auto;background:#ffffff;border-radius:24px;overflow:hidden;box-shadow:0 20px 50px -20px rgba(15,23,42,0.25);">
-        <div style="background:linear-gradient(135deg,#0045A5 0%,#1877F2 100%);padding:28px 32px;text-align:center;">
+        <div style="background:linear-gradient(135deg,#003B73 0%,#0073CF 100%);padding:28px 32px;text-align:center;">
           <p style="margin:0;color:#FFFFFF;font-size:15px;letter-spacing:1px;font-weight:800;">${APP_NAME}</p>
         </div>
         <div style="padding:36px 32px 28px;">

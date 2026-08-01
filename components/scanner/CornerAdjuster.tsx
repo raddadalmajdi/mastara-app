@@ -196,7 +196,7 @@ export function CornerAdjuster({
         <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ overflow: 'visible' }}>
           <polygon
             points={screenPoints.map((p) => `${p.x},${p.y}`).join(' ')}
-            fill="rgba(24,119,242,0.14)"
+            fill="rgba(0,115,207,0.14)"
             stroke={BRAND_COLORS.primary}
             strokeWidth={3}
             strokeLinejoin="round"
@@ -227,7 +227,7 @@ export function CornerAdjuster({
             tabIndex={0}
             aria-label={`مقبض ${HANDLE_LABELS[i]} — اسحب لضبط حافة المستند`}
             onPointerDown={startDrag(i)}
-            className="absolute w-8 h-8 -translate-x-1/2 -translate-y-1/2 rounded-md bg-primary border-2 border-mistara-cream shadow-[0_2px_12px_rgba(24,119,242,0.35)] active:scale-110 touch-none cursor-grab active:cursor-grabbing"
+            className="absolute w-8 h-8 -translate-x-1/2 -translate-y-1/2 rounded-md bg-primary border-2 border-mistara-cream shadow-[0_2px_12px_rgba(0,115,207,0.35)] active:scale-110 touch-none cursor-grab active:cursor-grabbing"
             style={{
               left: p.x,
               top: p.y,

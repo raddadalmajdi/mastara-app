@@ -83,7 +83,7 @@ function AuthCallbackContent() {
         aria-hidden
       />
       <div className="relative w-full max-w-sm sm:max-w-md mx-auto glass-panel/90 backdrop-blur-xl border border-mistara-brown/12 rounded-[2rem] p-8 shadow-[0_25px_70px_-15px_rgba(212,175,55,0.22)] text-center space-y-4">
-        <AppBrand size="md" className="mx-auto" />
+        <AppBrand size="lg" className="mx-auto" />
 
         {status === 'loading' && (
           <>
