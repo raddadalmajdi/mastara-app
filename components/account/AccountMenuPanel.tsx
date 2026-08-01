@@ -1,6 +1,7 @@
 'use client';
 
 import { useRef } from 'react';
+import { UserProfileAvatar } from '@/components/account/UserProfileAvatar';
 
 export type AvatarSaveFeedback = { type: 'success' | 'error'; message: string } | null;
 
@@ -54,23 +55,17 @@ export function AccountMenuPanel({
     <div className="absolute left-0 mt-2 w-80 sm:w-[22rem] rounded-2xl border border-mistara-gold/30 glass-panel p-4 shadow-2xl backdrop-blur-md z-50 space-y-4">
       <div className="flex items-center gap-3 border-b border-mistara-brown/15 pb-3">
         <div className="relative shrink-0">
-          {displayAvatar ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={displayAvatar}
-              alt="صورة حساب الخياط"
-              className={`h-14 w-14 rounded-2xl border-2 object-cover shadow-md ${
-                hasPendingAvatar ? 'border-mistara-gold-dark/60 ring-2 ring-mistara-gold/30' : 'border-mistara-gold/35'
-              }`}
-            />
-          ) : (
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-mistara-gold text-2xl font-black text-mistara-cream shadow-md">
-              م
-            </div>
-          )}
+          <UserProfileAvatar
+            src={displayAvatar}
+            alt="صورة حساب الخياط"
+            size="md"
+            className={
+              hasPendingAvatar ? 'border-primary/45 ring-primary/30' : undefined
+            }
+          />
           {savingAvatar && (
-            <span className="absolute inset-0 flex items-center justify-center rounded-2xl bg-mistara-cream/70">
-              <span className="h-5 w-5 animate-spin rounded-full border-2 border-mistara-gold/30 border-t-mistara-gold" />
+            <span className="absolute inset-0 flex items-center justify-center rounded-full bg-mistara-cream/70">
+              <span className="h-5 w-5 animate-spin rounded-full border-2 border-primary/30 border-t-primary" />
             </span>
           )}
         </div>
@@ -192,14 +187,9 @@ export function AccountMenuTrigger({
       type="button"
       onClick={onClick}
       aria-label="فتح قائمة الحساب"
-      className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-xl bg-mistara-gold text-xl font-black text-mistara-cream shadow-md ring-2 ring-mistara-gold/30 transition-transform active:scale-95"
+      className="rounded-full transition-transform active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 focus-visible:ring-offset-mistara-cream"
     >
-      {avatarUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={avatarUrl} alt="" className="h-full w-full object-cover" />
-      ) : (
-        'م'
-      )}
+      <UserProfileAvatar src={avatarUrl} size="sm" />
     </button>
   );
 }
