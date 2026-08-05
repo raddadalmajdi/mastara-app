@@ -5,7 +5,7 @@ import {
   logResendApiSuccess,
   logResendEnvDiagnostics,
 } from '@/lib/resend-diagnostics';
-import { OTP_LENGTH_AR, OTP_CODE_LENGTH } from '@/lib/otp-config';
+import { OTP_LENGTH_AR } from '@/lib/otp-config';
 import { APP_NAME, APP_TAGLINE } from '@/lib/brand';
 
 /** المرسل الرسمي المعتمد للمشروع. */
@@ -105,8 +105,8 @@ function buildOtpEmailHtml(params: {
   footerNote: string;
 }): string {
   const { heading, body, otp, footerNote } = params;
-  const otpFontSize = otp.length > OTP_CODE_LENGTH ? '28px' : '36px';
-  const otpLetterSpacing = otp.length > OTP_CODE_LENGTH ? '5px' : '10px';
+  const otpFontSize = '36px';
+  const otpLetterSpacing = '10px';
   return `
     <div dir="rtl" style="background:#f1f5f9;padding:32px 16px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Tahoma,Arial,sans-serif;">
       <div style="max-width:440px;margin:0 auto;background:#ffffff;border-radius:24px;overflow:hidden;box-shadow:0 20px 50px -20px rgba(15,23,42,0.25);">
@@ -119,6 +119,7 @@ function buildOtpEmailHtml(params: {
             ${body}
           </p>
           <div style="background:#f0fdfa;border:1.5px dashed #22d3ee;border-radius:18px;padding:22px 12px;text-align:center;margin-bottom:26px;">
+            <p style="margin:0 0 10px;font-size:12px;font-weight:700;color:#0e7490;letter-spacing:0.5px;">رمز التحقق — ${OTP_LENGTH_AR}</p>
             <span dir="ltr" style="display:inline-block;font-size:${otpFontSize};font-weight:800;letter-spacing:${otpLetterSpacing};color:#0e7490;font-family:'Courier New',Courier,monospace;unicode-bidi:embed;word-break:keep-all;white-space:nowrap;">${otp}</span>
           </div>
           <p style="margin:0;color:#94a3b8;font-size:11.5px;line-height:1.7;">

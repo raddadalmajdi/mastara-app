@@ -46,7 +46,7 @@ export function OtpCodeInput({ value, onChange, onComplete, disabled, hasError }
   return (
     <div className="space-y-3" dir="ltr">
       <div
-        className="mx-auto grid w-full max-w-[min(100%,20.5rem)] grid-cols-8 gap-1 px-0.5 sm:max-w-[22rem] sm:gap-1.5"
+        className="mx-auto grid w-full max-w-[min(100%,18rem)] grid-cols-6 gap-1.5 px-0.5 sm:max-w-[20rem] sm:gap-2"
         role="group"
         aria-label={`رمز التحقق المكوّن من ${OTP_LENGTH_AR}`}
       >

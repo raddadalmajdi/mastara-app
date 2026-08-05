@@ -9,7 +9,6 @@ import { mapAuthErrorToArabic } from '@/lib/auth-errors';
 import { trySendLoginOtpViaResendApi } from '@/lib/auth-login-otp-api';
 import {
   resolveSignUpFlow,
-  verifyEmailOtpFlexible,
 } from '@/lib/auth-handler';
 import { logAuthRedirectDiagnostics, logSupabaseAuthErrorJson } from '@/lib/auth-debug';
 import { executeSignUp } from '@/lib/auth-sign-up';
@@ -749,16 +748,40 @@ export default function Home() {
     setAuthSubmitting(true);
     setAuthFeedback(null);
     try {
-      const result = await verifyEmailOtpFlexible(supabase, {
-        email: email.trim(),
-        token,
-        preferredType: otpVerifyType,
+      const response = await fetch('/api/auth/verify-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: email.trim(),
+          token,
+          preferredType: otpVerifyType,
+        }),
       });
 
-      if (!result.ok) {
+      const payload = (await response.json()) as {
+        ok?: boolean;
+        session?: { access_token: string; refresh_token: string };
+        error?: { message?: string; code?: string } | null;
+        message?: string;
+      };
+
+      if (!response.ok || !payload.ok || !payload.session) {
         setAuthFeedback({
           type: 'error',
-          message: mapAuthErrorToArabic(result.error, 'otp'),
+          message: mapAuthErrorToArabic(payload.error ?? null, 'otp'),
+        });
+        return;
+      }
+
+      const { error: sessionError } = await supabase.auth.setSession({
+        access_token: payload.session.access_token,
+        refresh_token: payload.session.refresh_token,
+      });
+
+      if (sessionError) {
+        setAuthFeedback({
+          type: 'error',
+          message: mapAuthErrorToArabic(sessionError, 'otp'),
         });
         return;
       }

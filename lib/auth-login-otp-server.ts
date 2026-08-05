@@ -1,5 +1,6 @@
 import { findAuthUserByEmail } from '@/lib/check-email-registered';
-import { extractSupabaseEmailOtp } from '@/lib/supabase-email-otp';
+import { parseSupabaseEmailOtp } from '@/lib/supabase-email-otp';
+import { registerOtpDeliveryBridge } from '@/lib/otp-delivery-bridge';
 import { createSupabaseAdminClient } from '@/lib/delete-auth-user-admin';
 import { assertValidEmailRedirectTo } from '@/lib/supabase-browser';
 import { isResendConfigured, sendLoginOtpEmail } from '@/lib/resend';
@@ -110,9 +111,9 @@ async function buildLoginMagicLinkOtp(
   }
 
   const userId = data.user?.id;
-  const otp = extractSupabaseEmailOtp(data.properties?.email_otp);
+  const parsed = parseSupabaseEmailOtp(data.properties?.email_otp);
 
-  if (!userId || !otp) {
+  if (!userId || !parsed) {
     console.error('[auth-login-otp-server] generateLink missing OTP', {
       email,
       hasUserId: Boolean(userId),
@@ -126,7 +127,9 @@ async function buildLoginMagicLinkOtp(
     return missingOtpFailure();
   }
 
-  return { ok: true, otp, userId };
+  registerOtpDeliveryBridge(email, parsed.deliveryOtp, parsed.verifyToken);
+
+  return { ok: true, otp: parsed.deliveryOtp, userId };
 }
 
 async function sendLoginOtpViaResendInner(params: {
