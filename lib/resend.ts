@@ -1,6 +1,6 @@
 import { Resend } from 'resend';
 import { extractSupabaseEmailOtp } from '@/lib/supabase-email-otp';
-import { OTP_LENGTH_AR } from '@/lib/otp-config';
+import { OTP_LENGTH_AR, OTP_CODE_LENGTH } from '@/lib/otp-config';
 import { APP_NAME, APP_TAGLINE } from '@/lib/brand';
 
 /** المرسل الرسمي المعتمد للمشروع. */
@@ -68,8 +68,8 @@ function buildOtpEmailHtml(params: {
   footerNote: string;
 }): string {
   const { heading, body, otp, footerNote } = params;
-  const otpFontSize = otp.length >= 8 ? '28px' : '36px';
-  const otpLetterSpacing = otp.length >= 8 ? '5px' : '10px';
+  const otpFontSize = otp.length > OTP_CODE_LENGTH ? '28px' : '36px';
+  const otpLetterSpacing = otp.length > OTP_CODE_LENGTH ? '5px' : '10px';
   return `
     <div dir="rtl" style="background:#f1f5f9;padding:32px 16px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Tahoma,Arial,sans-serif;">
       <div style="max-width:440px;margin:0 auto;background:#ffffff;border-radius:24px;overflow:hidden;box-shadow:0 20px 50px -20px rgba(15,23,42,0.25);">
