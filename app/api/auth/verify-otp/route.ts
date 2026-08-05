@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { EmailOtpType } from '@supabase/supabase-js';
 import { verifyEmailOtpOnServer } from '@/lib/auth-verify-otp-server';
+import { createClearOtpBridgeCookieHeader } from '@/lib/otp-delivery-bridge';
 
 export const runtime = 'nodejs';
 
@@ -27,7 +28,12 @@ export async function POST(request: Request) {
   }
 
   try {
-    const result = await verifyEmailOtpOnServer({ email, token, preferredType });
+    const result = await verifyEmailOtpOnServer({
+      email,
+      token,
+      preferredType,
+      cookieHeader: request.headers.get('cookie'),
+    });
 
     if (!result.ok) {
       return NextResponse.json(
@@ -41,11 +47,18 @@ export async function POST(request: Request) {
       );
     }
 
-    return NextResponse.json({
-      ok: true,
-      session: result.session,
-      user: { id: result.userId },
-    });
+    return NextResponse.json(
+      {
+        ok: true,
+        session: result.session,
+        user: { id: result.userId },
+      },
+      {
+        headers: {
+          'Set-Cookie': createClearOtpBridgeCookieHeader(),
+        },
+      }
+    );
   } catch (error) {
     const message =
       error instanceof Error ? error.message : 'خطأ داخلي أثناء التحقق من الرمز.';

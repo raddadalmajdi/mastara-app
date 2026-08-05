@@ -67,6 +67,10 @@ export async function POST(request: Request) {
       needsVerification: true,
       emailSentViaResend: true,
       user: { id: result.userId, email: result.email },
+    }, {
+      headers: {
+        'Set-Cookie': result.otpBridgeCookie,
+      },
     });
   } catch (error) {
     const message =

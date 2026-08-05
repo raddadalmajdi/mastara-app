@@ -62,6 +62,7 @@ export async function trySignUpViaResendApi(
     res = await fetchWithTimeout('/api/auth/sign-up', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
       body: JSON.stringify(params),
       timeoutMs: SIGNUP_FETCH_MS,
     });
@@ -132,6 +133,7 @@ export async function resendVerificationViaResendApi(params: {
     const res = await fetchWithTimeout('/api/auth/resend-verification', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
       body: JSON.stringify(params),
       timeoutMs: SIGNUP_FETCH_MS,
     });

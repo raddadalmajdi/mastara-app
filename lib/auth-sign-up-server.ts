@@ -4,10 +4,10 @@ import { isResendConfigured, sendSignupVerificationEmail } from '@/lib/resend';
 import { AsyncTimeoutError, logAuthFlowStep, withTimeout } from '@/lib/async-timeout';
 import { DUPLICATE_EMAIL_MESSAGE } from '@/lib/check-email-registered';
 import { parseSupabaseEmailOtp } from '@/lib/supabase-email-otp';
-import { registerOtpDeliveryBridge } from '@/lib/otp-delivery-bridge';
+import { issueOtpVerificationBridge, type OtpBridgeIssue } from '@/lib/otp-delivery-bridge';
 
 export type ServerSignUpResult =
-  | { ok: true; email: string; userId: string; emailSent: true }
+  | { ok: true; email: string; userId: string; emailSent: true; otpBridgeCookie: string }
   | { ok: false; code: string; message: string; status: number };
 
 const ADMIN_STEP_MS = 22_000;
@@ -48,8 +48,18 @@ function timeoutFailure(label: string, error: unknown): ServerSignUpResult {
 }
 
 type LinkBuildResult =
-  | { ok: true; actionLink: string; otp: string | null; userId: string }
+  | { ok: true; actionLink: string; deliveryOtp: string; verifyToken: string; userId: string }
   | { ok: false; code: string; message: string; status: number };
+
+function buildSignupOtpBridge(email: string, deliveryOtp: string, verifyToken: string): string {
+  const issue: OtpBridgeIssue = {
+    email,
+    deliveryOtp,
+    verifyToken,
+    otpType: 'signup',
+  };
+  return issueOtpVerificationBridge(issue);
+}
 
 function linkTimeoutFailure(label: string, error: unknown): LinkBuildResult {
   if (error instanceof AsyncTimeoutError) {
@@ -118,11 +128,22 @@ async function buildSignupLink(
   }
 
   const parsed = parseSupabaseEmailOtp(data.properties?.email_otp);
-  if (parsed) {
-    registerOtpDeliveryBridge(email, parsed.deliveryOtp, parsed.verifyToken);
+  if (!parsed) {
+    return {
+      ok: false,
+      code: 'otp_unavailable',
+      message: 'تعذّر توليد رمز التحقق من Supabase.',
+      status: 500,
+    };
   }
-  const otp = parsed?.deliveryOtp ?? null;
-  return { ok: true, actionLink, otp, userId };
+
+  return {
+    ok: true,
+    actionLink,
+    deliveryOtp: parsed.deliveryOtp,
+    verifyToken: parsed.verifyToken,
+    userId,
+  };
 }
 
 async function registerUserWithResendVerificationInner(params: {
@@ -217,10 +238,11 @@ async function registerUserWithResendVerificationInner(params: {
     return link;
   }
 
-  if (!link.otp) {
-    await admin.auth.admin.deleteUser(userId).catch(() => undefined);
-    return missingOtpFailure();
-  }
+  const otpBridgeCookie = buildSignupOtpBridge(
+    email,
+    link.deliveryOtp,
+    link.verifyToken
+  );
 
   logAuthFlowStep('server', 'resend:send:start', { email });
 
@@ -228,7 +250,7 @@ async function registerUserWithResendVerificationInner(params: {
     const sendResult = await withTimeout(
       sendSignupVerificationEmail({
         to: email,
-        otp: link.otp,
+        otp: link.deliveryOtp,
       }),
       RESEND_STEP_MS,
       'Resend API'
@@ -254,12 +276,12 @@ async function registerUserWithResendVerificationInner(params: {
     console.error('[auth-sign-up-server] resend_send_failed', {
       email,
       message,
-      otpLength: link.otp?.length,
+      otpLength: link.deliveryOtp.length,
     });
     return { ok: false, code: 'resend_send_failed', message, status: 502 };
   }
 
-  return { ok: true, email, userId, emailSent: true };
+  return { ok: true, email, userId, emailSent: true, otpBridgeCookie };
 }
 
 export async function registerUserWithResendVerification(params: {
@@ -332,15 +354,17 @@ async function resendSignupVerificationEmailInner(params: {
     return link;
   }
 
-  if (!link.otp) {
-    return missingOtpFailure();
-  }
+  const otpBridgeCookie = buildSignupOtpBridge(
+    email,
+    link.deliveryOtp,
+    link.verifyToken
+  );
 
   try {
     const sendResult = await withTimeout(
       sendSignupVerificationEmail({
         to: email,
-        otp: link.otp,
+        otp: link.deliveryOtp,
       }),
       RESEND_STEP_MS,
       'Resend API'
@@ -363,10 +387,10 @@ async function resendSignupVerificationEmailInner(params: {
     console.error('[auth-sign-up-server] resend_send_failed (resend-verification)', {
       email,
       message,
-      otpLength: link.otp?.length,
+      otpLength: link.deliveryOtp.length,
     });
     return { ok: false, code: 'resend_send_failed', message, status: 502 };
   }
 
-  return { ok: true, email, userId: link.userId, emailSent: true };
+  return { ok: true, email, userId: link.userId, emailSent: true, otpBridgeCookie };
 }

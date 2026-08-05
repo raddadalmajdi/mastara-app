@@ -605,7 +605,7 @@ export default function Home() {
       if (!('unavailable' in viaResend)) {
         if (viaResend.ok) {
           beginConfirmationPhase(
-            'email',
+            'magiclink',
             `أرسلنا رمز الدخول (${OTP_LENGTH_AR}) إلى بريدك — أدخله أدناه.`
           );
           return;
@@ -751,6 +751,7 @@ export default function Home() {
       const response = await fetch('/api/auth/verify-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           email: email.trim(),
           token,

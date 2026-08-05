@@ -63,6 +63,7 @@ export async function trySendLoginOtpViaResendApi(params: {
     res = await fetchWithTimeout('/api/auth/send-login-otp', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
       body: JSON.stringify(params),
       timeoutMs: LOGIN_OTP_FETCH_MS,
     });

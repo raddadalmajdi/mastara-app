@@ -1,13 +1,13 @@
 import { findAuthUserByEmail } from '@/lib/check-email-registered';
 import { parseSupabaseEmailOtp } from '@/lib/supabase-email-otp';
-import { registerOtpDeliveryBridge } from '@/lib/otp-delivery-bridge';
+import { issueOtpVerificationBridge, type OtpBridgeIssue } from '@/lib/otp-delivery-bridge';
 import { createSupabaseAdminClient } from '@/lib/delete-auth-user-admin';
 import { assertValidEmailRedirectTo } from '@/lib/supabase-browser';
 import { isResendConfigured, sendLoginOtpEmail } from '@/lib/resend';
 import { AsyncTimeoutError, logAuthFlowStep, withTimeout } from '@/lib/async-timeout';
 
 export type SendLoginOtpResult =
-  | { ok: true; email: string; userId: string; emailSent: true }
+  | { ok: true; email: string; userId: string; emailSent: true; otpBridgeCookie: string }
   | { ok: false; code: string; message: string; status: number };
 
 const ADMIN_STEP_MS = 22_000;
@@ -59,11 +59,21 @@ function linkTimeoutFailure(label: string, error: unknown): {
   return { ok: false, code: 'internal_error', message, status: 500 };
 }
 
+function buildLoginOtpBridge(email: string, parsed: { deliveryOtp: string; verifyToken: string }): string {
+  const issue: OtpBridgeIssue = {
+    email,
+    deliveryOtp: parsed.deliveryOtp,
+    verifyToken: parsed.verifyToken,
+    otpType: 'magiclink',
+  };
+  return issueOtpVerificationBridge(issue);
+}
+
 async function buildLoginMagicLinkOtp(
   email: string,
   emailRedirectTo: string
 ): Promise<
-  | { ok: true; otp: string; userId: string }
+  | { ok: true; deliveryOtp: string; verifyToken: string; userId: string }
   | { ok: false; code: string; message: string; status: number }
 > {
   const admin = createSupabaseAdminClient();
@@ -127,9 +137,7 @@ async function buildLoginMagicLinkOtp(
     return missingOtpFailure();
   }
 
-  registerOtpDeliveryBridge(email, parsed.deliveryOtp, parsed.verifyToken);
-
-  return { ok: true, otp: parsed.deliveryOtp, userId };
+  return { ok: true, deliveryOtp: parsed.deliveryOtp, verifyToken: parsed.verifyToken, userId };
 }
 
 async function sendLoginOtpViaResendInner(params: {
@@ -178,11 +186,16 @@ async function sendLoginOtpViaResendInner(params: {
     return link;
   }
 
+  const otpBridgeCookie = buildLoginOtpBridge(email, {
+    deliveryOtp: link.deliveryOtp,
+    verifyToken: link.verifyToken,
+  });
+
   logAuthFlowStep('server', 'resend:login-otp:start', { email });
 
   try {
     const sendResult = await withTimeout(
-      sendLoginOtpEmail({ to: email, otp: link.otp }),
+      sendLoginOtpEmail({ to: email, otp: link.deliveryOtp }),
       RESEND_STEP_MS,
       'Resend API (login OTP)'
     );
@@ -204,7 +217,7 @@ async function sendLoginOtpViaResendInner(params: {
     console.error('[auth-login-otp-server] resend_send_failed', {
       email,
       message,
-      otpLength: link.otp.length,
+      otpLength: link.deliveryOtp.length,
     });
     if (message === 'INTERNAL_INVALID_SUPABASE_OTP') {
       return missingOtpFailure();
@@ -212,7 +225,7 @@ async function sendLoginOtpViaResendInner(params: {
     return { ok: false, code: 'resend_send_failed', message, status: 502 };
   }
 
-  return { ok: true, email, userId: link.userId, emailSent: true };
+  return { ok: true, email, userId: link.userId, emailSent: true, otpBridgeCookie };
 }
 
 /** إرسال رمز تسجيل الدخول عبر Resend (بديل لـ Supabase SMTP). */
