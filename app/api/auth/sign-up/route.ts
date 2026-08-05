@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { registerUserWithResendVerification } from '@/lib/auth-sign-up-server';
+import { logResendEnvDiagnostics } from '@/lib/resend-diagnostics';
 
 // هذا المسار يستدعي Supabase Admin API ثم Resend API بالتسلسل، وقد يستغرق
 // أكثر من المهلة الافتراضية لدوال Vercel الخادمة (10 ثوانٍ على خطة Hobby)،
@@ -36,6 +37,7 @@ export async function POST(request: Request) {
   }
 
   try {
+    logResendEnvDiagnostics('api/auth/sign-up');
     const started = Date.now();
     const result = await registerUserWithResendVerification({
       email,
@@ -49,6 +51,11 @@ export async function POST(request: Request) {
     });
 
     if (!result.ok) {
+      console.error('[api/auth/sign-up] failed', {
+        code: result.code,
+        message: result.message,
+        email,
+      });
       return NextResponse.json(
         { ok: false, code: result.code, message: result.message },
         { status: result.status }

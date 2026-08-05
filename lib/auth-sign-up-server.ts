@@ -246,7 +246,11 @@ async function registerUserWithResendVerificationInner(params: {
     }
     const message =
       sendError instanceof Error ? sendError.message : 'فشل إرسال البريد عبر Resend.';
-    console.error('[auth-sign-up-server] resend_send_failed:', message);
+    console.error('[auth-sign-up-server] resend_send_failed', {
+      email,
+      message,
+      otpLength: link.otp?.length,
+    });
     return { ok: false, code: 'resend_send_failed', message, status: 502 };
   }
 
@@ -351,7 +355,11 @@ async function resendSignupVerificationEmailInner(params: {
     }
     const message =
       sendError instanceof Error ? sendError.message : 'فشل إرسال البريد عبر Resend.';
-    console.error('[auth-sign-up-server] resend_send_failed (resend-verification):', message);
+    console.error('[auth-sign-up-server] resend_send_failed (resend-verification)', {
+      email,
+      message,
+      otpLength: link.otp?.length,
+    });
     return { ok: false, code: 'resend_send_failed', message, status: 502 };
   }
 

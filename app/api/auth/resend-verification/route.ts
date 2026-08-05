@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { resendSignupVerificationEmail } from '@/lib/auth-sign-up-server';
+import { logResendEnvDiagnostics } from '@/lib/resend-diagnostics';
 
 // انظر تعليق المهلة في app/api/auth/sign-up/route.ts — نفس السبب هنا.
 export const runtime = 'nodejs';
@@ -32,6 +33,7 @@ export async function POST(request: Request) {
   }
 
   try {
+    logResendEnvDiagnostics('api/auth/resend-verification');
     const result = await resendSignupVerificationEmail({
       email,
       password,
@@ -39,6 +41,11 @@ export async function POST(request: Request) {
     });
 
     if (!result.ok) {
+      console.error('[api/auth/resend-verification] failed', {
+        code: result.code,
+        message: result.message,
+        email,
+      });
       return NextResponse.json(
         { ok: false, code: result.code, message: result.message },
         { status: result.status }

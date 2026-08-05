@@ -1,5 +1,10 @@
 import { Resend } from 'resend';
 import { extractSupabaseEmailOtp } from '@/lib/supabase-email-otp';
+import {
+  logResendApiFailure,
+  logResendApiSuccess,
+  logResendEnvDiagnostics,
+} from '@/lib/resend-diagnostics';
 import { OTP_LENGTH_AR, OTP_CODE_LENGTH } from '@/lib/otp-config';
 import { APP_NAME, APP_TAGLINE } from '@/lib/brand';
 
@@ -12,26 +17,36 @@ export const DEFAULT_RESEND_FROM = `${APP_NAME} <code@malaktout.com>`;
  * (مثلاً قبل اكتمال توثيق malaktout.com في لوحة Resend)، حتى لا يتعطل
  * تسجيل المستخدمين بالكامل بسبب إعداد DNS ناقص.
  */
-const FALLBACK_RESEND_FROM = `${APP_NAME} (تجريبي) <onboarding@resend.dev>`;
+export const FALLBACK_RESEND_FROM = `${APP_NAME} (تجريبي) <onboarding@resend.dev>`;
 
 export function isResendConfigured(): boolean {
   const key = process.env.RESEND_API_KEY?.trim();
   return Boolean(key && key.startsWith('re_'));
 }
 
+/** يُنسّق عنوان المرسل لصيغة Resend: "Name <email@domain.com>". */
+export function normalizeResendFromAddress(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return DEFAULT_RESEND_FROM;
+  if (trimmed.includes('<') && trimmed.includes('>')) return trimmed;
+  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+    return `${APP_NAME} <${trimmed}>`;
+  }
+  return DEFAULT_RESEND_FROM;
+}
+
 export function getResendFromAddress(): string {
-  // ندعم كلا الاسمين لأن Vercel يحتوي حالياً على RESEND_FROM_EMAIL.
-  return (
+  const raw =
     process.env.RESEND_FROM?.trim() ||
     process.env.RESEND_FROM_EMAIL?.trim() ||
-    DEFAULT_RESEND_FROM
-  );
+    DEFAULT_RESEND_FROM;
+  return normalizeResendFromAddress(raw);
 }
 
 function getResendClient(): Resend {
   const apiKey = process.env.RESEND_API_KEY?.trim();
   if (!apiKey) {
-    throw new Error('Missing RESEND_API_KEY (server-only). أضِفه في .env.local.');
+    throw new Error('Missing RESEND_API_KEY (server-only). أضِفه في .env.local / Vercel.');
   }
   if (!apiKey.startsWith('re_')) {
     throw new Error(
@@ -41,7 +56,28 @@ function getResendClient(): Resend {
   return new Resend(apiKey);
 }
 
-/** يكتشف أخطاء "النطاق غير موثّق" الشائعة من Resend لعرض إرشاد واضح + تفعيل fallback. */
+type ResendSendError = { message?: string; name?: string; statusCode?: number | null };
+
+/** يحدّد إن كان فشل الإرسال مرتبطاً بالنطاق/المرسل ويستحق تجربة onboarding@resend.dev. */
+export function shouldFallbackResendFrom(error: ResendSendError): boolean {
+  const m = (error.message ?? '').toLowerCase();
+  const name = (error.name ?? '').toLowerCase();
+  const status = error.statusCode ?? 0;
+
+  if (status === 403 || status === 422) return true;
+
+  return (
+    isDomainVerificationError(m) ||
+    name.includes('validation') ||
+    m.includes('invalid from') ||
+    m.includes('invalid `from`') ||
+    m.includes('not authorized') ||
+    m.includes('unauthorized') ||
+    m.includes('rate limit') ||
+    m.includes('too many requests')
+  );
+}
+
 function isDomainVerificationError(message: string): boolean {
   const m = message.toLowerCase();
   return (
@@ -49,18 +85,19 @@ function isDomainVerificationError(message: string): boolean {
     m.includes('domain not verified') ||
     m.includes('verify a domain') ||
     m.includes('you can only send testing emails') ||
+    m.includes('only send testing emails') ||
+    m.includes('testing emails to your own') ||
     (m.includes('domain') && m.includes('not authorized')) ||
-    (m.includes('from') && m.includes('not allowed'))
+    (m.includes('from') && m.includes('not allowed')) ||
+    (m.includes('from') && m.includes('invalid'))
   );
 }
 
 export type SendSignupVerificationParams = {
   to: string;
-  /** رمز التحقق الرقمي — الوسيلة الوحيدة للتفعيل (لا روابط سحرية). */
   otp: string;
 };
 
-/** يبني قالب بريد HTML أنيقاً بأسلوب SaaS حديث يعرض رمز الـ OTP بخط عريض وواضح فقط. */
 function buildOtpEmailHtml(params: {
   heading: string;
   body: string;
@@ -96,20 +133,31 @@ function buildOtpEmailHtml(params: {
   `;
 }
 
+export type SendAuthOtpEmailContext = 'signup' | 'login';
+
 /**
  * إرسال بريد OTP عبر Resend API (بدون SMTP Supabase).
- * يُستخدم لرسائل التفعيل وتسجيل الدخول.
+ * يسجّل تفاصيل الفشل/النجاح في سجلات Vercel ويجرب onboarding@resend.dev تلقائياً عند فشل النطاق الرسمي.
  */
-async function sendAuthOtpEmail(params: {
-  to: string;
-  otp: string;
-  subject: string;
-  heading: string;
-  body: string;
-  footerNote: string;
-}): Promise<{ id: string | undefined; usedFallbackFrom: boolean }> {
+async function sendAuthOtpEmail(
+  params: {
+    to: string;
+    otp: string;
+    subject: string;
+    heading: string;
+    body: string;
+    footerNote: string;
+  },
+  context: SendAuthOtpEmailContext
+): Promise<{ id: string | undefined; usedFallbackFrom: boolean }> {
+  logResendEnvDiagnostics(`sendAuthOtpEmail:${context}`);
+
   const normalizedOtp = extractSupabaseEmailOtp(params.otp);
   if (!normalizedOtp) {
+    console.error(`[Resend] ${context} — INTERNAL_INVALID_SUPABASE_OTP`, {
+      to: params.to,
+      rawOtpLength: String(params.otp ?? '').replace(/\D/g, '').length,
+    });
     throw new Error('INTERNAL_INVALID_SUPABASE_OTP');
   }
 
@@ -122,79 +170,116 @@ async function sendAuthOtpEmail(params: {
     footerNote: params.footerNote,
   });
 
-  const attemptSend = async (from: string) => {
+  const attemptSend = async (from: string, attempt: 'primary' | 'fallback') => {
     try {
-      return await resend.emails.send({
+      const result = await resend.emails.send({
         from,
         to: params.to,
         subject: params.subject,
         html,
       });
+
+      if (result.error) {
+        logResendApiFailure(`sendAuthOtpEmail:${context}`, {
+          to: params.to,
+          from,
+          error: result.error,
+          attempt,
+        });
+      }
+
+      return result;
     } catch (networkError) {
       const detail =
         networkError instanceof Error ? networkError.message : 'خطأ شبكة غير معروف';
+      logResendApiFailure(`sendAuthOtpEmail:${context}`, {
+        to: params.to,
+        from,
+        error: `Network: ${detail}`,
+        attempt,
+      });
       throw new Error(`تعذّر الاتصال بـ Resend API (من ${from}): ${detail}`);
     }
   };
 
-  const primaryResult = await attemptSend(primaryFrom);
+  const primaryResult = await attemptSend(primaryFrom, 'primary');
 
   if (!primaryResult.error) {
+    logResendApiSuccess(`sendAuthOtpEmail:${context}`, {
+      to: params.to,
+      from: primaryFrom,
+      emailId: primaryResult.data?.id,
+      usedFallbackFrom: false,
+    });
     return { id: primaryResult.data?.id, usedFallbackFrom: false };
   }
 
-  const primaryMessage = primaryResult.error.message || 'Resend API فشل في إرسال البريد.';
+  const primaryError = primaryResult.error;
+  const primaryMessage = primaryError.message || 'Resend API فشل في إرسال البريد.';
 
-  const shouldFallback =
-    primaryFrom !== FALLBACK_RESEND_FROM && isDomainVerificationError(primaryMessage);
+  const canFallback =
+    primaryFrom !== FALLBACK_RESEND_FROM && shouldFallbackResendFrom(primaryError);
 
-  if (!shouldFallback) {
+  if (!canFallback) {
+    console.error(`[Resend] ${context} — no fallback (non-domain error)`, {
+      to: params.to,
+      from: primaryFrom,
+      message: primaryMessage,
+      name: primaryError.name,
+      statusCode: primaryError.statusCode,
+    });
     throw new Error(primaryMessage);
   }
 
-  if (process.env.NODE_ENV === 'development') {
-    console.warn(
-      '[Resend] فشل الإرسال من النطاق الرسمي',
-      primaryFrom,
-      '— سبب Resend:',
-      primaryMessage,
-      '— تجربة النطاق الاحتياطي onboarding@resend.dev.'
-    );
-  }
+  console.warn(`[Resend] ${context} — retrying with fallback sender`, {
+    primaryFrom,
+    fallbackFrom: FALLBACK_RESEND_FROM,
+    primaryError: primaryMessage,
+    note: 'onboarding@resend.dev may only deliver to your Resend account email until malaktout.com is verified.',
+  });
 
-  const fallbackResult = await attemptSend(FALLBACK_RESEND_FROM);
+  const fallbackResult = await attemptSend(FALLBACK_RESEND_FROM, 'fallback');
 
   if (fallbackResult.error) {
+    const fallbackMessage = fallbackResult.error.message || primaryMessage;
+    console.error(`[Resend] ${context} — fallback also failed`, {
+      to: params.to,
+      fallbackFrom: FALLBACK_RESEND_FROM,
+      primaryError: primaryMessage,
+      fallbackError: fallbackMessage,
+    });
     throw new Error(
-      `تعذّر إرسال بريد التحقق. النطاق الرسمي (${primaryFrom}) غير موثّق بعد في Resend: "${primaryMessage}". ` +
-        'راجع Resend Dashboard → Domains → أضف malaktout.com وتحقق من سجلات DNS (SPF/DKIM)، ثم أعد المحاولة.'
+      `تعذّر إرسال بريد التحقق. النطاق الرسمي (${primaryFrom}) فشل: "${primaryMessage}". ` +
+        `الاحتياطي (${FALLBACK_RESEND_FROM}) فشل أيضاً: "${fallbackMessage}". ` +
+        'راجع Resend Dashboard → Domains → malaktout.com وRESEND_API_KEY في Vercel.'
     );
   }
+
+  logResendApiSuccess(`sendAuthOtpEmail:${context}`, {
+    to: params.to,
+    from: FALLBACK_RESEND_FROM,
+    emailId: fallbackResult.data?.id,
+    usedFallbackFrom: true,
+  });
 
   return { id: fallbackResult.data?.id, usedFallbackFrom: true };
 }
 
-/**
- * إرسال بريد تفعيل الحساب عبر Resend API (بدون SMTP Supabase).
- *
- * - لا يرمي استثناءً غير مُتوقَّع أبداً: أي فشل شبكة أو استجابة خطأ من Resend
- *   يُحوَّل إلى `Error` برسالة عربية واضحة يلتقطها الاستدعاء الأعلى.
- * - إن فشل الإرسال من النطاق الرسمي `malaktout.com` تحديداً بسبب عدم توثيق
- *   النطاق في Resend، يُعاد المحاولة تلقائياً عبر نطاق Resend التجريبي
- *   حتى لا يتعطل تسجيل المستخدمين بالكامل.
- */
 export async function sendSignupVerificationEmail(
   params: SendSignupVerificationParams
 ): Promise<{ id: string | undefined; usedFallbackFrom: boolean }> {
-  return sendAuthOtpEmail({
-    to: params.to,
-    otp: params.otp,
-    subject: `رمز تفعيل حسابك — ${APP_NAME}`,
-    heading: 'رمز تفعيل حسابك',
-    body: `مرحباً بك! استخدم الرمز التالي المكوّن من ${OTP_LENGTH_AR} لإتمام تفعيل حسابك. الرمز صالح لفترة محدودة فقط.`,
-    footerNote:
-      'لم تطلب إنشاء هذا الحساب؟ تجاهل هذه الرسالة بأمان — لن يُفعَّل أي شيء بدون إدخال هذا الرمز.',
-  });
+  return sendAuthOtpEmail(
+    {
+      to: params.to,
+      otp: params.otp,
+      subject: `رمز تفعيل حسابك — ${APP_NAME}`,
+      heading: 'رمز تفعيل حسابك',
+      body: `مرحباً بك! استخدم الرمز التالي المكوّن من ${OTP_LENGTH_AR} لإتمام تفعيل حسابك. الرمز صالح لفترة محدودة فقط.`,
+      footerNote:
+        'لم تطلب إنشاء هذا الحساب؟ تجاهل هذه الرسالة بأمان — لن يُفعَّل أي شيء بدون إدخال هذا الرمز.',
+    },
+    'signup'
+  );
 }
 
 export type SendLoginOtpParams = {
@@ -202,17 +287,19 @@ export type SendLoginOtpParams = {
   otp: string;
 };
 
-/** إرسال رمز تسجيل الدخول (OTP) عبر Resend — بديل لـ Supabase SMTP. */
 export async function sendLoginOtpEmail(
   params: SendLoginOtpParams
 ): Promise<{ id: string | undefined; usedFallbackFrom: boolean }> {
-  return sendAuthOtpEmail({
-    to: params.to,
-    otp: params.otp,
-    subject: `رمز تسجيل الدخول — ${APP_NAME}`,
-    heading: 'رمز تسجيل الدخول',
-    body: `استخدم الرمز التالي المكوّن من ${OTP_LENGTH_AR} لتسجيل الدخول إلى حسابك. الرمز صالح لفترة محدودة فقط.`,
-    footerNote:
-      'لم تطلب تسجيل الدخول؟ تجاهل هذه الرسالة بأمان — لن يُمنح أي وصول بدون إدخال هذا الرمز.',
-  });
+  return sendAuthOtpEmail(
+    {
+      to: params.to,
+      otp: params.otp,
+      subject: `رمز تسجيل الدخول — ${APP_NAME}`,
+      heading: 'رمز تسجيل الدخول',
+      body: `استخدم الرمز التالي المكوّن من ${OTP_LENGTH_AR} لتسجيل الدخول إلى حسابك. الرمز صالح لفترة محدودة فقط.`,
+      footerNote:
+        'لم تطلب تسجيل الدخول؟ تجاهل هذه الرسالة بأمان — لن يُمنح أي وصول بدون إدخال هذا الرمز.',
+    },
+    'login'
+  );
 }

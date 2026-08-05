@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { sendLoginOtpViaResend } from '@/lib/auth-login-otp-server';
+import { logResendEnvDiagnostics } from '@/lib/resend-diagnostics';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -30,6 +31,7 @@ export async function POST(request: Request) {
   }
 
   try {
+    logResendEnvDiagnostics('api/auth/send-login-otp');
     const started = Date.now();
     const result = await sendLoginOtpViaResend({ email, emailRedirectTo });
     console.info('[api/auth/send-login-otp]', {
@@ -39,6 +41,11 @@ export async function POST(request: Request) {
     });
 
     if (!result.ok) {
+      console.error('[api/auth/send-login-otp] failed', {
+        code: result.code,
+        message: result.message,
+        email,
+      });
       return NextResponse.json(
         { ok: false, code: result.code, message: result.message },
         { status: result.status }

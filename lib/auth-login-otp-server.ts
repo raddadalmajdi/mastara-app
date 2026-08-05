@@ -113,6 +113,12 @@ async function buildLoginMagicLinkOtp(
   const otp = extractSupabaseEmailOtp(data.properties?.email_otp);
 
   if (!userId || !otp) {
+    console.error('[auth-login-otp-server] generateLink missing OTP', {
+      email,
+      hasUserId: Boolean(userId),
+      rawOtp: data.properties?.email_otp,
+      rawOtpLength: String(data.properties?.email_otp ?? '').replace(/\D/g, '').length,
+    });
     logAuthFlowStep('server', 'generateLink:magiclink:missing-otp', {
       hasUserId: Boolean(userId),
       rawOtp: typeof data.properties?.email_otp,
@@ -192,7 +198,11 @@ async function sendLoginOtpViaResendInner(params: {
     }
     const message =
       sendError instanceof Error ? sendError.message : 'فشل إرسال رمز الدخول عبر Resend.';
-    console.error('[auth-login-otp-server] resend_send_failed:', message);
+    console.error('[auth-login-otp-server] resend_send_failed', {
+      email,
+      message,
+      otpLength: link.otp.length,
+    });
     if (message === 'INTERNAL_INVALID_SUPABASE_OTP') {
       return missingOtpFailure();
     }
