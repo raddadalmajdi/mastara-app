@@ -1726,10 +1726,7 @@ export default function Home() {
             onAvatarFilePick={(file) => void handleAvatarFilePick(file)}
             onSaveAvatar={() => void handleSaveAvatar()}
             onDiscardPendingAvatar={handleDiscardPendingAvatar}
-            onOpenBilling={() => {
-              setShowMenu(false);
-              window.location.href = '/billing';
-            }}
+            onOpenBilling={() => setShowMenu(false)}
             onOpenSettings={() => {
               setShowMenu(false);
               setShowTailorProfileModal(true);

@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useRef } from 'react';
 import { UserProfileAvatar } from '@/components/account/UserProfileAvatar';
 
@@ -23,9 +24,30 @@ type AccountMenuPanelProps = {
   onSaveAvatar: () => void;
   onDiscardPendingAvatar: () => void;
   onOpenSettings: () => void;
+  /** يُستدعى قبل الانتقال إلى /billing (مثلاً لإغلاق القائمة). */
   onOpenBilling: () => void;
   onLogout: () => void;
 };
+
+function BillingMenuIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <rect x="2" y="5" width="20" height="14" rx="2" />
+      <path d="M2 10h20" />
+      <path d="M6 15h2" />
+      <path d="M10 15h4" />
+    </svg>
+  );
+}
 
 export function AccountMenuPanel({
   open,
@@ -158,13 +180,14 @@ export function AccountMenuPanel({
         </div>
       </div>
 
-      <button
-        type="button"
+      <Link
+        href="/billing"
         onClick={onOpenBilling}
-        className="w-full rounded-xl border border-primary/25 bg-primary/8 py-3 text-sm font-black text-primary-dark"
+        className="flex w-full items-center justify-center gap-2.5 rounded-xl border border-primary/25 bg-primary/8 py-3 text-sm font-black text-primary-dark transition-colors hover:bg-primary/12 active:scale-[0.99]"
       >
-        الاشتراك والفوترة
-      </button>
+        <BillingMenuIcon className="h-4 w-4 shrink-0 opacity-90" />
+        <span>الاشتراك والفوترة</span>
+      </Link>
 
       <button
         type="button"
