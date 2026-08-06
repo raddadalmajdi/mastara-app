@@ -5,7 +5,14 @@ export {
   getSupabaseBrowserClient,
   getAuthCallbackUrl,
   isSupabaseConfigured,
+  getSupabaseConfigDiagnostic,
   assertValidEmailRedirectTo,
 } from '@/lib/supabase-browser';
 
-export { getSupabasePublicConfig, logSupabasePublicConfigDiagnostics } from '@/lib/supabase/env';
+export {
+  getSupabasePublicConfig,
+  logSupabasePublicConfigDiagnostics,
+  diagnoseSupabasePublicConfig,
+  getAppPublicUrl,
+  formatSupabaseConfigIssues,
+} from '@/lib/supabase/env';

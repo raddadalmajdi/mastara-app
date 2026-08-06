@@ -12,6 +12,10 @@ import {
 import type { SupabaseClient, User } from '@supabase/supabase-js';
 import type { OrganizationContext } from '@/lib/organization';
 import { fetchOrganizationContextForUser } from '@/lib/organization-server';
+import {
+  diagnoseSupabasePublicConfig,
+  formatSupabaseConfigIssues,
+} from '@/lib/supabase/env';
 import { getSupabaseBrowserClient, isSupabaseConfigured } from '@/lib/supabase-browser';
 
 type OrganizationProviderState = {
@@ -50,6 +54,9 @@ async function ensureOrganizationViaApi(
   });
 
   if (!response.ok) {
+    console.warn('[OrganizationProvider] ensure-organization API failed', {
+      status: response.status,
+    });
     return null;
   }
 
@@ -115,9 +122,7 @@ export function OrganizationProvider({ children }: { children: ReactNode }) {
       const ctx = await loadOrganizationForUser(supabase, user);
       applyContext(ctx);
     } catch (error) {
-      if (process.env.NODE_ENV === 'development') {
-        console.warn('[OrganizationProvider] refresh failed', error);
-      }
+      console.warn('[OrganizationProvider] refresh failed', error);
       applyContext(null);
     } finally {
       setLoading(false);
@@ -125,6 +130,16 @@ export function OrganizationProvider({ children }: { children: ReactNode }) {
   }, [applyContext, supabase]);
 
   useEffect(() => {
+    if (!isSupabaseConfigured()) {
+      const diagnostic = diagnoseSupabasePublicConfig();
+      console.error(
+        '[OrganizationProvider] Supabase not configured:',
+        formatSupabaseConfigIssues(diagnostic.issues)
+      );
+      setLoading(false);
+      return;
+    }
+
     if (!supabase) {
       setLoading(false);
       return;

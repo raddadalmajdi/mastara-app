@@ -2,9 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { AppBrand } from '@/components/brand/AppBrand';
 import { useOrganization } from '@/components/organization/OrganizationProvider';
+import { resolveClientSession } from '@/lib/auth-session-client';
 import {
   fetchBillingPlans,
   fetchOrganizationSubscription,
@@ -16,7 +16,19 @@ import {
   type SubscriptionPlan,
   type SubscriptionSummary,
 } from '@/lib/subscription';
-import { getSupabaseBrowserClient, isSupabaseConfigured } from '@/lib/supabase-browser';
+import {
+  getSupabaseBrowserClient,
+  getSupabaseConfigDiagnostic,
+  isSupabaseConfigured,
+} from '@/lib/supabase-browser';
+
+type BillingPageStatus =
+  | 'loading'
+  | 'ready'
+  | 'config_missing'
+  | 'auth_required'
+  | 'org_missing'
+  | 'fetch_error';
 
 function statusBadgeClass(status: SubscriptionSummary['subscription']['status']): string {
   switch (status) {
@@ -33,15 +45,42 @@ function statusBadgeClass(status: SubscriptionSummary['subscription']['status'])
   }
 }
 
+function BillingStatusPanel({
+  title,
+  message,
+  actionHref,
+  actionLabel,
+}: {
+  title: string;
+  message: string;
+  actionHref?: string;
+  actionLabel?: string;
+}) {
+  return (
+    <div className="glass-panel rounded-2xl border border-mistara-gold/25 p-8 text-center space-y-3">
+      <p className="text-base font-black text-mistara-espresso">{title}</p>
+      <p className="text-sm text-mistara-brown/80 leading-relaxed">{message}</p>
+      {actionHref && actionLabel && (
+        <Link
+          href={actionHref}
+          className="inline-block rounded-xl bg-primary px-6 py-3 text-sm font-black text-white"
+        >
+          {actionLabel}
+        </Link>
+      )}
+    </div>
+  );
+}
+
 export default function BillingPage() {
-  const router = useRouter();
   const supabase = useMemo(() => (isSupabaseConfigured() ? getSupabaseBrowserClient() : null), []);
   const { organizationId, organization, role, loading: orgLoading } = useOrganization();
 
+  const [pageStatus, setPageStatus] = useState<BillingPageStatus>('loading');
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
   const [summary, setSummary] = useState<SubscriptionSummary | null>(null);
-  const [loading, setLoading] = useState(true);
   const [checkoutPlanId, setCheckoutPlanId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(
     null
@@ -50,39 +89,76 @@ export default function BillingPage() {
   const loadBilling = useCallback(async () => {
     if (!supabase || !organizationId) return;
 
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-
-    if (!session?.access_token) {
-      router.replace('/');
+    const sessionResult = await resolveClientSession(supabase);
+    if (!sessionResult.ok) {
+      if (sessionResult.reason === 'not_configured') {
+        setPageStatus('config_missing');
+        setStatusMessage(sessionResult.message);
+        return;
+      }
+      if (sessionResult.reason === 'no_session') {
+        setPageStatus('auth_required');
+        setStatusMessage(sessionResult.message);
+        return;
+      }
+      setPageStatus('fetch_error');
+      setStatusMessage(sessionResult.message);
       return;
     }
 
-    setAccessToken(session.access_token);
+    setAccessToken(sessionResult.accessToken);
 
-    const [planList, subSummary] = await Promise.all([
-      fetchBillingPlans(),
-      fetchOrganizationSubscription(session.access_token, organizationId),
-    ]);
+    try {
+      const [planList, subSummary] = await Promise.all([
+        fetchBillingPlans(),
+        fetchOrganizationSubscription(sessionResult.accessToken, organizationId),
+      ]);
 
-    setPlans(planList);
-    setSummary(subSummary);
-    setLoading(false);
-  }, [organizationId, router, supabase]);
+      setPlans(planList);
+      setSummary(subSummary);
+      setPageStatus('ready');
+      setStatusMessage(null);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'تعذّر تحميل بيانات الاشتراك.';
+      console.warn('[billing] load failed:', message);
+      setPageStatus('fetch_error');
+      setStatusMessage(message);
+    }
+  }, [organizationId, supabase]);
 
   useEffect(() => {
     if (!isSupabaseConfigured()) {
-      router.replace('/');
+      const diagnostic = getSupabaseConfigDiagnostic();
+      setPageStatus('config_missing');
+      setStatusMessage(
+        diagnostic.issues.length > 0
+          ? `إعداد Supabase غير مكتمل: ${diagnostic.issues.join(', ')}`
+          : 'إعداد Supabase غير متاح.'
+      );
       return;
     }
-    if (orgLoading) return;
+
+    if (orgLoading) {
+      setPageStatus('loading');
+      return;
+    }
+
     if (!organizationId) {
-      setLoading(false);
+      void (async () => {
+        const sessionResult = await resolveClientSession(supabase);
+        if (!sessionResult.ok && sessionResult.reason === 'no_session') {
+          setPageStatus('auth_required');
+          setStatusMessage(sessionResult.message);
+          return;
+        }
+        setPageStatus('org_missing');
+        setStatusMessage('لم يُعثر على منظمة مرتبطة بحسابك.');
+      })();
       return;
     }
+
     void loadBilling();
-  }, [loadBilling, orgLoading, organizationId, router]);
+  }, [loadBilling, orgLoading, organizationId, supabase]);
 
   const handleUpgrade = async (planId: string) => {
     if (!accessToken || !organizationId) return;
@@ -107,6 +183,7 @@ export default function BillingPage() {
 
   const currentPlanId = summary?.plan.id;
   const paidPlans = plans.filter((p) => p.billing_interval !== 'free' && p.price_amount > 0);
+  const isLoading = pageStatus === 'loading' || orgLoading;
 
   return (
     <div className="min-h-screen bg-mistara-sand text-mistara-espresso" dir="rtl">
@@ -145,14 +222,44 @@ export default function BillingPage() {
           </p>
         )}
 
-        {loading || orgLoading ? (
+        {isLoading ? (
           <div className="glass-panel rounded-2xl p-8 text-center text-sm text-mistara-brown/70">
             جاري تحميل بيانات الاشتراك...
           </div>
-        ) : !organizationId ? (
-          <div className="glass-panel rounded-2xl p-8 text-center text-sm text-mistara-brown/80">
-            لم يُعثر على منظمة مرتبطة بحسابك. سجّل الدخول مجدداً أو تواصل مع الدعم.
-          </div>
+        ) : pageStatus === 'config_missing' ? (
+          <BillingStatusPanel
+            title="إعداد النظام غير مكتمل"
+            message={
+              statusMessage ??
+              'متغيرات Supabase غير مضبوطة على الخادم. تحقق من NEXT_PUBLIC_SUPABASE_URL و NEXT_PUBLIC_SUPABASE_ANON_KEY.'
+            }
+            actionHref="/"
+            actionLabel="العودة للرئيسية"
+          />
+        ) : pageStatus === 'auth_required' ? (
+          <BillingStatusPanel
+            title="يلزم تسجيل الدخول"
+            message={statusMessage ?? 'سجّل الدخول للوصول إلى صفحة الاشتراك والفوترة.'}
+            actionHref="/"
+            actionLabel="تسجيل الدخول"
+          />
+        ) : pageStatus === 'org_missing' ? (
+          <BillingStatusPanel
+            title="لم تُربط منظمة"
+            message={
+              statusMessage ??
+              'لم يُعثر على محل مرتبط بحسابك. جرّب تسجيل الدخول مجدداً أو تواصل مع الدعم.'
+            }
+            actionHref="/"
+            actionLabel="العودة للرئيسية"
+          />
+        ) : pageStatus === 'fetch_error' ? (
+          <BillingStatusPanel
+            title="تعذّر تحميل البيانات"
+            message={statusMessage ?? 'حدث خطأ أثناء جلب بيانات الاشتراك. جرّب تحديث الصفحة.'}
+            actionHref="/billing"
+            actionLabel="إعادة المحاولة"
+          />
         ) : (
           <>
             {summary && (

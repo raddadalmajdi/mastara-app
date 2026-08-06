@@ -1,5 +1,8 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import {
+  diagnoseSupabasePublicConfig,
+  formatSupabaseConfigIssues,
+  getAppPublicUrl,
   getSupabasePublicConfig,
   logSupabasePublicConfigDiagnostics,
 } from '@/lib/supabase/env';
@@ -7,8 +10,14 @@ import {
 let browserClient: SupabaseClient | null = null;
 
 export function isSupabaseConfigured(): boolean {
-  return getSupabasePublicConfig() !== null;
+  return diagnoseSupabasePublicConfig().ok;
 }
+
+export function getSupabaseConfigDiagnostic() {
+  return diagnoseSupabasePublicConfig();
+}
+
+export { formatSupabaseConfigIssues, getAppPublicUrl };
 
 /** يتحقق من صيغة رابط التفعيل (مطلوب لـ emailRedirectTo). */
 export function assertValidEmailRedirectTo(raw: string): string {
@@ -36,16 +45,13 @@ export function assertValidEmailRedirectTo(raw: string): string {
   return url.toString();
 }
 
-/** Redirect URL for email links (dev + production via NEXT_PUBLIC_SITE_URL). */
+/** Redirect URL for email links (dev + production via NEXT_PUBLIC_SITE_URL / APP_URL). */
 export function getAuthCallbackUrl(): string {
   if (typeof window !== 'undefined') {
     return assertValidEmailRedirectTo(`${window.location.origin}/auth/callback`);
   }
-  const site = process.env.NEXT_PUBLIC_SITE_URL?.trim().replace(/\/$/, '');
-  if (site) {
-    return assertValidEmailRedirectTo(`${site}/auth/callback`);
-  }
-  return assertValidEmailRedirectTo('http://localhost:3000/auth/callback');
+  const site = getAppPublicUrl();
+  return assertValidEmailRedirectTo(`${site}/auth/callback`);
 }
 
 export function getSupabaseBrowserClient(): SupabaseClient | null {

@@ -1,5 +1,5 @@
 import { createHmac, timingSafeEqual } from 'crypto';
-import { APP_SITE_URL } from '@/lib/brand';
+import { getAppPublicUrl } from '@/lib/supabase/env';
 
 export type TapChargeStatus =
   | 'INITIATED'
@@ -53,7 +53,7 @@ export function isTapConfigured(): boolean {
 }
 
 export function getBillingSiteUrl(): string {
-  return process.env.NEXT_PUBLIC_APP_URL?.trim() || APP_SITE_URL;
+  return getAppPublicUrl();
 }
 
 /** SAR/KWD etc. — Tap expects standard decimal places per currency. */

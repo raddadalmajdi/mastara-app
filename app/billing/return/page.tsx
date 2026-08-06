@@ -2,52 +2,89 @@
 
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { AppBrand } from '@/components/brand/AppBrand';
 import { useOrganization } from '@/components/organization/OrganizationProvider';
+import { resolveClientSession } from '@/lib/auth-session-client';
 import { confirmBillingReturn } from '@/lib/billing-api';
-import { getSupabaseBrowserClient, isSupabaseConfigured } from '@/lib/supabase-browser';
+import {
+  getSupabaseBrowserClient,
+  getSupabaseConfigDiagnostic,
+  isSupabaseConfigured,
+} from '@/lib/supabase-browser';
 
 function BillingReturnInner() {
-  const router = useRouter();
   const params = useSearchParams();
   const supabase = useMemo(() => (isSupabaseConfigured() ? getSupabaseBrowserClient() : null), []);
-  const { organizationId } = useOrganization();
+  const { organizationId, loading: orgLoading } = useOrganization();
 
   const [message, setMessage] = useState('جاري تأكيد عملية الدفع...');
   const [success, setSuccess] = useState<boolean | null>(null);
+  const [done, setDone] = useState(false);
 
   useEffect(() => {
-    if (!supabase || !organizationId) return;
+    if (orgLoading) return;
+
+    if (!isSupabaseConfigured()) {
+      const diagnostic = getSupabaseConfigDiagnostic();
+      setSuccess(false);
+      setDone(true);
+      setMessage(
+        diagnostic.issues.length > 0
+          ? `إعداد Supabase غير مكتمل (${diagnostic.issues.join(', ')}).`
+          : 'إعداد Supabase غير متاح — تعذّر تأكيد الدفع.'
+      );
+      return;
+    }
+
+    if (!supabase) {
+      setSuccess(false);
+      setDone(true);
+      setMessage('تعذّر تهيئة عميل المصادقة.');
+      return;
+    }
 
     const chargeId =
-      params.get('tap_id') ??
-      params.get('charge_id') ??
-      params.get('id') ??
-      '';
+      params.get('tap_id') ?? params.get('charge_id') ?? params.get('id') ?? '';
 
     if (!chargeId) {
       setSuccess(false);
+      setDone(true);
       setMessage('لم يُرسل معرف العملية. راجع صفحة الاشتراك.');
       return;
     }
 
-    void (async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+    if (!organizationId) {
+      void (async () => {
+        const sessionResult = await resolveClientSession(supabase);
+        setSuccess(false);
+        setDone(true);
+        setMessage(
+          !sessionResult.ok && sessionResult.reason === 'no_session'
+            ? 'يلزم تسجيل الدخول لتأكيد الدفع.'
+            : 'لم يُعثر على منظمة مرتبطة بحسابك.'
+        );
+      })();
+      return;
+    }
 
-      if (!session?.access_token) {
-        router.replace('/');
+    void (async () => {
+      const sessionResult = await resolveClientSession(supabase);
+
+      if (!sessionResult.ok) {
+        setSuccess(false);
+        setDone(true);
+        setMessage(sessionResult.message);
         return;
       }
 
       try {
         const result = await confirmBillingReturn(
-          session.access_token,
+          sessionResult.accessToken,
           organizationId,
           chargeId
         );
+        setDone(true);
         if (result.ok) {
           setSuccess(true);
           setMessage('تم تفعيل اشتراكك بنجاح! شكراً لك.');
@@ -61,10 +98,13 @@ function BillingReturnInner() {
         }
       } catch (error) {
         setSuccess(false);
-        setMessage(error instanceof Error ? error.message : 'تعذّر تأكيد الدفع.');
+        setDone(true);
+        const errMsg = error instanceof Error ? error.message : 'تعذّر تأكيد الدفع.';
+        console.warn('[billing/return] confirm failed:', errMsg);
+        setMessage(errMsg);
       }
     })();
-  }, [organizationId, params, router, supabase]);
+  }, [organizationId, orgLoading, params, supabase]);
 
   return (
     <div className="min-h-screen bg-mistara-sand flex flex-col items-center justify-center px-4" dir="rtl">
@@ -88,6 +128,11 @@ function BillingReturnInner() {
           )}
         </div>
         <p className="text-sm font-bold leading-relaxed">{message}</p>
+        {done && !success && (
+          <Link href="/" className="inline-block text-xs font-bold text-primary underline">
+            تسجيل الدخول
+          </Link>
+        )}
         <Link
           href="/billing"
           className="inline-block rounded-xl bg-primary px-6 py-3 text-sm font-black text-white"
