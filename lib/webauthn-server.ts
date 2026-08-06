@@ -9,6 +9,10 @@ import {
 } from '@simplewebauthn/server';
 import { createSupabaseAdminClient } from '@/lib/delete-auth-user-admin';
 import { findAuthUserByEmail } from '@/lib/check-email-registered';
+import {
+  consumeWebAuthnChallenge,
+  replaceWebAuthnChallenge,
+} from '@/lib/webauthn-challenges-db';
 import { getWebAuthnRpConfig } from '@/lib/webauthn-config';
 
 export type StoredPasskey = {
@@ -31,57 +35,21 @@ async function storeChallenge(params: {
   email: string | null;
   purpose: 'register' | 'login';
 }): Promise<void> {
-  const admin = createSupabaseAdminClient();
-
-  if (params.email) {
-    await admin
-      .from('webauthn_challenges')
-      .delete()
-      .eq('email', params.email)
-      .eq('purpose', params.purpose);
-  }
-
-  const { error } = await admin.from('webauthn_challenges').insert({
+  await replaceWebAuthnChallenge({
     challenge: params.challenge,
     user_id: params.userId,
     email: params.email,
     purpose: params.purpose,
   });
-
-  if (error) {
-    throw new Error(error.message);
-  }
 }
 
-type PendingChallengeRow = {
-  id: string;
-  user_id: string | null;
-  email: string | null;
-};
-
-/** يتحقق من التحدي ويستهلكه — بدون الاعتماد على expires_at (schema cache). */
 async function consumePendingChallenge(params: {
   challenge: string;
   purpose: 'register' | 'login';
   userId: string;
   email: string;
 }): Promise<boolean> {
-  const admin = createSupabaseAdminClient();
-  const { data, error } = await admin
-    .from('webauthn_challenges')
-    .select('id, user_id, email')
-    .eq('challenge', params.challenge)
-    .eq('purpose', params.purpose)
-    .maybeSingle();
-
-  if (error || !data) return false;
-
-  const row = data as PendingChallengeRow;
-  if (row.user_id !== params.userId) return false;
-  if (row.email !== params.email) return false;
-
-  await admin.from('webauthn_challenges').delete().eq('id', row.id);
-  return true;
+  return consumeWebAuthnChallenge(params);
 }
 
 async function listPasskeysForUser(userId: string): Promise<StoredPasskey[]> {

@@ -33,5 +33,3 @@ export function getWebAuthnRpConfig(request: Request): { rpName: string; rpID: s
     origin,
   };
 }
-
-export const WEBAUTHN_CHALLENGE_TTL_MS = 5 * 60 * 1000;
