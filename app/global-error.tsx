@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react';
 import { AuthBootScreen } from '@/components/auth/AuthBootScreen';
+import { sanitizeUserFacingMessage } from '@/lib/user-facing-error';
 
 export default function GlobalError({
   error,
@@ -26,8 +27,8 @@ export default function GlobalError({
           >
             إعادة المحاولة
           </button>
-          <p className="text-[10px] text-mistara-brown/60 max-w-sm text-center font-mono" dir="ltr">
-            {error.message}
+          <p className="text-[10px] text-mistara-brown/60 max-w-sm text-center" dir="rtl">
+            {sanitizeUserFacingMessage(error.message, 'حدث خطأ أثناء تحميل التطبيق.')}
           </p>
         </div>
       </body>

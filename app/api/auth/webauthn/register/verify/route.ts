@@ -3,6 +3,7 @@ import { getUserFromBearerToken } from '@/lib/billing-auth-server';
 import { findAuthUserByEmail } from '@/lib/check-email-registered';
 import { verifyRegistration } from '@/lib/webauthn-server';
 import type { RegistrationResponseJSON } from '@simplewebauthn/server';
+import { webAuthnErrorResponse } from '@/lib/webauthn-api-errors';
 
 export const runtime = 'nodejs';
 
@@ -43,8 +44,6 @@ export async function POST(request: Request) {
     await verifyRegistration({ request, userId, email, response });
     return NextResponse.json({ ok: true });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'فشل تسجيل Passkey.';
-    console.error('[webauthn/register/verify]', message);
-    return NextResponse.json({ ok: false, message }, { status: 400 });
+    return webAuthnErrorResponse(error, 'فشل تسجيل Passkey.');
   }
 }

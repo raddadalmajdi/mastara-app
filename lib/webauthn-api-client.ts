@@ -4,6 +4,7 @@ import type {
   PublicKeyCredentialRequestOptionsJSON,
   RegistrationResponseJSON,
 } from '@simplewebauthn/browser';
+import { sanitizeUserFacingMessage } from '@/lib/user-facing-error';
 
 async function parseJson<T>(res: Response): Promise<T & { ok?: boolean; message?: string }> {
   return (await res.json()) as T & { ok?: boolean; message?: string };
@@ -31,7 +32,9 @@ export async function fetchPasskeyRegisterOptions(params: {
 
   const json = await parseJson<{ options?: PublicKeyCredentialCreationOptionsJSON }>(res);
   if (!res.ok || !json.options) {
-    throw new Error(json.message ?? 'تعذّر بدء تسجيل Passkey.');
+    throw new Error(
+      sanitizeUserFacingMessage(json.message, 'تعذّر بدء تسجيل Passkey.')
+    );
   }
   return json.options;
 }
@@ -58,7 +61,9 @@ export async function submitPasskeyRegistration(params: {
 
   const json = await parseJson<{ ok?: boolean }>(res);
   if (!res.ok || !json.ok) {
-    throw new Error(json.message ?? 'تعذّر إتمام تسجيل Passkey.');
+    throw new Error(
+      sanitizeUserFacingMessage(json.message, 'تعذّر إتمام تسجيل Passkey.')
+    );
   }
 }
 
@@ -74,7 +79,9 @@ export async function fetchPasskeyLoginOptions(
 
   const json = await parseJson<{ options?: PublicKeyCredentialRequestOptionsJSON }>(res);
   if (!res.ok || !json.options) {
-    throw new Error(json.message ?? 'تعذّر بدء الدخول بـ Passkey.');
+    throw new Error(
+      sanitizeUserFacingMessage(json.message, 'تعذّر بدء الدخول بـ Passkey.')
+    );
   }
   return json.options;
 }
@@ -103,7 +110,9 @@ export async function submitPasskeyLogin(params: {
   }>(res);
 
   if (!res.ok || !json.ok || !json.session) {
-    throw new Error(json.message ?? 'تعذّر إتمام الدخول بـ Passkey.');
+    throw new Error(
+      sanitizeUserFacingMessage(json.message, 'تعذّر إتمام الدخول بـ Passkey.')
+    );
   }
 
   return {

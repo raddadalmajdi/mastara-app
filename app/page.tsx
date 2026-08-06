@@ -7,6 +7,7 @@ import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import type { EmailOtpType } from '@supabase/supabase-js';
 import { mapAuthErrorToArabic } from '@/lib/auth-errors';
+import { getUserFacingErrorMessage } from '@/lib/user-facing-error';
 import { trySendLoginOtpViaResendApi } from '@/lib/auth-login-otp-api';
 import {
   resolveSignUpFlow,
@@ -496,7 +497,7 @@ export default function Home() {
     } catch (saveError) {
       setSettingsFeedback({
         type: 'error',
-        message: saveError instanceof Error ? saveError.message : 'فشل الحفظ.',
+        message: getUserFacingErrorMessage(saveError, 'فشل الحفظ.'),
       });
     }
     setSavingSettings(false);
@@ -554,7 +555,7 @@ export default function Home() {
     } catch (saveError) {
       setAvatarFeedback({
         type: 'error',
-        message: saveError instanceof Error ? saveError.message : 'تعذّر حفظ صورة الحساب.',
+        message: getUserFacingErrorMessage(saveError, 'تعذّر حفظ صورة الحساب.'),
       });
     } finally {
       setSavingAvatar(false);

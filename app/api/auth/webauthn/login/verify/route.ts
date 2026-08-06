@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import type { AuthenticationResponseJSON } from '@simplewebauthn/server';
 import { verifyAuthentication } from '@/lib/webauthn-server';
 import { createSupabaseSessionForUserId } from '@/lib/webauthn-session-server';
+import { webAuthnErrorResponse } from '@/lib/webauthn-api-errors';
 
 export const runtime = 'nodejs';
 
@@ -37,8 +38,6 @@ export async function POST(request: Request) {
       organizationId: sessionBundle.organizationId,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'فشل الدخول بـ Passkey.';
-    console.error('[webauthn/login/verify]', message);
-    return NextResponse.json({ ok: false, message }, { status: 400 });
+    return webAuthnErrorResponse(error, 'فشل الدخول بـ Passkey.');
   }
 }

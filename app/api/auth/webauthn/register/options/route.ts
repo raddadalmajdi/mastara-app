@@ -5,6 +5,7 @@ import {
   verifyRegistration,
 } from '@/lib/webauthn-server';
 import { verifyUserPasswordCredentials } from '@/lib/webauthn-session-server';
+import { webAuthnErrorResponse } from '@/lib/webauthn-api-errors';
 
 export const runtime = 'nodejs';
 
@@ -55,8 +56,6 @@ export async function POST(request: Request) {
     });
     return NextResponse.json({ ok: true, options });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'خطأ داخلي.';
-    console.error('[webauthn/register/options]', message);
-    return NextResponse.json({ ok: false, message }, { status: 500 });
+    return webAuthnErrorResponse(error, 'تعذّر بدء تسجيل Passkey.', 500);
   }
 }

@@ -11,6 +11,7 @@ import {
 } from '@/lib/webauthn-api-client';
 import { detectBiometricHint, isWebAuthnSupported } from '@/lib/webauthn-device-hint';
 import { getSupabaseBrowserClient } from '@/lib/supabase-browser';
+import { getUserFacingErrorMessage } from '@/lib/user-facing-error';
 
 type PasskeyAuthPanelProps = {
   email: string;
@@ -115,8 +116,10 @@ export function PasskeyAuthPanel({
       onFeedback({ type: 'success', message: `تم الدخول بنجاح عبر ${hint.shortLabel}.` });
       onLoginSuccess();
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : `تعذّر الدخول عبر ${hint.shortLabel}.`;
+      const message = getUserFacingErrorMessage(
+        error,
+        `تعذّر الدخول عبر ${hint.shortLabel}.`
+      );
       onFeedback({ type: 'error', message });
     } finally {
       setBusy(null);
@@ -145,8 +148,10 @@ export function PasskeyAuthPanel({
         message: `تم تسجيل ${hint.shortLabel} بنجاح — يمكنك الدخول به لاحقاً.`,
       });
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : `تعذّر تسجيل ${hint.shortLabel}.`;
+      const message = getUserFacingErrorMessage(
+        error,
+        `تعذّر تسجيل ${hint.shortLabel}.`
+      );
       onFeedback({ type: 'error', message });
     } finally {
       setBusy(null);
@@ -227,7 +232,7 @@ export function PasskeyRegisterLoggedInButton({
     } catch (error) {
       onFeedback({
         type: 'error',
-        message: error instanceof Error ? error.message : 'تعذّر تسجيل Passkey.',
+        message: getUserFacingErrorMessage(error, 'تعذّر تسجيل Passkey.'),
       });
     } finally {
       setBusy(false);

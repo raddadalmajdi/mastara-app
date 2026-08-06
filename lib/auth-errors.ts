@@ -98,6 +98,15 @@ export function sanitizeAuthUserMessage(message: string): string {
   const trimmed = message.trim();
 
   if (
+    lower.includes('schema cache') ||
+    lower.includes('pgrst204') ||
+    /could not find the '[^']+' column/.test(lower) ||
+    lower.includes('expires_at')
+  ) {
+    return 'تعذّر إتمام العملية مؤقتاً. حدّث الصفحة وحاول مجدداً، أو تواصل مع الدعم إن استمرّ الخطأ.';
+  }
+
+  if (
     message.includes('[DEV]') ||
     lower.includes('service_role') ||
     lower.includes('admin api') ||

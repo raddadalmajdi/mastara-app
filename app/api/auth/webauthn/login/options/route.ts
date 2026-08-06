@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { buildAuthenticationOptions } from '@/lib/webauthn-server';
+import { webAuthnErrorResponse } from '@/lib/webauthn-api-errors';
 
 export const runtime = 'nodejs';
 
@@ -20,7 +21,6 @@ export async function POST(request: Request) {
     const { options } = await buildAuthenticationOptions({ request, email });
     return NextResponse.json({ ok: true, options });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'تعذّر بدء الدخول.';
-    return NextResponse.json({ ok: false, message }, { status: 400 });
+    return webAuthnErrorResponse(error, 'تعذّر بدء الدخول.');
   }
 }

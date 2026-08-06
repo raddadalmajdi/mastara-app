@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
+import { sanitizeUserFacingMessage } from '@/lib/user-facing-error';
 
 export default function RouteError({
   error,
@@ -20,7 +21,7 @@ export default function RouteError({
     >
       <h1 className="text-xl font-bold text-red-700">تعذّر تحميل الصفحة</h1>
       <p className="text-xs text-mistara-brown/80 text-center max-w-sm leading-relaxed">
-        {error.message || 'خطأ غير متوقع. جرّب إعادة التحميل.'}
+        {sanitizeUserFacingMessage(error.message, 'خطأ غير متوقع. جرّب إعادة التحميل.')}
       </p>
       <button
         type="button"
