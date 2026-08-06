@@ -1,8 +1,10 @@
 'use client';
 
 import Link from 'next/link';
-import { useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { PasskeyRegisterLoggedInButton } from '@/components/auth/PasskeyAuthPanel';
 import { UserProfileAvatar } from '@/components/account/UserProfileAvatar';
+import { getSupabaseBrowserClient, isSupabaseConfigured } from '@/lib/supabase-browser';
 
 export type AvatarSaveFeedback = { type: 'success' | 'error'; message: string } | null;
 
@@ -71,6 +73,7 @@ export function AccountMenuPanel({
   onLogout,
 }: AccountMenuPanelProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [passkeyFeedback, setPasskeyFeedback] = useState<AvatarSaveFeedback>(null);
 
   if (!open) return null;
 
@@ -187,6 +190,26 @@ export function AccountMenuPanel({
         aria-label="إجراءات الحساب"
         className="border-t border-mistara-brown/15 pt-3 space-y-2"
       >
+        {email && isSupabaseConfigured() && (
+          <PasskeyRegisterLoggedInForMenu
+            email={email}
+            onFeedback={setPasskeyFeedback}
+          />
+        )}
+
+        {passkeyFeedback && (
+          <p
+            role="status"
+            className={`rounded-xl px-3 py-2 text-xs font-bold ${
+              passkeyFeedback.type === 'success'
+                ? 'border border-emerald-200 bg-emerald-50 text-emerald-800'
+                : 'border border-red-200 bg-red-50 text-red-800'
+            }`}
+          >
+            {passkeyFeedback.message}
+          </p>
+        )}
+
         <Link
           href={BILLING_HREF}
           onClick={onCloseMenu}
@@ -232,5 +255,35 @@ export function AccountMenuTrigger({
     >
       <UserProfileAvatar src={avatarUrl} size="sm" />
     </button>
+  );
+}
+
+function PasskeyRegisterLoggedInForMenu({
+  email,
+  onFeedback,
+}: {
+  email: string;
+  onFeedback: (feedback: AvatarSaveFeedback) => void;
+}) {
+  const [accessToken, setAccessToken] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured()) return;
+    const supabase = getSupabaseBrowserClient();
+    if (!supabase) return;
+    void supabase.auth
+      .getSession()
+      .then(({ data }) => setAccessToken(data.session?.access_token ?? null))
+      .catch(() => setAccessToken(null));
+  }, []);
+
+  if (!accessToken) return null;
+
+  return (
+    <PasskeyRegisterLoggedInButton
+      email={email}
+      accessToken={accessToken}
+      onFeedback={onFeedback}
+    />
   );
 }
