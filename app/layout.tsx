@@ -12,6 +12,7 @@ import {
   APP_TAGLINE,
 } from '@/lib/brand';
 import { BrandWatermark } from '@/components/brand/BrandWatermark';
+import { AppProviders } from './providers';
 
 export const metadata: Metadata = {
   metadataBase: new URL(APP_SITE_URL),
@@ -108,7 +109,9 @@ export default function RootLayout({
         suppressHydrationWarning
       >
         <BrandWatermark />
-        <div className="relative z-[1] min-h-screen">{children}</div>
+        <AppProviders>
+          <div className="relative z-[1] min-h-screen">{children}</div>
+        </AppProviders>
       </body>
     </html>
   );

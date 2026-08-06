@@ -6,6 +6,7 @@ import {
   resolveOtpVerificationBridge,
 } from '@/lib/otp-delivery-bridge';
 import type { AuthErrorLike } from '@/lib/auth-errors';
+import { getOrCreateOrganizationForUser } from '@/lib/organization-server';
 
 /** أنواع احتياطية واحدة فقط — تجنّب حلقات متعددة تُبطل الرمز في Supabase. */
 const SINGLE_FALLBACK: Partial<Record<EmailOtpType, EmailOtpType>> = {
@@ -37,6 +38,7 @@ export type VerifyEmailOtpServerResult =
       ok: true;
       session: { access_token: string; refresh_token: string };
       userId: string;
+      organizationId: string | null;
     }
   | { ok: false; code: string; message: string; status: number; error: AuthErrorLike | null };
 
@@ -45,7 +47,11 @@ async function attemptVerifyOtp(params: {
   token: string;
   type: EmailOtpType;
 }): Promise<
-  | { ok: true; session: { access_token: string; refresh_token: string }; userId: string }
+  | {
+      ok: true;
+      session: { access_token: string; refresh_token: string };
+      userId: string;
+    }
   | { ok: false; error: AuthErrorLike }
 > {
   const admin = createSupabaseAdminClient();
@@ -122,7 +128,14 @@ export async function verifyEmailOtpOnServer(params: {
 
   if (primary.ok) {
     clearOtpVerificationBridge(normalizedEmail);
-    return primary;
+    const org = await getOrCreateOrganizationForUser({
+      userId: primary.userId,
+      email: normalizedEmail,
+    });
+    return {
+      ...primary,
+      organizationId: org.ok ? org.organizationId : null,
+    };
   }
 
   const primaryError = primary.error;
@@ -153,7 +166,14 @@ export async function verifyEmailOtpOnServer(params: {
 
     if (fallback.ok) {
       clearOtpVerificationBridge(normalizedEmail);
-      return fallback;
+      const org = await getOrCreateOrganizationForUser({
+        userId: fallback.userId,
+        email: normalizedEmail,
+      });
+      return {
+        ...fallback,
+        organizationId: org.ok ? org.organizationId : null,
+      };
     }
 
     return {

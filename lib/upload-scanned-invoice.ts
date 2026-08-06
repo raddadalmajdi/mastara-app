@@ -84,6 +84,7 @@ export async function uploadScannedInvoiceFiles(
 
 export type InvoiceInsertPayload = {
   user_id: string;
+  organization_id?: string;
   customer_phone: string;
   image_url: string;
   pdf_url: string;
@@ -99,14 +100,26 @@ export async function insertInvoiceRecord(
 ): Promise<void> {
   await assertSessionMatchesUser(supabase, payload.user_id);
 
-  const row = {
+  const row: Record<string, string> = {
     user_id: payload.user_id,
     customer_phone: payload.customer_phone,
     image_url: payload.image_url,
     pdf_url: payload.pdf_url,
   };
+  if (payload.organization_id) {
+    row.organization_id = payload.organization_id;
+  }
 
-  const result = await supabase.from('invoices').insert([row]);
+  let result = await supabase.from('invoices').insert([row]);
+
+  if (
+    result.error &&
+    payload.organization_id &&
+    (result.error.message.includes('organization_id') || result.error.code === 'PGRST204')
+  ) {
+    delete row.organization_id;
+    result = await supabase.from('invoices').insert([row]);
+  }
 
   if (!result.error) return;
 

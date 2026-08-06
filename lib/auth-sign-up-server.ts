@@ -5,6 +5,7 @@ import { AsyncTimeoutError, logAuthFlowStep, withTimeout } from '@/lib/async-tim
 import { DUPLICATE_EMAIL_MESSAGE } from '@/lib/check-email-registered';
 import { parseSupabaseEmailOtp } from '@/lib/supabase-email-otp';
 import { issueOtpVerificationBridge, type OtpBridgeIssue } from '@/lib/otp-delivery-bridge';
+import { getOrCreateOrganizationForUser } from '@/lib/organization-server';
 
 export type ServerSignUpResult =
   | { ok: true; email: string; userId: string; emailSent: true; otpBridgeCookie: string }
@@ -228,6 +229,17 @@ async function registerUserWithResendVerificationInner(params: {
       ok: false,
       code: 'create_user_failed',
       message: 'تعذّر إنشاء المستخدم.',
+      status: 500,
+    };
+  }
+
+  const orgResult = await getOrCreateOrganizationForUser({ userId, email });
+  if (!orgResult.ok) {
+    await admin.auth.admin.deleteUser(userId).catch(() => undefined);
+    return {
+      ok: false,
+      code: 'organization_failed',
+      message: orgResult.message,
       status: 500,
     };
   }

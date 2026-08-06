@@ -1,8 +1,10 @@
 import type { PostgrestError, SupabaseClient } from '@supabase/supabase-js';
+import { isMissingOrganizationColumn } from '@/lib/organization';
 
 export type TailorCustomerRecord = {
   id: string;
   tailor_user_id: string;
+  organization_id: string | null;
   phone: string;
   customer_name: string;
 };
@@ -81,7 +83,8 @@ async function assertTailorOwnsSession(
 export async function lookupTailorCustomerByPhone(
   supabase: SupabaseClient | null,
   tailorUserId: string,
-  fullPhone: string
+  fullPhone: string,
+  organizationId?: string | null
 ): Promise<TailorCustomerRecord | null> {
   const normalized = normalizeStoredPhone(fullPhone);
   if (!normalized) return null;
@@ -92,6 +95,7 @@ export async function lookupTailorCustomerByPhone(
       ? {
           id: `local-${normalized}`,
           tailor_user_id: tailorUserId,
+          organization_id: organizationId ?? null,
           phone: hit.phone,
           customer_name: hit.customer_name,
         }
@@ -100,12 +104,17 @@ export async function lookupTailorCustomerByPhone(
 
   await assertTailorOwnsSession(supabase, tailorUserId);
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('tailor_customers')
-    .select('id, tailor_user_id, phone, customer_name')
+    .select('id, tailor_user_id, organization_id, phone, customer_name')
     .eq('tailor_user_id', tailorUserId)
-    .eq('phone', normalized)
-    .maybeSingle();
+    .eq('phone', normalized);
+
+  if (organizationId) {
+    query = query.eq('organization_id', organizationId);
+  }
+
+  const { data, error } = await query.maybeSingle();
 
   if (error) {
     if (error.message.includes('tailor_customers') || error.code === 'PGRST204') {
@@ -121,20 +130,29 @@ async function writeTailorCustomerRow(
   supabase: SupabaseClient,
   tailorUserId: string,
   phone: string,
-  customerName: string
+  customerName: string,
+  organizationId?: string | null
 ): Promise<PostgrestError | null> {
-  const row = {
+  const row: Record<string, string> = {
     tailor_user_id: tailorUserId,
     phone,
     customer_name: customerName,
   };
+  if (organizationId) {
+    row.organization_id = organizationId;
+  }
 
-  const existing = await supabase
+  let existingQuery = supabase
     .from('tailor_customers')
     .select('id')
     .eq('tailor_user_id', tailorUserId)
-    .eq('phone', phone)
-    .maybeSingle();
+    .eq('phone', phone);
+
+  if (organizationId) {
+    existingQuery = existingQuery.eq('organization_id', organizationId);
+  }
+
+  const existing = await existingQuery.maybeSingle();
 
   if (existing.error && !isMissingSchemaColumn(existing.error, 'updated_at')) {
     return existing.error;
@@ -156,7 +174,8 @@ export async function upsertTailorCustomer(
   supabase: SupabaseClient | null,
   tailorUserId: string,
   fullPhone: string,
-  customerName: string
+  customerName: string,
+  organizationId?: string | null
 ): Promise<void> {
   const phone = normalizeStoredPhone(fullPhone);
   const name = customerName.trim();
@@ -171,9 +190,19 @@ export async function upsertTailorCustomer(
 
   await assertTailorOwnsSession(supabase, tailorUserId);
 
-  let error = await writeTailorCustomerRow(supabase, tailorUserId, phone, name);
+  let error = await writeTailorCustomerRow(
+    supabase,
+    tailorUserId,
+    phone,
+    name,
+    organizationId
+  );
 
   if (error && FORBIDDEN_WRITE_COLUMNS.some((col) => isMissingSchemaColumn(error!, col))) {
+    error = await writeTailorCustomerRow(supabase, tailorUserId, phone, name, organizationId);
+  }
+
+  if (error && organizationId && isMissingOrganizationColumn(error.message)) {
     error = await writeTailorCustomerRow(supabase, tailorUserId, phone, name);
   }
 

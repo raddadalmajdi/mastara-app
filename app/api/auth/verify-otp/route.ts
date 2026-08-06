@@ -52,6 +52,7 @@ export async function POST(request: Request) {
         ok: true,
         session: result.session,
         user: { id: result.userId },
+        organizationId: result.organizationId,
       },
       {
         headers: {

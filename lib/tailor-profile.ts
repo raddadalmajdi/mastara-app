@@ -2,6 +2,7 @@ import type { PostgrestError, SupabaseClient } from '@supabase/supabase-js';
 
 export type TailorProfileRecord = {
   user_id: string;
+  organization_id: string | null;
   phone: string | null;
   cloud_notes: string | null;
   shop_name: string | null;
@@ -10,6 +11,7 @@ export type TailorProfileRecord = {
 
 export type TailorProfileUpsert = {
   user_id: string;
+  organization_id?: string;
   phone: string;
   cloud_notes: string;
   shop_name: string;
@@ -25,7 +27,7 @@ export type AvatarPersistTarget = 'database' | 'local';
 const FORBIDDEN_WRITE_COLUMNS = ['updated_at', 'created_at'] as const;
 
 /** قد تغيب في جداول قديمة أو في Schema Cache قبل التحديث. */
-const OPTIONAL_WRITE_COLUMNS = ['shop_name', 'avatar_url'] as const;
+const OPTIONAL_WRITE_COLUMNS = ['shop_name', 'avatar_url', 'organization_id'] as const;
 
 export function isMissingSchemaColumn(error: PostgrestError, column: string): boolean {
   const msg = (error.message ?? '').toLowerCase();
@@ -52,6 +54,9 @@ export function buildTailorProfileWriteRow(
   };
   if (payload.avatar_url?.trim()) {
     row.avatar_url = payload.avatar_url.trim();
+  }
+  if (payload.organization_id?.trim()) {
+    row.organization_id = payload.organization_id.trim();
   }
   return row;
 }
@@ -115,6 +120,7 @@ function enrichProfileWithLocalAvatar(
     if (!localAvatar) return null;
     return {
       user_id: userId,
+      organization_id: null,
       phone: null,
       cloud_notes: null,
       shop_name: null,
@@ -228,7 +234,7 @@ export async function fetchTailorProfile(
 ): Promise<TailorProfileRecord | null> {
   const fullSelect = await supabase
     .from('tailor_profiles')
-    .select('user_id, phone, cloud_notes, shop_name, avatar_url')
+    .select('user_id, organization_id, phone, cloud_notes, shop_name, avatar_url')
     .eq('user_id', userId)
     .maybeSingle();
 
@@ -242,7 +248,8 @@ export async function fetchTailorProfile(
 
   if (
     isMissingSchemaColumn(fullSelect.error, 'shop_name') ||
-    isMissingSchemaColumn(fullSelect.error, 'avatar_url')
+    isMissingSchemaColumn(fullSelect.error, 'avatar_url') ||
+    isMissingSchemaColumn(fullSelect.error, 'organization_id')
   ) {
     const legacy = await supabase
       .from('tailor_profiles')
@@ -261,7 +268,12 @@ export async function fetchTailorProfile(
         }
         return enrichProfileWithLocalAvatar(
           minimal.data
-            ? { ...(minimal.data as TailorProfileRecord), shop_name: null, avatar_url: null }
+            ? {
+                ...(minimal.data as TailorProfileRecord),
+                shop_name: null,
+                avatar_url: null,
+                organization_id: null,
+              }
             : null,
           userId
         );
@@ -269,7 +281,9 @@ export async function fetchTailorProfile(
       throw new Error(legacy.error.message);
     }
     return enrichProfileWithLocalAvatar(
-      legacy.data ? { ...(legacy.data as TailorProfileRecord), avatar_url: null } : null,
+      legacy.data
+        ? { ...(legacy.data as TailorProfileRecord), avatar_url: null, organization_id: null }
+        : null,
       userId
     );
   }

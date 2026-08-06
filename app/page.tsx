@@ -26,6 +26,7 @@ import { AuthAlert } from '@/components/auth/AuthAlert';
 import { AuthBootScreen } from '@/components/auth/AuthBootScreen';
 import { AuthModeTabs } from '@/components/auth/AuthModeTabs';
 import { withTimeout } from '@/lib/async-timeout';
+import { useOrganization } from '@/components/organization/OrganizationProvider';
 import { isEmailVerifiedUser } from '@/lib/auth-confirmation-guard';
 import {
   AUTH_CONFIRMATION_RESENT,
@@ -88,6 +89,7 @@ const COUNTRY_CODES = [
 
 export default function Home() {
   const supabase = useMemo(() => getSupabaseBrowserClient(), []);
+  const { organizationId, refreshOrganization } = useOrganization();
   const [user, setUser] = useState<any>(isSupabaseConfigured() ? null : { id: 'guest-local-user', email: 'guest@mistarh.local' });
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -471,6 +473,7 @@ export default function Home() {
     try {
       await upsertTailorProfile(supabase, {
         user_id: user.id,
+        organization_id: organizationId ?? undefined,
         phone: fullPhone,
         cloud_notes: cloudNotes,
         shop_name: shopName,
@@ -788,6 +791,7 @@ export default function Home() {
       }
 
       setAuthFeedback({ type: 'success', message: 'تم التحقق من الرمز وتسجيل الدخول بنجاح.' });
+      await refreshOrganization();
       setShowWelcomeSuccess(true);
       setOtpCode('');
       setAuthPhase('form');
@@ -1061,7 +1065,8 @@ export default function Home() {
           const hit = await lookupTailorCustomerByPhone(
             supabase,
             user?.id ?? 'guest-local-user',
-            fullPhone
+            fullPhone,
+            organizationId
           );
           if (hit) {
             setCustomerDisplayName(hit.customer_name);
@@ -1134,7 +1139,8 @@ export default function Home() {
         supabase,
         user?.id ?? 'guest-local-user',
         `${customerCountryCode}${localPhone}`,
-        name
+        name,
+        organizationId
       );
       setCustomerBookStatus('known');
       setCustomerNameLocked(true);
@@ -1189,11 +1195,14 @@ export default function Home() {
         return;
       }
 
-      const { data, error } = await supabase
+      const invoiceQuery = supabase
         .from('invoices')
-        .select('id, user_id, customer_phone, image_url, pdf_url, created_at')
-        .eq('user_id', user.id)
+        .select('id, user_id, organization_id, customer_phone, image_url, pdf_url, created_at')
         .order('created_at', { ascending: false });
+
+      const { data, error } = organizationId
+        ? await invoiceQuery.eq('organization_id', organizationId)
+        : await invoiceQuery.eq('user_id', user.id);
 
       if (error) {
         if (process.env.NODE_ENV === 'development') {
@@ -1245,7 +1254,8 @@ export default function Home() {
         const hit = await lookupTailorCustomerByPhone(
           supabase,
           user?.id ?? 'guest-local-user',
-          fullCustomerPhone
+          fullCustomerPhone,
+          organizationId
         );
         if (hit) {
           nameToSave = hit.customer_name;
@@ -1287,7 +1297,8 @@ export default function Home() {
           supabase,
           user?.id ?? 'guest-local-user',
           fullCustomerPhone,
-          nameToSave
+          nameToSave,
+          organizationId
         );
 
         searchInvoices(localPhone, customerCountryCode);
@@ -1304,12 +1315,13 @@ export default function Home() {
 
         await insertInvoiceRecord(supabase, {
           user_id: user.id,
+          organization_id: organizationId ?? undefined,
           customer_phone: fullCustomerPhone,
           image_url: imageUrl,
           pdf_url: pdfUrl,
         });
 
-        await upsertTailorCustomer(supabase, user.id, fullCustomerPhone, nameToSave);
+        await upsertTailorCustomer(supabase, user.id, fullCustomerPhone, nameToSave, organizationId);
         setCustomerBookStatus('known');
 
         await searchInvoices(localPhone, customerCountryCode);
