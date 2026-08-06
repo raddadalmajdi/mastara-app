@@ -24,7 +24,6 @@ import {
 } from '@/lib/supabase-browser';
 import { OTP_CODE_LENGTH, OTP_LENGTH_AR } from '@/lib/otp-config';
 import { AuthConfirmationPanel } from '@/components/auth/AuthConfirmationPanel';
-import { PasskeyAuthPanel } from '@/components/auth/PasskeyAuthPanel';
 import { AuthAlert } from '@/components/auth/AuthAlert';
 import { AuthBootScreen } from '@/components/auth/AuthBootScreen';
 import { AuthModeTabs } from '@/components/auth/AuthModeTabs';
@@ -1636,27 +1635,6 @@ export default function Home() {
                         : 'تسجيل الدخول'}
                 </button>
               </form>
-
-              <div className="relative py-1">
-                <div className="absolute inset-0 flex items-center" aria-hidden>
-                  <div className="w-full border-t border-mistara-brown/15" />
-                </div>
-                <p className="relative mx-auto w-fit bg-transparent px-3 text-[11px] font-bold text-mistara-brown/55">
-                  أو
-                </p>
-              </div>
-
-              <PasskeyAuthPanel
-                email={email}
-                password={password}
-                isSignUp={isSignUp}
-                onLoginSuccess={() => {
-                  void refreshOrganization();
-                  setShowWelcomeSuccess(true);
-                  setAuthFeedback(null);
-                }}
-                onFeedback={(feedback) => setAuthFeedback(feedback)}
-              />
             </>
           )}
 
