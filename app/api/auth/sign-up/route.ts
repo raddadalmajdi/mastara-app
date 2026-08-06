@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { registerUserWithResendVerification } from '@/lib/auth-sign-up-server';
 import { logResendEnvDiagnostics } from '@/lib/resend-diagnostics';
+import { logServerException } from '@/lib/server-error-log';
 
 // هذا المسار يستدعي Supabase Admin API ثم Resend API بالتسلسل، وقد يستغرق
 // أكثر من المهلة الافتراضية لدوال Vercel الخادمة (10 ثوانٍ على خطة Hobby)،
@@ -73,9 +74,9 @@ export async function POST(request: Request) {
       },
     });
   } catch (error) {
+    logServerException('api/auth/sign-up', error, { email });
     const message =
       error instanceof Error ? error.message : 'خطأ داخلي أثناء التسجيل.';
-    console.error('[api/auth/sign-up]', message);
     return NextResponse.json(
       { ok: false, code: 'internal_error', message },
       { status: 500 }

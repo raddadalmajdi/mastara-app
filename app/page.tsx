@@ -616,21 +616,14 @@ export default function Home() {
           return;
         }
 
-        const resendCode = viaResend.error.code ?? '';
-        const canFallbackToSupabase =
-          resendCode === 'resend_send_failed' ||
-          resendCode === 'otp_unavailable' ||
-          resendCode === 'request_timeout';
-
-        if (!canFallbackToSupabase) {
-          setAuthFeedback({
-            type: 'error',
-            message: mapAuthErrorToArabic(viaResend.error, 'otp'),
-          });
-          return;
-        }
+        setAuthFeedback({
+          type: 'error',
+          message: mapAuthErrorToArabic(viaResend.error, 'otp'),
+        });
+        return;
       }
 
+      // Resend غير مضبوط (501) — ن fallback إلى Supabase OTP
       const { error } = await supabase.auth.signInWithOtp({
         email: trimmedEmail,
         options: {

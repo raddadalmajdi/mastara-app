@@ -5,6 +5,7 @@ import { createSupabaseAdminClient } from '@/lib/delete-auth-user-admin';
 import { assertValidEmailRedirectTo } from '@/lib/supabase-browser';
 import { isResendConfigured, sendLoginOtpEmail } from '@/lib/resend';
 import { AsyncTimeoutError, logAuthFlowStep, withTimeout } from '@/lib/async-timeout';
+import { logServerException, logSupabaseAdminError } from '@/lib/server-error-log';
 
 export type SendLoginOtpResult =
   | { ok: true; email: string; userId: string; emailSent: true; otpBridgeCookie: string }
@@ -15,6 +16,7 @@ const RESEND_STEP_MS = 25_000;
 const TOTAL_LOGIN_OTP_MS = 55_000;
 
 function timeoutFailure(label: string, error: unknown): SendLoginOtpResult {
+  logServerException(`auth-login-otp/${label}`, error);
   if (error instanceof AsyncTimeoutError) {
     return {
       ok: false,
@@ -47,6 +49,7 @@ function linkTimeoutFailure(label: string, error: unknown): {
   message: string;
   status: number;
 } {
+  logServerException(`auth-login-otp/${label}`, error);
   if (error instanceof AsyncTimeoutError) {
     return {
       ok: false,
@@ -112,6 +115,7 @@ async function buildLoginMagicLinkOtp(
         status: 404,
       };
     }
+    logSupabaseAdminError('generateLink:magiclink', error, { email, emailRedirectTo });
     return {
       ok: false,
       code: error.code ?? 'generate_link_failed',
@@ -129,6 +133,12 @@ async function buildLoginMagicLinkOtp(
       hasUserId: Boolean(userId),
       rawOtp: data.properties?.email_otp,
       rawOtpLength: String(data.properties?.email_otp ?? '').replace(/\D/g, '').length,
+      propertiesKeys: data.properties ? Object.keys(data.properties) : [],
+    });
+    logServerException('auth-login-otp/generateLink:magiclink:missing-otp', new Error('missing OTP from generateLink'), {
+      email,
+      hasUserId: Boolean(userId),
+      rawOtp: data.properties?.email_otp,
     });
     logAuthFlowStep('server', 'generateLink:magiclink:missing-otp', {
       hasUserId: Boolean(userId),
@@ -204,6 +214,10 @@ async function sendLoginOtpViaResendInner(params: {
       usedFallbackFrom: sendResult.usedFallbackFrom,
     });
   } catch (sendError) {
+    logServerException('auth-login-otp/resend:login-otp', sendError, {
+      email,
+      otpLength: link.deliveryOtp.length,
+    });
     if (sendError instanceof AsyncTimeoutError) {
       return {
         ok: false,
@@ -218,6 +232,7 @@ async function sendLoginOtpViaResendInner(params: {
       email,
       message,
       otpLength: link.deliveryOtp.length,
+      stack: sendError instanceof Error ? sendError.stack : undefined,
     });
     if (message === 'INTERNAL_INVALID_SUPABASE_OTP') {
       return missingOtpFailure();

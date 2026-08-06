@@ -1,4 +1,5 @@
 import { getResendFromAddress, isResendConfigured } from '@/lib/resend';
+import { logServerException, serializeUnknownError } from '@/lib/server-error-log';
 
 export type ResendEnvDiagnostics = {
   configured: boolean;
@@ -59,14 +60,25 @@ export function logResendApiFailure(
     typeof err === 'string'
       ? { message: err }
       : err instanceof Error
-        ? { message: err.message, name: err.name }
-        : { message: err.message, name: err.name, statusCode: err.statusCode };
+        ? { message: err.message, name: err.name, stack: err.stack }
+        : {
+            message: err.message,
+            name: err.name,
+            statusCode: err.statusCode,
+            serialized: serializeUnknownError(err),
+          };
 
   console.error(`[Resend/api] ${context} FAILED`, {
     attempt: details.attempt ?? 'primary',
     to: details.to,
     from: details.from,
     ...payload,
+  });
+
+  logServerException(`Resend/api/${context}`, err, {
+    attempt: details.attempt ?? 'primary',
+    to: details.to,
+    from: details.from,
   });
 }
 

@@ -199,10 +199,16 @@ export function mapAuthErrorToArabic(
   const rawMessage = (error.message ?? '').trim();
 
   if (APP_AUTH_ERROR_CODES.has(code) && rawMessage.length > 0) {
-    if (
-      code === 'resend_send_failed' ||
-      rawMessage.includes('INTERNAL_INVALID_SUPABASE_OTP')
-    ) {
+    if (code === 'resend_not_configured') {
+      return rawMessage;
+    }
+    if (code === 'resend_send_failed') {
+      if (hasArabic(rawMessage) || rawMessage.length > 48) {
+        return rawMessage;
+      }
+      return context === 'signup' ? SIGNUP_EMAIL_DISPATCH_ERROR : OTP_EMAIL_DISPATCH_ERROR;
+    }
+    if (rawMessage.includes('INTERNAL_INVALID_SUPABASE_OTP')) {
       return context === 'signup' ? SIGNUP_EMAIL_DISPATCH_ERROR : OTP_EMAIL_DISPATCH_ERROR;
     }
     return rawMessage;

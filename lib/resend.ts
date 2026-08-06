@@ -5,6 +5,7 @@ import {
   logResendApiSuccess,
   logResendEnvDiagnostics,
 } from '@/lib/resend-diagnostics';
+import { logServerException } from '@/lib/server-error-log';
 import { OTP_LENGTH_AR } from '@/lib/otp-config';
 import { APP_NAME, APP_TAGLINE } from '@/lib/brand';
 
@@ -162,7 +163,15 @@ async function sendAuthOtpEmail(
     throw new Error('INTERNAL_INVALID_SUPABASE_OTP');
   }
 
-  const resend = getResendClient();
+  let resend: Resend;
+  try {
+    resend = getResendClient();
+  } catch (clientError) {
+    logServerException(`Resend/getResendClient/sendAuthOtpEmail:${context}`, clientError, {
+      to: params.to,
+    });
+    throw clientError;
+  }
   const primaryFrom = getResendFromAddress();
   const html = buildOtpEmailHtml({
     heading: params.heading,
@@ -191,6 +200,11 @@ async function sendAuthOtpEmail(
 
       return result;
     } catch (networkError) {
+      logServerException(`Resend/network/sendAuthOtpEmail:${context}`, networkError, {
+        to: params.to,
+        from,
+        attempt,
+      });
       const detail =
         networkError instanceof Error ? networkError.message : 'خطأ شبكة غير معروف';
       logResendApiFailure(`sendAuthOtpEmail:${context}`, {
@@ -222,6 +236,11 @@ async function sendAuthOtpEmail(
     primaryFrom !== FALLBACK_RESEND_FROM && shouldFallbackResendFrom(primaryError);
 
   if (!canFallback) {
+    logServerException(`Resend/no-fallback/sendAuthOtpEmail:${context}`, primaryError, {
+      to: params.to,
+      from: primaryFrom,
+      primaryMessage,
+    });
     console.error(`[Resend] ${context} — no fallback (non-domain error)`, {
       to: params.to,
       from: primaryFrom,
@@ -243,6 +262,13 @@ async function sendAuthOtpEmail(
 
   if (fallbackResult.error) {
     const fallbackMessage = fallbackResult.error.message || primaryMessage;
+    logServerException(`Resend/fallback-failed/sendAuthOtpEmail:${context}`, fallbackResult.error, {
+      to: params.to,
+      primaryFrom,
+      fallbackFrom: FALLBACK_RESEND_FROM,
+      primaryError: primaryMessage,
+      fallbackError: fallbackMessage,
+    });
     console.error(`[Resend] ${context} — fallback also failed`, {
       to: params.to,
       fallbackFrom: FALLBACK_RESEND_FROM,

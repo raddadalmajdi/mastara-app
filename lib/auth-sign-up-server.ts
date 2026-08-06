@@ -6,6 +6,7 @@ import { DUPLICATE_EMAIL_MESSAGE } from '@/lib/check-email-registered';
 import { parseSupabaseEmailOtp } from '@/lib/supabase-email-otp';
 import { issueOtpVerificationBridge, type OtpBridgeIssue } from '@/lib/otp-delivery-bridge';
 import { getOrCreateOrganizationForUser } from '@/lib/organization-server';
+import { logServerException, logSupabaseAdminError } from '@/lib/server-error-log';
 
 export type ServerSignUpResult =
   | { ok: true; email: string; userId: string; emailSent: true; otpBridgeCookie: string }
@@ -36,6 +37,7 @@ function missingOtpFailure(): ServerSignUpResult {
 }
 
 function timeoutFailure(label: string, error: unknown): ServerSignUpResult {
+  logServerException(`auth-sign-up/${label}`, error);
   if (error instanceof AsyncTimeoutError) {
     return {
       ok: false,
@@ -63,6 +65,7 @@ function buildSignupOtpBridge(email: string, deliveryOtp: string, verifyToken: s
 }
 
 function linkTimeoutFailure(label: string, error: unknown): LinkBuildResult {
+  logServerException(`auth-sign-up/${label}`, error);
   if (error instanceof AsyncTimeoutError) {
     return {
       ok: false,
@@ -113,6 +116,7 @@ async function buildSignupLink(
         status: 409,
       };
     }
+    logSupabaseAdminError('generateLink:signup', error, { email, emailRedirectTo });
     return { ok: false, code: error.code ?? 'generate_link_failed', message: msg, status: 400 };
   }
 
@@ -130,6 +134,18 @@ async function buildSignupLink(
 
   const parsed = parseSupabaseEmailOtp(data.properties?.email_otp);
   if (!parsed) {
+    console.error('[auth-sign-up-server] generateLink missing OTP', {
+      email,
+      userId,
+      rawOtp: data.properties?.email_otp,
+      rawOtpLength: String(data.properties?.email_otp ?? '').replace(/\D/g, '').length,
+      propertiesKeys: data.properties ? Object.keys(data.properties) : [],
+    });
+    logServerException('auth-sign-up/generateLink:signup:missing-otp', new Error('missing OTP from generateLink'), {
+      email,
+      userId,
+      rawOtp: data.properties?.email_otp,
+    });
     return {
       ok: false,
       code: 'otp_unavailable',
@@ -205,6 +221,7 @@ async function registerUserWithResendVerificationInner(params: {
   });
 
   if (createError && !isExistingUserError(createError.message, createError.code)) {
+    logSupabaseAdminError('createUser', createError, { email });
     return {
       ok: false,
       code: createError.code ?? 'create_user_failed',
@@ -272,6 +289,11 @@ async function registerUserWithResendVerificationInner(params: {
       usedFallbackFrom: sendResult.usedFallbackFrom,
     });
   } catch (sendError) {
+    logServerException('auth-sign-up/resend:send', sendError, {
+      email,
+      otpLength: link.deliveryOtp.length,
+      userId,
+    });
     // فشل الإرسال فعلياً (حتى بعد محاولة النطاق الاحتياطي) — نتراجع عن إنشاء
     // المستخدم كي لا يبقى حساب بلا أي وسيلة تفعيل ممكنة.
     await admin.auth.admin.deleteUser(userId).catch(() => undefined);
@@ -289,6 +311,8 @@ async function registerUserWithResendVerificationInner(params: {
       email,
       message,
       otpLength: link.deliveryOtp.length,
+      userId,
+      stack: sendError instanceof Error ? sendError.stack : undefined,
     });
     return { ok: false, code: 'resend_send_failed', message, status: 502 };
   }
@@ -386,6 +410,10 @@ async function resendSignupVerificationEmailInner(params: {
       usedFallbackFrom: sendResult.usedFallbackFrom,
     });
   } catch (sendError) {
+    logServerException('auth-sign-up/resend:resend-verification', sendError, {
+      email,
+      otpLength: link.deliveryOtp.length,
+    });
     if (sendError instanceof AsyncTimeoutError) {
       return {
         ok: false,
@@ -400,6 +428,7 @@ async function resendSignupVerificationEmailInner(params: {
       email,
       message,
       otpLength: link.deliveryOtp.length,
+      stack: sendError instanceof Error ? sendError.stack : undefined,
     });
     return { ok: false, code: 'resend_send_failed', message, status: 502 };
   }

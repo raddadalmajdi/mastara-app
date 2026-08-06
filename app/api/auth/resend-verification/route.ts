@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { resendSignupVerificationEmail } from '@/lib/auth-sign-up-server';
 import { logResendEnvDiagnostics } from '@/lib/resend-diagnostics';
+import { logServerException } from '@/lib/server-error-log';
 
 // انظر تعليق المهلة في app/api/auth/sign-up/route.ts — نفس السبب هنا.
 export const runtime = 'nodejs';
@@ -62,9 +63,9 @@ export async function POST(request: Request) {
       },
     });
   } catch (error) {
+    logServerException('api/auth/resend-verification', error, { email });
     const message =
       error instanceof Error ? error.message : 'خطأ داخلي أثناء إعادة الإرسال.';
-    console.error('[api/auth/resend-verification]', message);
     return NextResponse.json(
       { ok: false, code: 'internal_error', message },
       { status: 500 }

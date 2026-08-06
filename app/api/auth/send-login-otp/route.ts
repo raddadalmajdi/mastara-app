@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { sendLoginOtpViaResend } from '@/lib/auth-login-otp-server';
 import { logResendEnvDiagnostics } from '@/lib/resend-diagnostics';
+import { logServerException } from '@/lib/server-error-log';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -62,9 +63,9 @@ export async function POST(request: Request) {
       },
     });
   } catch (error) {
+    logServerException('api/auth/send-login-otp', error, { email });
     const message =
       error instanceof Error ? error.message : 'خطأ داخلي أثناء إرسال رمز الدخول.';
-    console.error('[api/auth/send-login-otp]', message);
     return NextResponse.json(
       { ok: false, code: 'internal_error', message },
       { status: 500 }
