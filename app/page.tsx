@@ -4,6 +4,7 @@
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import dynamic from 'next/dynamic';
+import Link from 'next/link';
 import type { EmailOtpType } from '@supabase/supabase-js';
 import { mapAuthErrorToArabic } from '@/lib/auth-errors';
 import { trySendLoginOtpViaResendApi } from '@/lib/auth-login-otp-api';
@@ -1708,7 +1709,15 @@ export default function Home() {
           )}
         </div>
 
-        <div className="relative" ref={menuRef}>
+        <div className="relative flex items-center gap-2" ref={menuRef}>
+          <Link
+            href="/billing"
+            onClick={() => setShowMenu(false)}
+            className="inline-flex shrink-0 items-center rounded-xl border border-primary/25 bg-primary/8 px-2.5 sm:px-3 py-2 text-[11px] sm:text-xs font-black text-primary-dark transition-colors hover:bg-primary/12 active:scale-[0.99]"
+          >
+            الاشتراك والفوترة
+          </Link>
+
           <AccountMenuTrigger avatarUrl={tailorAvatarUrl} onClick={() => setShowMenu(!showMenu)} />
 
           <AccountMenuPanel
