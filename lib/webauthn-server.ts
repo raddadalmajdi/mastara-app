@@ -9,7 +9,7 @@ import {
 } from '@simplewebauthn/server';
 import { createSupabaseAdminClient } from '@/lib/delete-auth-user-admin';
 import { findAuthUserByEmail } from '@/lib/check-email-registered';
-import { WEBAUTHN_CHALLENGE_TTL_MS, getWebAuthnRpConfig } from '@/lib/webauthn-config';
+import { getWebAuthnRpConfig } from '@/lib/webauthn-config';
 
 export type StoredPasskey = {
   id: string;
@@ -32,7 +32,6 @@ async function storeChallenge(params: {
   purpose: 'register' | 'login';
 }): Promise<void> {
   const admin = createSupabaseAdminClient();
-  const expiresAt = new Date(Date.now() + WEBAUTHN_CHALLENGE_TTL_MS).toISOString();
 
   if (params.email) {
     await admin
@@ -47,12 +46,42 @@ async function storeChallenge(params: {
     user_id: params.userId,
     email: params.email,
     purpose: params.purpose,
-    expires_at: expiresAt,
   });
 
   if (error) {
     throw new Error(error.message);
   }
+}
+
+type PendingChallengeRow = {
+  id: string;
+  user_id: string | null;
+  email: string | null;
+};
+
+/** يتحقق من التحدي ويستهلكه — بدون الاعتماد على expires_at (schema cache). */
+async function consumePendingChallenge(params: {
+  challenge: string;
+  purpose: 'register' | 'login';
+  userId: string;
+  email: string;
+}): Promise<boolean> {
+  const admin = createSupabaseAdminClient();
+  const { data, error } = await admin
+    .from('webauthn_challenges')
+    .select('id, user_id, email')
+    .eq('challenge', params.challenge)
+    .eq('purpose', params.purpose)
+    .maybeSingle();
+
+  if (error || !data) return false;
+
+  const row = data as PendingChallengeRow;
+  if (row.user_id !== params.userId) return false;
+  if (row.email !== params.email) return false;
+
+  await admin.from('webauthn_challenges').delete().eq('id', row.id);
+  return true;
 }
 
 async function listPasskeysForUser(userId: string): Promise<StoredPasskey[]> {
@@ -125,22 +154,13 @@ export async function verifyRegistration(params: {
 
   const verification = await verifyRegistrationResponse({
     response: params.response,
-    expectedChallenge: async (challenge) => {
-      const admin = createSupabaseAdminClient();
-      const { data } = await admin
-        .from('webauthn_challenges')
-        .select('id, user_id, email, expires_at')
-        .eq('challenge', challenge)
-        .eq('purpose', 'register')
-        .maybeSingle();
-
-      if (!data || new Date(data.expires_at).getTime() < Date.now()) return false;
-      if (data.user_id !== params.userId) return false;
-      if (data.email !== normalizedEmail) return false;
-
-      await admin.from('webauthn_challenges').delete().eq('id', data.id);
-      return true;
-    },
+    expectedChallenge: async (challenge) =>
+      consumePendingChallenge({
+        challenge,
+        purpose: 'register',
+        userId: params.userId,
+        email: normalizedEmail,
+      }),
     expectedOrigin: origin,
     expectedRPID: rpID,
     requireUserVerification: true,
@@ -227,22 +247,13 @@ export async function verifyAuthentication(params: {
 
   const verification = await verifyAuthenticationResponse({
     response: params.response,
-    expectedChallenge: async (challenge) => {
-      const admin = createSupabaseAdminClient();
-      const { data } = await admin
-        .from('webauthn_challenges')
-        .select('id, user_id, email, expires_at')
-        .eq('challenge', challenge)
-        .eq('purpose', 'login')
-        .maybeSingle();
-
-      if (!data || new Date(data.expires_at).getTime() < Date.now()) return false;
-      if (data.user_id !== user.id) return false;
-      if (data.email !== normalized) return false;
-
-      await admin.from('webauthn_challenges').delete().eq('id', data.id);
-      return true;
-    },
+    expectedChallenge: async (challenge) =>
+      consumePendingChallenge({
+        challenge,
+        purpose: 'login',
+        userId: user.id,
+        email: normalized,
+      }),
     expectedOrigin: origin,
     expectedRPID: rpID,
     credential: {
