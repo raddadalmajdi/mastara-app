@@ -23,11 +23,13 @@ type AccountMenuPanelProps = {
   onAvatarFilePick: (file: File) => void;
   onSaveAvatar: () => void;
   onDiscardPendingAvatar: () => void;
+  /** يُغلق القائمة قبل أي انتقال (اختياري). */
+  onCloseMenu?: () => void;
   onOpenSettings: () => void;
-  /** يُستدعى قبل الانتقال إلى /billing (مثلاً لإغلاق القائمة). */
-  onOpenBilling: () => void;
   onLogout: () => void;
 };
+
+const BILLING_HREF = '/billing';
 
 function BillingMenuIcon({ className }: { className?: string }) {
   return (
@@ -64,8 +66,8 @@ export function AccountMenuPanel({
   onAvatarFilePick,
   onSaveAvatar,
   onDiscardPendingAvatar,
+  onCloseMenu,
   onOpenSettings,
-  onOpenBilling,
   onLogout,
 }: AccountMenuPanelProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -180,30 +182,36 @@ export function AccountMenuPanel({
         </div>
       </div>
 
-      <Link
-        href="/billing"
-        onClick={onOpenBilling}
-        className="flex w-full items-center justify-center gap-2.5 rounded-xl border border-primary/25 bg-primary/8 py-3 text-sm font-black text-primary-dark transition-colors hover:bg-primary/12 active:scale-[0.99]"
+      {/* إجراءات الحساب — تظهر دائماً بلا شروط صلاحيات */}
+      <nav
+        aria-label="إجراءات الحساب"
+        className="border-t border-mistara-brown/15 pt-3 space-y-2"
       >
-        <BillingMenuIcon className="h-4 w-4 shrink-0 opacity-90" />
-        <span>الاشتراك والفوترة</span>
-      </Link>
+        <Link
+          href={BILLING_HREF}
+          onClick={onCloseMenu}
+          className="flex w-full items-center justify-center gap-2.5 rounded-xl border border-primary/25 bg-primary/8 py-3 text-sm font-black text-primary-dark transition-colors hover:bg-primary/12 active:scale-[0.99]"
+        >
+          <BillingMenuIcon className="h-4 w-4 shrink-0 opacity-90" />
+          <span>الاشتراك والفوترة</span>
+        </Link>
 
-      <button
-        type="button"
-        onClick={onOpenSettings}
-        className="w-full rounded-xl bg-mistara-gold py-3 text-sm font-black text-mistara-cream shadow-md shadow-mistara-gold/15"
-      >
-        الإعدادات
-      </button>
+        <button
+          type="button"
+          onClick={onOpenSettings}
+          className="w-full rounded-xl bg-mistara-gold py-3 text-sm font-black text-mistara-cream shadow-md shadow-mistara-gold/15 transition-colors hover:bg-mistara-gold/95 active:scale-[0.99]"
+        >
+          إعدادات المحل
+        </button>
 
-      <button
-        type="button"
-        onClick={onLogout}
-        className="w-full rounded-xl border border-red-800/30 bg-red-800/8 py-3 text-sm font-bold text-red-700"
-      >
-        خروج / تسجيل الدخول بحساب آخر
-      </button>
+        <button
+          type="button"
+          onClick={onLogout}
+          className="w-full rounded-xl border border-red-800/30 bg-red-800/8 py-3 text-sm font-bold text-red-700 transition-colors hover:bg-red-800/12 active:scale-[0.99]"
+        >
+          خروج / تسجيل الدخول بحساب آخر
+        </button>
+      </nav>
     </div>
   );
 }
