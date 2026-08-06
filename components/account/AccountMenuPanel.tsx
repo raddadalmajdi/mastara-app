@@ -23,6 +23,7 @@ type AccountMenuPanelProps = {
   onSaveAvatar: () => void;
   onDiscardPendingAvatar: () => void;
   onOpenSettings: () => void;
+  onOpenBilling: () => void;
   onLogout: () => void;
 };
 
@@ -42,6 +43,7 @@ export function AccountMenuPanel({
   onSaveAvatar,
   onDiscardPendingAvatar,
   onOpenSettings,
+  onOpenBilling,
   onLogout,
 }: AccountMenuPanelProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -155,6 +157,14 @@ export function AccountMenuPanel({
           </p>
         </div>
       </div>
+
+      <button
+        type="button"
+        onClick={onOpenBilling}
+        className="w-full rounded-xl border border-primary/25 bg-primary/8 py-3 text-sm font-black text-primary-dark"
+      >
+        الاشتراك والفوترة
+      </button>
 
       <button
         type="button"

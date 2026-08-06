@@ -1201,7 +1201,9 @@ export default function Home() {
         .order('created_at', { ascending: false });
 
       const { data, error } = organizationId
-        ? await invoiceQuery.eq('organization_id', organizationId)
+        ? await invoiceQuery.or(
+            `organization_id.eq.${organizationId},and(organization_id.is.null,user_id.eq.${user.id})`
+          )
         : await invoiceQuery.eq('user_id', user.id);
 
       if (error) {
@@ -1724,6 +1726,10 @@ export default function Home() {
             onAvatarFilePick={(file) => void handleAvatarFilePick(file)}
             onSaveAvatar={() => void handleSaveAvatar()}
             onDiscardPendingAvatar={handleDiscardPendingAvatar}
+            onOpenBilling={() => {
+              setShowMenu(false);
+              window.location.href = '/billing';
+            }}
             onOpenSettings={() => {
               setShowMenu(false);
               setShowTailorProfileModal(true);

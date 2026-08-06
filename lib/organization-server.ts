@@ -6,6 +6,7 @@ import {
   type OrganizationContext,
   type OrganizationRecord,
 } from '@/lib/organization';
+import { ensureStarterSubscription } from '@/lib/subscription-server';
 
 export type EnsureOrganizationResult =
   | { ok: true; organizationId: string; created: boolean }
@@ -100,6 +101,7 @@ export async function getOrCreateOrganizationForUser(params: {
   try {
     const existing = await findExistingMembership(admin, userId);
     if (existing) {
+      await ensureStarterSubscription(existing.organizationId).catch(() => undefined);
       return { ok: true, organizationId: existing.organizationId, created: false };
     }
 
@@ -108,6 +110,8 @@ export async function getOrCreateOrganizationForUser(params: {
       email,
       shopName: params.shopName,
     });
+
+    await ensureStarterSubscription(organizationId).catch(() => undefined);
 
     return { ok: true, organizationId, created: true };
   } catch (error) {

@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { getUserFromBearerToken } from '@/lib/billing-auth-server';
 import {
   backfillTailorProfileOrganizationId,
   fetchOrganizationContextForUser,
@@ -9,6 +10,14 @@ import { createSupabaseAdminClient } from '@/lib/delete-auth-user-admin';
 export const runtime = 'nodejs';
 
 export async function POST(request: Request) {
+  const user = await getUserFromBearerToken(request);
+  if (!user?.email) {
+    return NextResponse.json(
+      { ok: false, code: 'unauthorized', message: 'يجب تسجيل الدخول.' },
+      { status: 401 }
+    );
+  }
+
   let body: { userId?: string; email?: string; shopName?: string };
   try {
     body = (await request.json()) as typeof body;
@@ -27,6 +36,13 @@ export async function POST(request: Request) {
     return NextResponse.json(
       { ok: false, code: 'validation', message: 'userId و email مطلوبان.' },
       { status: 400 }
+    );
+  }
+
+  if (user.id !== userId || user.email.toLowerCase() !== email) {
+    return NextResponse.json(
+      { ok: false, code: 'forbidden', message: 'غير مصرّح.' },
+      { status: 403 }
     );
   }
 

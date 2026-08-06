@@ -24,10 +24,24 @@ type OrganizationProviderState = {
 
 const OrganizationContextReact = createContext<OrganizationProviderState | null>(null);
 
-async function ensureOrganizationViaApi(user: User): Promise<OrganizationContext | null> {
+async function ensureOrganizationViaApi(
+  supabase: SupabaseClient,
+  user: User
+): Promise<OrganizationContext | null> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  if (!session?.access_token) {
+    return null;
+  }
+
   const response = await fetch('/api/auth/ensure-organization', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${session.access_token}`,
+    },
     credentials: 'include',
     body: JSON.stringify({
       userId: user.id,
@@ -64,7 +78,7 @@ async function loadOrganizationForUser(
   let context = await fetchOrganizationContextForUser(supabase, user.id);
   if (context) return context;
 
-  return ensureOrganizationViaApi(user);
+  return ensureOrganizationViaApi(supabase, user);
 }
 
 export function OrganizationProvider({ children }: { children: ReactNode }) {
