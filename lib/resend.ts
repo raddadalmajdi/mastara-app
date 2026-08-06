@@ -6,11 +6,19 @@ import {
   logResendEnvDiagnostics,
 } from '@/lib/resend-diagnostics';
 import { logServerException } from '@/lib/server-error-log';
+import {
+  buildOtpEmailDeliverabilityHeaders,
+  buildOtpPlainText,
+  getOtpSenderFromAddress,
+  getResendReplyTo,
+  OTP_SENDER_DISPLAY_NAME,
+  type OtpEmailContext,
+} from '@/lib/resend-email-deliverability';
 import { OTP_LENGTH_AR } from '@/lib/otp-config';
 import { APP_NAME, APP_TAGLINE } from '@/lib/brand';
 
-/** المرسل الرسمي المعتمد للمشروع. */
-export const DEFAULT_RESEND_FROM = `${APP_NAME} <code@malaktout.com>`;
+/** المرسل الرسمي المعتمد للمشروع — اسم واضح + نطاق موثّق. */
+export const DEFAULT_RESEND_FROM = getOtpSenderFromAddress();
 
 /**
  * نطاق Resend التجريبي — يعمل دائماً بدون توثيق DNS مسبق.
@@ -18,7 +26,7 @@ export const DEFAULT_RESEND_FROM = `${APP_NAME} <code@malaktout.com>`;
  * (مثلاً قبل اكتمال توثيق malaktout.com في لوحة Resend)، حتى لا يتعطل
  * تسجيل المستخدمين بالكامل بسبب إعداد DNS ناقص.
  */
-export const FALLBACK_RESEND_FROM = `${APP_NAME} (تجريبي) <onboarding@resend.dev>`;
+export const FALLBACK_RESEND_FROM = `${OTP_SENDER_DISPLAY_NAME} (تجريبي) <onboarding@resend.dev>`;
 
 export function isResendConfigured(): boolean {
   const key = process.env.RESEND_API_KEY?.trim();
@@ -31,7 +39,7 @@ export function normalizeResendFromAddress(raw: string): string {
   if (!trimmed) return DEFAULT_RESEND_FROM;
   if (trimmed.includes('<') && trimmed.includes('>')) return trimmed;
   if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
-    return `${APP_NAME} <${trimmed}>`;
+    return getOtpSenderFromAddress(trimmed);
   }
   return DEFAULT_RESEND_FROM;
 }
@@ -119,6 +127,9 @@ function buildOtpEmailHtml(params: {
           <p style="margin:0 0 26px;color:#64748b;font-size:13.5px;line-height:1.8;">
             ${body}
           </p>
+          <p style="margin:0 0 20px;color:#94a3b8;font-size:11px;line-height:1.6;">
+            رسالة معاملاتية من ${APP_NAME} — لا تُشارك رمزك مع أي شخص.
+          </p>
           <div style="background:#f0fdfa;border:1.5px dashed #22d3ee;border-radius:18px;padding:22px 12px;text-align:center;margin-bottom:26px;">
             <p style="margin:0 0 10px;font-size:12px;font-weight:700;color:#0e7490;letter-spacing:0.5px;">رمز التحقق — ${OTP_LENGTH_AR}</p>
             <span dir="ltr" style="display:inline-block;font-size:${otpFontSize};font-weight:800;letter-spacing:${otpLetterSpacing};color:#0e7490;font-family:'Courier New',Courier,monospace;unicode-bidi:embed;word-break:keep-all;white-space:nowrap;">${otp}</span>
@@ -135,7 +146,7 @@ function buildOtpEmailHtml(params: {
   `;
 }
 
-export type SendAuthOtpEmailContext = 'signup' | 'login';
+export type { OtpEmailContext as SendAuthOtpEmailContext } from '@/lib/resend-email-deliverability';
 
 /**
  * إرسال بريد OTP عبر Resend API (بدون SMTP Supabase).
@@ -150,7 +161,7 @@ async function sendAuthOtpEmail(
     body: string;
     footerNote: string;
   },
-  context: SendAuthOtpEmailContext
+  context: OtpEmailContext
 ): Promise<{ id: string | undefined; usedFallbackFrom: boolean }> {
   logResendEnvDiagnostics(`sendAuthOtpEmail:${context}`);
 
@@ -173,6 +184,14 @@ async function sendAuthOtpEmail(
     throw clientError;
   }
   const primaryFrom = getResendFromAddress();
+  const replyTo = getResendReplyTo();
+  const headers = buildOtpEmailDeliverabilityHeaders(context);
+  const text = buildOtpPlainText({
+    heading: params.heading,
+    body: params.body,
+    otp: normalizedOtp,
+    footerNote: params.footerNote,
+  });
   const html = buildOtpEmailHtml({
     heading: params.heading,
     body: params.body,
@@ -185,8 +204,11 @@ async function sendAuthOtpEmail(
       const result = await resend.emails.send({
         from,
         to: params.to,
+        replyTo,
         subject: params.subject,
         html,
+        text,
+        headers,
       });
 
       if (result.error) {

@@ -1,4 +1,5 @@
 import { getResendFromAddress, isResendConfigured } from '@/lib/resend';
+import { getListUnsubscribeUrl, getResendReplyTo } from '@/lib/resend-email-deliverability';
 import { logServerException, serializeUnknownError } from '@/lib/server-error-log';
 
 export type ResendEnvDiagnostics = {
@@ -7,6 +8,8 @@ export type ResendEnvDiagnostics = {
   apiKeyPrefixOk: boolean;
   apiKeyLength: number;
   fromAddress: string;
+  replyTo: string;
+  listUnsubscribeUrl: string;
   nodeEnv: string;
 };
 
@@ -19,6 +22,8 @@ export function getResendEnvDiagnostics(): ResendEnvDiagnostics {
     apiKeyPrefixOk: key.startsWith('re_'),
     apiKeyLength: key.length,
     fromAddress: getResendFromAddress(),
+    replyTo: getResendReplyTo(),
+    listUnsubscribeUrl: getListUnsubscribeUrl(),
     nodeEnv: process.env.NODE_ENV ?? 'unknown',
   };
 }
@@ -31,6 +36,8 @@ export function logResendEnvDiagnostics(context: string): void {
     apiKeyPrefixOk: d.apiKeyPrefixOk,
     apiKeyLength: d.apiKeyLength,
     fromAddress: d.fromAddress,
+    replyTo: d.replyTo,
+    listUnsubscribeUrl: d.listUnsubscribeUrl,
     nodeEnv: d.nodeEnv,
   });
   if (!d.configured) {
