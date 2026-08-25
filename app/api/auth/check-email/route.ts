@@ -30,9 +30,16 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, exists: Boolean(user) });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'تعذّر التحقق من البريد.';
-    console.error('[api/auth/check-email]', message);
+    console.error('[api/auth/check-email]', message, error);
     return NextResponse.json(
-      { ok: false, code: 'internal_error', message: 'تعذّر التحقق من البريد. حاول مجدداً.' },
+      {
+        ok: false,
+        code: 'internal_error',
+        message:
+          process.env.NODE_ENV === 'development'
+            ? message
+            : 'تعذّر التحقق من البريد. حاول مجدداً.',
+      },
       { status: 500 }
     );
   }

@@ -1,8 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // يسمح بفتح خادم التطوير من عناوين الشبكة المحلية (مثل هاتف على نفس الواي فاي)
-  // بدون هذا، Turbopack يحجب طلبات HMR القادمة من IP غير localhost.
+  // Vercel/webpack: firebase-admin يُحمَّل من node_modules على الخادم.
+  serverExternalPackages: ['firebase-admin'],
   allowedDevOrigins: ["172.20.10.3"],
 };
 
