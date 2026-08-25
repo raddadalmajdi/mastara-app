@@ -6,7 +6,8 @@ import {
   rollbackStorageObjects,
   uploadBlobResumable,
 } from '@/lib/firebase-storage-upload';
-import { getFirebaseAuthClient, getFirebaseFirestoreClient, getFirebaseStorageClient, isFirebaseConfigured } from '@/lib/firebase';
+import { getFirebaseFirestoreClient, getFirebaseStorageClient, isFirebaseConfigured } from '@/lib/firebase';
+import { assertAuthenticatedUserId, assertOrganizationScope } from '@/lib/tenant-guard';
 import { normalizeStoredPhone } from '@/lib/tailor-customers';
 import {
   prepareInvoiceBlobsForUpload,
@@ -30,15 +31,7 @@ const INVOICE_FILE_METADATA = {
 } as const;
 
 async function assertSessionMatchesUser(userId: string): Promise<void> {
-  const auth = getFirebaseAuthClient();
-  const user = auth.currentUser;
-  if (!user) {
-    throw new Error('يجب تسجيل الدخول لرفع أو حفظ المستندات.');
-  }
-  if (user.uid !== userId) {
-    throw new Error('لا يمكن حفظ المستند إلا في حساب المحل الحالي.');
-  }
-  await user.getIdToken(true);
+  await assertAuthenticatedUserId(userId);
 }
 
 function mapInvoiceDoc(docSnap: { id: string; data: () => Record<string, unknown> }): InvoiceRecord {
@@ -132,8 +125,17 @@ export type InvoiceRecord = InvoiceInsertPayload & {
   created_at: string;
 };
 
-export async function insertInvoiceRecord(payload: InvoiceInsertPayload): Promise<string> {
+export type InvoiceWriteOptions = {
+  /** من سياق المنظمة الموثوق (OrganizationProvider) — يمنع تمرير organization_id لمحل آخر. */
+  allowedOrganizationId?: string | null;
+};
+
+export async function insertInvoiceRecord(
+  payload: InvoiceInsertPayload,
+  options?: InvoiceWriteOptions
+): Promise<string> {
   await assertSessionMatchesUser(payload.user_id);
+  assertOrganizationScope(payload.organization_id, options?.allowedOrganizationId);
 
   const db = getFirebaseFirestoreClient();
   const normalizedPhone = normalizeStoredPhone(payload.customer_phone);
@@ -164,8 +166,12 @@ export async function fetchInvoicesByCustomerPhone(params: {
   userId: string;
   customerPhone: string;
   organizationId?: string | null;
+  allowedOrganizationId?: string | null;
 }): Promise<InvoiceRecord[]> {
   if (!isFirebaseConfigured()) return [];
+
+  await assertAuthenticatedUserId(params.userId);
+  assertOrganizationScope(params.organizationId, params.allowedOrganizationId);
 
   const normalizedPhone = normalizeStoredPhone(params.customerPhone);
   if (!normalizedPhone) return [];
@@ -240,8 +246,12 @@ export async function fetchInvoicesByCustomerPhone(params: {
 export async function fetchInvoicesForUser(params: {
   userId: string;
   organizationId?: string | null;
+  allowedOrganizationId?: string | null;
 }): Promise<InvoiceRecord[]> {
   if (!isFirebaseConfigured()) return [];
+
+  await assertAuthenticatedUserId(params.userId);
+  assertOrganizationScope(params.organizationId, params.allowedOrganizationId);
 
   const cacheKey = params.organizationId
     ? `inv:org:${params.organizationId}:all`

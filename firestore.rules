@@ -1,34 +1,97 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isSelf(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    /** سجل tenant يُكتَب من الخادم فقط — يربط المستخدم بمنظمته للتحقق في القواعد. */
+    function userTenantOrgId() {
+      return get(/databases/$(database)/documents/user_tenants/$(request.auth.uid)).data.organization_id;
+    }
+
+    function hasUserTenant() {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/user_tenants/$(request.auth.uid));
+    }
+
+    function belongsToUserTenant(orgId) {
+      return hasUserTenant() && userTenantOrgId() == orgId;
+    }
+
+    function invoiceOrgId() {
+      return resource.data.organization_id;
+    }
+
+    function incomingInvoiceOrgId() {
+      return request.resource.data.organization_id;
+    }
+
+    function ownsInvoice() {
+      return isSignedIn() && resource.data.user_id == request.auth.uid;
+    }
+
+    function canReadInvoice() {
+      return ownsInvoice()
+        || (
+          invoiceOrgId() != null
+          && belongsToUserTenant(invoiceOrgId())
+        );
+    }
+
+    function canCreateInvoice() {
+      return isSignedIn()
+        && request.resource.data.user_id == request.auth.uid
+        && (
+          incomingInvoiceOrgId() == null
+          || belongsToUserTenant(incomingInvoiceOrgId())
+        );
+    }
+
+    match /user_tenants/{userId} {
+      allow read: if isSelf(userId);
+      allow write: if false;
+    }
+
     match /tailor_profiles/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      allow read: if isSelf(userId);
+      allow create: if isSelf(userId)
+        && !request.resource.data.keys().hasAny(['organization_id']);
+      allow update: if isSelf(userId)
+        && (
+          !request.resource.data.keys().hasAny(['organization_id'])
+          || request.resource.data.organization_id == resource.data.organization_id
+        );
     }
 
     match /tailor_customers/{docId} {
-      allow read: if request.auth != null && resource.data.tailor_user_id == request.auth.uid;
-      allow create: if request.auth != null && request.resource.data.tailor_user_id == request.auth.uid;
-      allow update: if request.auth != null && resource.data.tailor_user_id == request.auth.uid;
+      allow read: if isSignedIn() && resource.data.tailor_user_id == request.auth.uid;
+      allow create: if isSignedIn()
+        && request.resource.data.tailor_user_id == request.auth.uid;
+      allow update: if isSignedIn()
+        && resource.data.tailor_user_id == request.auth.uid
+        && request.resource.data.tailor_user_id == request.auth.uid;
+      allow delete: if isSignedIn() && resource.data.tailor_user_id == request.auth.uid;
     }
 
     match /invoices/{docId} {
-      allow read: if request.auth != null && (
-        resource.data.user_id == request.auth.uid
-        || (
-          resource.data.organization_id != null
-          && get(/databases/$(database)/documents/tailor_profiles/$(request.auth.uid)).data.organization_id
-             == resource.data.organization_id
-        )
-      );
-      allow create: if request.auth != null && request.resource.data.user_id == request.auth.uid;
+      allow read: if canReadInvoice();
+      allow create: if canCreateInvoice();
+      allow update, delete: if false;
     }
 
     match /organization_members/{docId} {
-      allow read: if request.auth != null && resource.data.user_id == request.auth.uid;
+      allow read: if isSignedIn() && resource.data.user_id == request.auth.uid;
+      allow write: if false;
     }
 
     match /organizations/{orgId} {
-      allow read: if request.auth != null;
+      allow read: if isSignedIn() && belongsToUserTenant(orgId);
+      allow write: if false;
     }
 
     match /otp_sessions/{docId} {
@@ -40,7 +103,10 @@ service cloud.firestore {
     }
 
     match /organization_subscriptions/{docId} {
-      allow read: if request.auth != null;
+      allow read: if isSignedIn()
+        && resource.data.organization_id != null
+        && belongsToUserTenant(resource.data.organization_id);
+      allow write: if false;
     }
 
     match /billing_events/{docId} {

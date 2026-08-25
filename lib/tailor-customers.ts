@@ -8,7 +8,8 @@ import {
   setDoc,
   where,
 } from 'firebase/firestore';
-import { getFirebaseAuthClient, getFirebaseFirestoreClient, isFirebaseConfigured } from '@/lib/firebase';
+import { getFirebaseFirestoreClient, isFirebaseConfigured } from '@/lib/firebase';
+import { assertAuthenticatedUserId } from '@/lib/tenant-guard';
 
 export type TailorCustomerRecord = {
   id: string;
@@ -68,10 +69,7 @@ export function phonesMatch(a: string, b: string): boolean {
 }
 
 function assertTailorOwnsSession(tailorUserId: string): void {
-  const user = getFirebaseAuthClient().currentUser;
-  if (!user || user.uid !== tailorUserId) {
-    throw new Error('جهات الاتصال متاحة فقط لصاحب المحل المسجّل دخوله.');
-  }
+  void assertAuthenticatedUserId(tailorUserId);
 }
 
 function customerDocId(tailorUserId: string, phone: string, organizationId?: string | null): string {
@@ -100,7 +98,7 @@ export async function lookupTailorCustomerByPhone(
       : null;
   }
 
-  assertTailorOwnsSession(tailorUserId);
+  await assertAuthenticatedUserId(tailorUserId);
 
   const db = getFirebaseFirestoreClient();
   const docId = customerDocId(tailorUserId, normalized, organizationId);
@@ -155,7 +153,7 @@ export async function upsertTailorCustomer(
     return;
   }
 
-  assertTailorOwnsSession(tailorUserId);
+  await assertAuthenticatedUserId(tailorUserId);
 
   const db = getFirebaseFirestoreClient();
   const docId = customerDocId(tailorUserId, phone, organizationId);

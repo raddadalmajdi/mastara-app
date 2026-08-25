@@ -22,6 +22,25 @@ function mapOrganizationDoc(id: string, data: FirebaseFirestore.DocumentData): O
   };
 }
 
+/** يربط المستخدم بمنظمته في Firestore — يُكتَب من الخادم فقط (قواعد user_tenants). */
+export async function syncUserTenantRecord(
+  userId: string,
+  organizationId: string
+): Promise<void> {
+  const uid = userId.trim();
+  const orgId = organizationId.trim();
+  if (!uid || !orgId) return;
+
+  const db = getFirebaseAdminFirestore();
+  await db.collection('user_tenants').doc(uid).set(
+    {
+      organization_id: orgId,
+      updated_at: new Date().toISOString(),
+    },
+    { merge: true }
+  );
+}
+
 async function findExistingMembership(
   userId: string
 ): Promise<{ organizationId: string; role: 'owner' | 'member' } | null> {
@@ -99,6 +118,7 @@ export async function getOrCreateOrganizationForUser(params: {
   try {
     const existing = await findExistingMembership(userId);
     if (existing?.organizationId) {
+      await syncUserTenantRecord(userId, existing.organizationId).catch(() => undefined);
       await ensureStarterSubscription(existing.organizationId).catch(() => undefined);
       return { ok: true, organizationId: existing.organizationId, created: false };
     }
@@ -109,6 +129,7 @@ export async function getOrCreateOrganizationForUser(params: {
       shopName: params.shopName,
     });
 
+    await syncUserTenantRecord(userId, organizationId).catch(() => undefined);
     await ensureStarterSubscription(organizationId).catch(() => undefined);
 
     return { ok: true, organizationId, created: true };

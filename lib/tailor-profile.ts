@@ -34,9 +34,6 @@ export function buildTailorProfileWriteRow(payload: TailorProfileUpsert): Record
   if (payload.avatar_url?.trim()) {
     row.avatar_url = payload.avatar_url.trim();
   }
-  if (payload.organization_id?.trim()) {
-    row.organization_id = payload.organization_id.trim();
-  }
   return row;
 }
 

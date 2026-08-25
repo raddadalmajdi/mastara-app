@@ -112,6 +112,7 @@ export function useCustomerWorkspace({ user, organizationId }: UseCustomerWorksp
           userId,
           customerPhone: fullPhone,
           organizationId,
+          allowedOrganizationId: organizationId,
         });
 
         if (data.length === 0) {
@@ -122,6 +123,7 @@ export function useCustomerWorkspace({ user, organizationId }: UseCustomerWorksp
               userId,
               customerPhone: normalized,
               organizationId,
+              allowedOrganizationId: organizationId,
             });
             if (alt.length > 0) {
               data = alt;
@@ -130,7 +132,11 @@ export function useCustomerWorkspace({ user, organizationId }: UseCustomerWorksp
           }
         }
       } else {
-        const all = await fetchInvoicesForUser({ userId, organizationId });
+        const all = await fetchInvoicesForUser({
+          userId,
+          organizationId,
+          allowedOrganizationId: organizationId,
+        });
         data = all.filter((inv) =>
           variants.some((variant) => phonesMatch(String(inv.customer_phone ?? ''), variant))
         );
@@ -369,13 +375,16 @@ export function useCustomerWorkspace({ user, organizationId }: UseCustomerWorksp
           { label: fullCustomerPhone }
         );
 
-        await insertInvoiceRecord({
-          user_id: userId,
-          organization_id: organizationId ?? undefined,
-          customer_phone: fullCustomerPhone,
-          image_url: imageUrl,
-          pdf_url: pdfUrl,
-        });
+        await insertInvoiceRecord(
+          {
+            user_id: userId,
+            organization_id: organizationId ?? undefined,
+            customer_phone: fullCustomerPhone,
+            image_url: imageUrl,
+            pdf_url: pdfUrl,
+          },
+          { allowedOrganizationId: organizationId }
+        );
 
         await upsertTailorCustomer(userId, fullCustomerPhone, nameToSave, organizationId);
         setCustomerBookStatus('known');
