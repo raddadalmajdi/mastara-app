@@ -1,4 +1,5 @@
 import { createRequire } from 'module';
+import type admin from 'firebase-admin';
 import {
   getFirebaseProjectId,
   getFirebaseServiceAccount,
@@ -6,44 +7,34 @@ import {
   isVercelRuntime,
 } from '@/lib/firebase-service-account';
 
-/** يحمّل firebase-admin فرعياً — Vercel: require مباشر؛ Firebase Turbopack: مسار ديناميكي. */
-function loadAdminSubpath(sub: string): unknown {
+type FirebaseAdmin = typeof admin;
+
+let adminModule: FirebaseAdmin | null = null;
+
+/** يحمّل firebase-admin — Vercel/محلي: require مباشر؛ Firebase Turbopack: مسار ديناميكي. */
+function loadAdmin(): FirebaseAdmin {
+  if (adminModule) return adminModule;
+
   const req = createRequire(import.meta.url);
 
   if (isVercelRuntime() || process.env.NODE_ENV === 'development') {
-    return req(`firebase-admin/${sub}`);
+    adminModule = req('firebase-admin') as FirebaseAdmin;
+    return adminModule;
   }
 
-  const runReq = new Function('r', 'pkg', 's', 'return r(pkg + "/" + s)') as (
+  const runReq = new Function('r', 'pkg', 'return r(pkg)') as (
     request: NodeRequire,
-    pkg: string,
-    subpath: string
-  ) => unknown;
-  const pkg = ['fire', 'base', '-', 'admin'].join('');
-  return runReq(req, pkg, sub);
+    pkg: string
+  ) => FirebaseAdmin;
+  adminModule = runReq(req, ['fire', 'base', '-', 'admin'].join(''));
+  return adminModule;
 }
 
-function adminApp(): typeof import('firebase-admin/app') {
-  return loadAdminSubpath('app') as typeof import('firebase-admin/app');
-}
+function ensureInitialized(): FirebaseAdmin {
+  const admin = loadAdmin();
 
-function adminAuth(): typeof import('firebase-admin/auth') {
-  return loadAdminSubpath('auth') as typeof import('firebase-admin/auth');
-}
-
-function adminFirestore(): typeof import('firebase-admin/firestore') {
-  return loadAdminSubpath('firestore') as typeof import('firebase-admin/firestore');
-}
-
-function adminStorage(): typeof import('firebase-admin/storage') {
-  return loadAdminSubpath('storage') as typeof import('firebase-admin/storage');
-}
-
-function initFirebaseAdmin(): import('firebase-admin/app').App {
-  const { getApps, initializeApp, applicationDefault, cert } = adminApp();
-
-  if (getApps().length > 0) {
-    return getApps()[0]!;
+  if (admin.apps.length > 0) {
+    return admin;
   }
 
   const projectId = getFirebaseProjectId();
@@ -51,19 +42,21 @@ function initFirebaseAdmin(): import('firebase-admin/app').App {
 
   const serviceAccount = getFirebaseServiceAccount();
   if (serviceAccount) {
-    return initializeApp({
-      credential: cert(serviceAccount as import('firebase-admin/app').ServiceAccount),
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount as admin.ServiceAccount),
       projectId,
       storageBucket,
     });
+    return admin;
   }
 
   if (isGoogleCloudRuntime()) {
-    return initializeApp({
-      credential: applicationDefault(),
+    admin.initializeApp({
+      credential: admin.credential.applicationDefault(),
       projectId,
       storageBucket,
     });
+    return admin;
   }
 
   throw new Error(
@@ -71,21 +64,18 @@ function initFirebaseAdmin(): import('firebase-admin/app').App {
   );
 }
 
-export function getFirebaseAdminApp(): import('firebase-admin/app').App {
-  return initFirebaseAdmin();
+export function getFirebaseAdminApp(): admin.app.App {
+  return ensureInitialized().app();
 }
 
-export function getFirebaseAdminAuth(): import('firebase-admin/auth').Auth {
-  const { getAuth } = adminAuth();
-  return getAuth(getFirebaseAdminApp());
+export function getFirebaseAdminAuth(): admin.auth.Auth {
+  return ensureInitialized().auth();
 }
 
-export function getFirebaseAdminFirestore(): import('firebase-admin/firestore').Firestore {
-  const { getFirestore } = adminFirestore();
-  return getFirestore(getFirebaseAdminApp());
+export function getFirebaseAdminFirestore(): admin.firestore.Firestore {
+  return ensureInitialized().firestore();
 }
 
-export function getFirebaseAdminStorage(): import('firebase-admin/storage').Storage {
-  const { getStorage } = adminStorage();
-  return getStorage(getFirebaseAdminApp());
+export function getFirebaseAdminStorage(): admin.storage.Storage {
+  return ensureInitialized().storage();
 }
