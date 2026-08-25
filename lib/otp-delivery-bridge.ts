@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from 'crypto';
-import type { EmailOtpType } from '@supabase/supabase-js';
+
+export type OtpBridgeType = 'signup' | 'email' | 'magiclink';
 
 /** مدة صلاحية جسر التحقق — يجب أن تكون ≥ نافذة Supabase OTP (افتراضياً 3600 ث). */
 const OTP_BRIDGE_TTL_MS = 60 * 60 * 1000;
@@ -9,14 +10,14 @@ type BridgePayload = {
   e: string;
   d: string;
   v: string;
-  t: EmailOtpType;
+  t: OtpBridgeType;
   x: number;
 };
 
 type BridgeEntry = {
   deliveryOtp: string;
   verifyToken: string;
-  otpType: EmailOtpType;
+  otpType: OtpBridgeType;
   expiresAt: number;
 };
 
@@ -24,7 +25,7 @@ export type OtpBridgeIssue = {
   email: string;
   deliveryOtp: string;
   verifyToken: string;
-  otpType: EmailOtpType;
+  otpType: OtpBridgeType;
 };
 
 const bridgeByEmail = new Map<string, BridgeEntry>();
@@ -124,7 +125,7 @@ export function issueOtpVerificationBridge(issue: OtpBridgeIssue): string {
 function resolveFromMemory(
   email: string,
   userToken: string
-): { verifyToken: string; otpType: EmailOtpType } | null {
+): { verifyToken: string; otpType: OtpBridgeType } | null {
   const key = normalizeEmailKey(email);
   const entry = bridgeByEmail.get(key);
   if (!entry) return null;
@@ -144,7 +145,7 @@ export function resolveOtpVerificationBridge(
   cookieHeader: string | null | undefined,
   email: string,
   userToken: string
-): { verifyToken: string; otpType: EmailOtpType } | null {
+): { verifyToken: string; otpType: OtpBridgeType } | null {
   const normalizedUser = userToken.replace(/\D/g, '');
   const normalizedEmail = normalizeEmailKey(email);
 
@@ -172,7 +173,7 @@ export function registerOtpDeliveryBridge(
   email: string,
   deliveryOtp: string,
   verifyToken: string,
-  otpType: EmailOtpType = 'email'
+  otpType: OtpBridgeType = 'email'
 ): void {
   issueOtpVerificationBridge({ email, deliveryOtp, verifyToken, otpType });
 }

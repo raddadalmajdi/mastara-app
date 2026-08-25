@@ -1,5 +1,5 @@
 import { createHmac, timingSafeEqual } from 'crypto';
-import { getAppPublicUrl } from '@/lib/supabase/env';
+import { getAppPublicUrl } from '@/lib/app-env';
 
 export type TapChargeStatus =
   | 'INITIATED'

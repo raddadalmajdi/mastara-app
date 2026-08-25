@@ -1,21 +1,16 @@
 'use client';
 
-import { Suspense, useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { AppBrand } from '@/components/brand/AppBrand';
 import { useOrganization } from '@/components/organization/OrganizationProvider';
 import { resolveClientSession } from '@/lib/auth-session-client';
 import { confirmBillingReturn } from '@/lib/billing-api';
-import {
-  getSupabaseBrowserClient,
-  getSupabaseConfigDiagnostic,
-  isSupabaseConfigured,
-} from '@/lib/supabase-browser';
+import { isFirebaseConfigured } from '@/lib/firebase-auth-client';
 
 function BillingReturnInner() {
   const params = useSearchParams();
-  const supabase = useMemo(() => (isSupabaseConfigured() ? getSupabaseBrowserClient() : null), []);
   const { organizationId, loading: orgLoading } = useOrganization();
 
   const [message, setMessage] = useState('جاري تأكيد عملية الدفع...');
@@ -25,22 +20,10 @@ function BillingReturnInner() {
   useEffect(() => {
     if (orgLoading) return;
 
-    if (!isSupabaseConfigured()) {
-      const diagnostic = getSupabaseConfigDiagnostic();
+    if (!isFirebaseConfigured()) {
       setSuccess(false);
       setDone(true);
-      setMessage(
-        diagnostic.issues.length > 0
-          ? `إعداد Supabase غير مكتمل (${diagnostic.issues.join(', ')}).`
-          : 'إعداد Supabase غير متاح — تعذّر تأكيد الدفع.'
-      );
-      return;
-    }
-
-    if (!supabase) {
-      setSuccess(false);
-      setDone(true);
-      setMessage('تعذّر تهيئة عميل المصادقة.');
+      setMessage('إعداد Firebase غير متاح — تعذّر تأكيد الدفع.');
       return;
     }
 
@@ -56,7 +39,7 @@ function BillingReturnInner() {
 
     if (!organizationId) {
       void (async () => {
-        const sessionResult = await resolveClientSession(supabase);
+        const sessionResult = await resolveClientSession();
         setSuccess(false);
         setDone(true);
         setMessage(
@@ -69,7 +52,7 @@ function BillingReturnInner() {
     }
 
     void (async () => {
-      const sessionResult = await resolveClientSession(supabase);
+      const sessionResult = await resolveClientSession();
 
       if (!sessionResult.ok) {
         setSuccess(false);
@@ -104,7 +87,7 @@ function BillingReturnInner() {
         setMessage(errMsg);
       }
     })();
-  }, [organizationId, orgLoading, params, supabase]);
+  }, [organizationId, orgLoading, params]);
 
   return (
     <div className="min-h-screen bg-mistara-sand flex flex-col items-center justify-center px-4" dir="rtl">

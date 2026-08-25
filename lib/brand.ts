@@ -1,6 +1,6 @@
 export const APP_NAME = 'إيصالك';
 export const APP_TAGLINE = 'نظامك الذكي لإدارة فواتيرك الورقية.';
-export const APP_SITE_URL = 'https://www.malaktout.com';
+export const APP_SITE_URL = 'https://eysalk.com';
 export const APP_LOGO_PATH = '/logo.png';
 export const APP_LOGO_OG_PATH = `${APP_SITE_URL}${APP_LOGO_PATH}`;
 /** أبعاد الشعار الأصلي — للـ manifest و metadata. */

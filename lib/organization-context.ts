@@ -1,12 +1,8 @@
-import type { SupabaseClient } from '@supabase/supabase-js';
 import { fetchOrganizationContextForUser } from '@/lib/organization-server';
 
-/** يجلب معرف المنظمة النشطة من جلسة Supabase (للاستخدام في مسارات الخادم). */
-export async function getOrganizationIdForUser(
-  supabase: SupabaseClient,
-  userId: string
-): Promise<string | null> {
-  const context = await fetchOrganizationContextForUser(supabase, userId);
+/** يجلب معرف المنظمة النشطة للمستخدم (Admin SDK — للخادم). */
+export async function getOrganizationIdForUser(userId: string): Promise<string | null> {
+  const context = await fetchOrganizationContextForUser(userId);
   return context?.organizationId ?? null;
 }
 

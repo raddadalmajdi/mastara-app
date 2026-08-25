@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { findAuthUserByEmail } from '@/lib/check-email-registered';
+import { findAuthUserByEmail } from '@/lib/check-email-registered-server';
 
 export const runtime = 'nodejs';
 

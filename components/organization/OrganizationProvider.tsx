@@ -9,14 +9,15 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import type { SupabaseClient, User } from '@supabase/supabase-js';
+import type { User } from 'firebase/auth';
 import type { OrganizationContext } from '@/lib/organization';
-import { fetchOrganizationContextForUser } from '@/lib/organization-server';
+import { fetchOrganizationContextForUser } from '@/lib/organization-client';
 import {
-  diagnoseSupabasePublicConfig,
-  formatSupabaseConfigIssues,
-} from '@/lib/supabase/env';
-import { getSupabaseBrowserClient, isSupabaseConfigured } from '@/lib/supabase-browser';
+  getFirebaseAuth,
+  getFirebaseIdToken,
+  isFirebaseConfigured,
+  subscribeFirebaseAuth,
+} from '@/lib/firebase-auth-client';
 
 type OrganizationProviderState = {
   organizationId: string | null;
@@ -28,27 +29,19 @@ type OrganizationProviderState = {
 
 const OrganizationContextReact = createContext<OrganizationProviderState | null>(null);
 
-async function ensureOrganizationViaApi(
-  supabase: SupabaseClient,
-  user: User
-): Promise<OrganizationContext | null> {
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-
-  if (!session?.access_token) {
-    return null;
-  }
+async function ensureOrganizationViaApi(user: User): Promise<OrganizationContext | null> {
+  const token = await getFirebaseIdToken();
+  if (!token) return null;
 
   const response = await fetch('/api/auth/ensure-organization', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${session.access_token}`,
+      Authorization: `Bearer ${token}`,
     },
     credentials: 'include',
     body: JSON.stringify({
-      userId: user.id,
+      userId: user.uid,
       email: user.email ?? '',
     }),
   });
@@ -78,22 +71,19 @@ async function ensureOrganizationViaApi(
   };
 }
 
-async function loadOrganizationForUser(
-  supabase: SupabaseClient,
-  user: User
-): Promise<OrganizationContext | null> {
-  let context = await fetchOrganizationContextForUser(supabase, user.id);
+async function loadOrganizationForUser(user: User): Promise<OrganizationContext | null> {
+  let context = await fetchOrganizationContextForUser(user.uid);
   if (context) return context;
 
-  return ensureOrganizationViaApi(supabase, user);
+  return ensureOrganizationViaApi(user);
 }
 
 export function OrganizationProvider({ children }: { children: ReactNode }) {
-  const supabase = useMemo(() => (isSupabaseConfigured() ? getSupabaseBrowserClient() : null), []);
+  const firebaseReady = useMemo(() => isFirebaseConfigured(), []);
   const [organizationId, setOrganizationId] = useState<string | null>(null);
   const [organization, setOrganization] = useState<OrganizationContext['organization'] | null>(null);
   const [role, setRole] = useState<OrganizationContext['role'] | null>(null);
-  const [loading, setLoading] = useState(Boolean(supabase));
+  const [loading, setLoading] = useState(Boolean(firebaseReady));
 
   const applyContext = useCallback((ctx: OrganizationContext | null) => {
     setOrganizationId(ctx?.organizationId ?? null);
@@ -102,7 +92,7 @@ export function OrganizationProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const refreshOrganization = useCallback(async () => {
-    if (!supabase) {
+    if (!firebaseReady) {
       applyContext(null);
       setLoading(false);
       return;
@@ -110,16 +100,14 @@ export function OrganizationProvider({ children }: { children: ReactNode }) {
 
     setLoading(true);
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const authUser = getFirebaseAuth()?.currentUser ?? null;
 
-      if (!user) {
+      if (!authUser) {
         applyContext(null);
         return;
       }
 
-      const ctx = await loadOrganizationForUser(supabase, user);
+      const ctx = await loadOrganizationForUser(authUser);
       applyContext(ctx);
     } catch (error) {
       console.warn('[OrganizationProvider] refresh failed', error);
@@ -127,45 +115,31 @@ export function OrganizationProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoading(false);
     }
-  }, [applyContext, supabase]);
+  }, [applyContext, firebaseReady]);
 
   useEffect(() => {
-    if (!isSupabaseConfigured()) {
-      const diagnostic = diagnoseSupabasePublicConfig();
-      console.error(
-        '[OrganizationProvider] Supabase not configured:',
-        formatSupabaseConfigIssues(diagnostic.issues)
-      );
-      setLoading(false);
-      return;
-    }
-
-    if (!supabase) {
+    if (!firebaseReady) {
       setLoading(false);
       return;
     }
 
     void refreshOrganization();
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_OUT') {
+    const unsubscribe = subscribeFirebaseAuth((user) => {
+      if (!user) {
         applyContext(null);
         setLoading(false);
         return;
       }
 
-      if (session?.user && (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED')) {
-        void loadOrganizationForUser(supabase, session.user)
-          .then(applyContext)
-          .catch(() => applyContext(null))
-          .finally(() => setLoading(false));
-      }
+      void loadOrganizationForUser(user)
+        .then(applyContext)
+        .catch(() => applyContext(null))
+        .finally(() => setLoading(false));
     });
 
-    return () => subscription.unsubscribe();
-  }, [applyContext, refreshOrganization, supabase]);
+    return () => unsubscribe();
+  }, [applyContext, firebaseReady, refreshOrganization]);
 
   const value = useMemo(
     () => ({
@@ -191,7 +165,6 @@ export function useOrganization(): OrganizationProviderState {
   return ctx;
 }
 
-/** آمن خارج المزوّد — يُرجع null بدل رمي خطأ. */
 export function useOrganizationOptional(): OrganizationProviderState | null {
   return useContext(OrganizationContextReact);
 }

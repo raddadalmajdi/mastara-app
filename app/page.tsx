@@ -2,26 +2,30 @@
 
 /** لوحة إيصالك — دخول (بريد/كلمة مرور/OTP)، إعدادات الخياط، ودفتر العملاء. */
 
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
-import type { EmailOtpType } from '@supabase/supabase-js';
+import type { FirebaseAuthUser } from '@/lib/firebase-auth-client';
 import { mapAuthErrorToArabic } from '@/lib/auth-errors';
 import { getUserFacingErrorMessage } from '@/lib/user-facing-error';
 import { trySendLoginOtpViaResendApi } from '@/lib/auth-login-otp-api';
 import {
   resolveSignUpFlow,
 } from '@/lib/auth-handler';
-import { logAuthRedirectDiagnostics, logSupabaseAuthErrorJson } from '@/lib/auth-debug';
+import { logAuthRedirectDiagnostics } from '@/lib/auth-debug';
 import { executeSignUp } from '@/lib/auth-sign-up';
 import { resendVerificationViaResendApi } from '@/lib/auth-sign-up-api';
 import { checkEmailRegistered } from '@/lib/check-email-api';
 import { DUPLICATE_EMAIL_MESSAGE, isDuplicateEmailMessage } from '@/lib/check-email-registered';
 import {
+  firebaseSignInWithCustomToken,
+  firebaseSignInWithPassword,
+  firebaseSignOut,
   getAuthCallbackUrl,
-  getSupabaseBrowserClient,
-  isSupabaseConfigured,
-} from '@/lib/supabase-browser';
+  isFirebaseConfigured,
+  subscribeFirebaseAuth,
+} from '@/lib/firebase-auth-client';
+import type { OtpBridgeType } from '@/lib/otp-delivery-bridge';
 import { OTP_CODE_LENGTH, OTP_LENGTH_AR } from '@/lib/otp-config';
 import { AuthConfirmationPanel } from '@/components/auth/AuthConfirmationPanel';
 import { AuthAlert } from '@/components/auth/AuthAlert';
@@ -38,6 +42,7 @@ import {
 } from '@/lib/auth-confirmation-copy';
 import { downloadInvoiceAsPdf, openInvoicePdfForPrint, downloadStoredPdf, openStoredPdfForPrint } from '@/lib/pdf-export';
 import {
+  fetchInvoicesForUser,
   insertInvoiceRecord,
   invoiceShareDocumentUrl,
   uploadScannedInvoiceFiles,
@@ -80,6 +85,13 @@ import {
 
 type AuthFeedback = { type: 'success' | 'error'; message: string } | null;
 
+type GuestUser = { id: string; email: string };
+type AppUser = FirebaseAuthUser | GuestUser;
+
+function appUserId(user: AppUser): string {
+  return 'uid' in user ? user.uid : user.id;
+}
+
 const COUNTRY_CODES = [
   { code: '965', name: 'الكويت 🇰🇼' },
   { code: '966', name: 'السعودية 🇸🇦' },
@@ -90,16 +102,17 @@ const COUNTRY_CODES = [
 ];
 
 export default function Home() {
-  const supabase = useMemo(() => getSupabaseBrowserClient(), []);
   const { organizationId, refreshOrganization } = useOrganization();
-  const [user, setUser] = useState<any>(isSupabaseConfigured() ? null : { id: 'guest-local-user', email: 'guest@mistarh.local' });
+  const [user, setUser] = useState<AppUser | null>(
+    isFirebaseConfigured() ? null : { id: 'guest-local-user', email: 'guest@mistarh.local' }
+  );
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isSignUp, setIsSignUp] = useState(false);
   const [loginMethod, setLoginMethod] = useState<'password' | 'otp'>('password');
   const [authPhase, setAuthPhase] = useState<'form' | 'confirm'>('form');
   const [otpCode, setOtpCode] = useState('');
-  const [otpVerifyType, setOtpVerifyType] = useState<EmailOtpType>('email');
+  const [otpVerifyType, setOtpVerifyType] = useState<OtpBridgeType>('email');
   const [otpResendCooldown, setOtpResendCooldown] = useState(0);
   const [authFeedback, setAuthFeedback] = useState<AuthFeedback>(null);
   const [emailDuplicateError, setEmailDuplicateError] = useState<string | null>(null);
@@ -111,7 +124,7 @@ export default function Home() {
   const [devDeleteLoading, setDevDeleteLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [authBootstrapping, setAuthBootstrapping] = useState(false);
-  const [sessionCheckPending, setSessionCheckPending] = useState(() => isSupabaseConfigured());
+  const [sessionCheckPending, setSessionCheckPending] = useState(() => isFirebaseConfigured());
 
   // ملف الخياط والإعدادات
   const [tailorCountryCode, setTailorCountryCode] = useState('965');
@@ -162,7 +175,7 @@ export default function Home() {
   const [exportingPdfId, setExportingPdfId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!isSupabaseConfigured() || !supabase) {
+    if (!isFirebaseConfigured()) {
       setLoading(false);
       setAuthBootstrapping(false);
       setSessionCheckPending(false);
@@ -171,56 +184,12 @@ export default function Home() {
 
     let cancelled = false;
 
-    (async () => {
-      try {
-        const {
-          data: { session },
-        } = await withTimeout(supabase.auth.getSession(), 10_000, 'التحقق من الجلسة');
-
-        if (cancelled) return;
-
-        const currentUser = session?.user ?? null;
-        if (currentUser && !isEmailVerifiedUser(currentUser)) {
-          // جلسة موجودة لكن البريد غير مؤكد فعلياً برمز الـ OTP (حالة لا يجب
-          // أن تحدث إن كان "Confirm email" مفعّلاً في Supabase، لكننا لا نثق
-          // بذلك الإعداد وحده) — نُسجّل الخروج فوراً بدل عرض التطبيق.
-          if (process.env.NODE_ENV === 'development') {
-            console.warn('[auth bootstrap] session found but email not verified — signing out');
-          }
-          await supabase.auth.signOut().catch(() => undefined);
-          if (!cancelled) setUser(null);
-        } else if (currentUser) {
-          setUser(currentUser);
-          await checkTailorAndFetchData(currentUser.id);
-        } else {
-          setUser(null);
-        }
-      } catch (error) {
-        if (process.env.NODE_ENV === 'development') {
-          console.warn('[auth bootstrap] getSession failed or timed out', error);
-        }
-        if (!cancelled) {
-          setUser(null);
-        }
-      } finally {
-        if (!cancelled) {
-          setAuthBootstrapping(false);
-          setLoading(false);
-          setSessionCheckPending(false);
-        }
-      }
-    })();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      const currentUser = session?.user ?? null;
+    const unsubscribe = subscribeFirebaseAuth((currentUser) => {
+      if (cancelled) return;
 
       if (currentUser && !isEmailVerifiedUser(currentUser)) {
-        // نفس الحارس أعلاه لكن لأحداث الجلسة اللاحقة (تسجيل دخول/تحديث توكن).
-        // نؤجّل استدعاء signOut خارج هذا الـ callback مباشرة (بدل استدعائه
-        // بشكل متزامن هنا) تجنباً لأي تعارض داخلي موثّق في عميل Supabase عند
-        // استدعاء دوال auth أخرى من within onAuthStateChange نفسه.
         if (process.env.NODE_ENV === 'development') {
-          console.warn('[onAuthStateChange] unverified session detected — signing out', event);
+          console.warn('[auth bootstrap] session found but email not verified — signing out');
         }
         setUser(null);
         setIsTailorRegistered(false);
@@ -232,20 +201,18 @@ export default function Home() {
         setAuthBootstrapping(false);
         setSessionCheckPending(false);
         window.setTimeout(() => {
-          void supabase.auth.signOut().catch(() => undefined);
+          void firebaseSignOut().catch(() => undefined);
         }, 0);
         return;
       }
 
       setUser(currentUser);
       if (currentUser) {
-        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-          setAuthPhase('form');
-          setAuthFeedback(null);
-          setOtpCode('');
-          setAuthSubmitting(false);
-        }
-        void checkTailorAndFetchData(currentUser.id);
+        setAuthPhase('form');
+        setAuthFeedback(null);
+        setOtpCode('');
+        setAuthSubmitting(false);
+        void checkTailorAndFetchData(currentUser.uid);
       } else {
         setIsTailorRegistered(false);
         setCloudNotes('');
@@ -256,6 +223,9 @@ export default function Home() {
         setAuthBootstrapping(false);
         setSessionCheckPending(false);
       }
+      setAuthBootstrapping(false);
+      setLoading(false);
+      setSessionCheckPending(false);
     });
 
     const handleClickOutside = (event: MouseEvent) => {
@@ -267,10 +237,10 @@ export default function Home() {
 
     return () => {
       cancelled = true;
-      subscription.unsubscribe();
+      unsubscribe();
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [supabase]);
+  }, []);
 
   useEffect(() => {
     if (!showWelcomeSuccess) return;
@@ -330,8 +300,8 @@ export default function Home() {
   }, [user, checkingTailor, authBootstrapping, isTailorRegistered]);
 
   const performLogout = async (idleReason?: boolean) => {
-    if (supabase) {
-      await supabase.auth.signOut();
+    if (isFirebaseConfigured()) {
+      await firebaseSignOut();
     }
     setUser(null);
     setIsTailorRegistered(false);
@@ -351,7 +321,7 @@ export default function Home() {
     }
   };
 
-  useIdleLogout(Boolean(user && supabase), () => {
+  useIdleLogout(Boolean(user && isFirebaseConfigured()), () => {
     void performLogout(true);
   });
 
@@ -370,7 +340,7 @@ export default function Home() {
   };
 
   const checkTailorAndFetchData = async (userId: string) => {
-    if (!supabase) {
+    if (!isFirebaseConfigured()) {
       const local = loadLocalTailorProfile();
       if (local?.shop_name) {
         setTailorShopName(local.shop_name);
@@ -395,7 +365,7 @@ export default function Home() {
     setCheckingTailor(true);
     try {
       const data = await withTimeout(
-        fetchTailorProfile(supabase, userId),
+        fetchTailorProfile(userId),
         12_000,
         'تحميل ملف الخياط'
       );
@@ -415,7 +385,7 @@ export default function Home() {
           setCloudNotes(data.cloud_notes);
         }
 
-        void syncLocalAvatarToDatabaseIfNeeded(supabase, userId, {
+        void syncLocalAvatarToDatabaseIfNeeded(userId, {
           phone: String(data.phone ?? ''),
           cloud_notes: data.cloud_notes ?? '',
           shop_name: String(data.shop_name ?? ''),
@@ -452,7 +422,7 @@ export default function Home() {
     const fullPhone = `${tailorCountryCode}${tailorLocalPhone}`;
     const shopName = tailorShopName.trim();
 
-    if (!supabase) {
+    if (!isFirebaseConfigured()) {
       saveLocalTailorProfile({
         phone: fullPhone,
         cloud_notes: cloudNotes,
@@ -472,9 +442,18 @@ export default function Home() {
       return;
     }
 
+    if (!user) {
+      setSettingsFeedback({
+        type: 'error',
+        message: 'يجب تسجيل الدخول لحفظ الإعدادات.',
+      });
+      setSavingSettings(false);
+      return;
+    }
+
     try {
-      await upsertTailorProfile(supabase, {
-        user_id: user.id,
+      await upsertTailorProfile({
+        user_id: appUserId(user),
         organization_id: organizationId ?? undefined,
         phone: fullPhone,
         cloud_notes: cloudNotes,
@@ -482,7 +461,7 @@ export default function Home() {
         avatar_url: tailorAvatarUrl || undefined,
       });
       if (tailorAvatarUrl.trim()) {
-        saveLocalAvatarUrl(user.id, tailorAvatarUrl);
+        saveLocalAvatarUrl(appUserId(user), tailorAvatarUrl);
       }
       setIsTailorRegistered(true);
       setSettingsFeedback({
@@ -531,17 +510,18 @@ export default function Home() {
     const snapshot = tailorProfileSnapshot();
 
     try {
-      if (!supabase || !user?.id) {
+      if (!isFirebaseConfigured() || !user) {
         const dataUrl = await blobToDataUrl(blob);
-        persistLocalTailorAvatarUrl(dataUrl, snapshot, user?.id ?? 'guest-local-user');
+        persistLocalTailorAvatarUrl(dataUrl, snapshot, user ? appUserId(user) : 'guest-local-user');
         setTailorAvatarUrl(dataUrl);
         clearPendingAvatar();
         setAvatarFeedback({ type: 'success', message: 'تم حفظ الصورة الشخصية بنجاح.' });
         return;
       }
 
-      const publicUrl = await uploadTailorAvatar(supabase, user.id, blob);
-      const persistTarget = await persistTailorAvatarUrl(supabase, user.id, publicUrl, snapshot);
+      const userId = appUserId(user);
+      const publicUrl = await uploadTailorAvatar(userId, blob);
+      const persistTarget = await persistTailorAvatarUrl(userId, publicUrl, snapshot);
       setTailorAvatarUrl(publicUrl);
       clearPendingAvatar();
       setAvatarFeedback({
@@ -577,7 +557,7 @@ export default function Home() {
     setAuthSubmitting(false);
   };
 
-  const beginConfirmationPhase = (verifyType: EmailOtpType, successMessage?: string) => {
+  const beginConfirmationPhase = (verifyType: OtpBridgeType, successMessage?: string) => {
     setOtpVerifyType(verifyType);
     setAuthPhase('confirm');
     setOtpCode('');
@@ -589,7 +569,7 @@ export default function Home() {
   };
 
   const handleSendLoginOtp = async () => {
-    if (!supabase) return;
+    if (!isFirebaseConfigured()) return;
     const trimmedEmail = email.trim().toLowerCase();
     if (!trimmedEmail) {
       setAuthFeedback({ type: 'error', message: 'أدخل بريدك الإلكتروني أولاً.' });
@@ -623,28 +603,17 @@ export default function Home() {
         return;
       }
 
-      // Resend غير مضبوط (501) — ن fallback إلى Supabase OTP
-      const { error } = await supabase.auth.signInWithOtp({
-        email: trimmedEmail,
-        options: {
-          shouldCreateUser: false,
-          emailRedirectTo: redirectTo,
-        },
+      setAuthFeedback({
+        type: 'error',
+        message: 'خدمة إرسال رمز الدخول غير متاحة حالياً. تواصل مع الدعم على eysalk.com.',
       });
-
-      if (error) {
-        setAuthFeedback({ type: 'error', message: mapAuthErrorToArabic(error, 'otp') });
-        return;
-      }
-
-      beginConfirmationPhase('email');
     } finally {
       setAuthSubmitting(false);
     }
   };
 
   const handleResendOtp = async () => {
-    if (!supabase || otpResendCooldown > 0) return;
+    if (!isFirebaseConfigured() || otpResendCooldown > 0) return;
     setAuthSubmitting(true);
     setAuthFeedback(null);
     try {
@@ -674,57 +643,41 @@ export default function Home() {
           }
         }
 
-        const { error } = await supabase.auth.resend({
-          type: 'signup',
-          email: trimmedEmail,
-          options: { emailRedirectTo: getAuthCallbackUrl() },
+        setAuthFeedback({
+          type: 'error',
+          message: 'تعذّر إعادة إرسال رمز التفعيل. تواصل مع الدعم على eysalk.com.',
         });
-        if (error) {
-          setAuthFeedback({ type: 'error', message: mapAuthErrorToArabic(error, 'signup') });
-          return;
-        }
-      } else {
-        const redirectTo = getAuthCallbackUrl();
-        const normalized = trimmedEmail.toLowerCase();
-
-        const viaResend = await trySendLoginOtpViaResendApi({
-          email: normalized,
-          emailRedirectTo: redirectTo,
-        });
-
-        if (!('unavailable' in viaResend)) {
-          if (!viaResend.ok) {
-            setAuthFeedback({
-              type: 'error',
-              message: mapAuthErrorToArabic(viaResend.error, 'otp'),
-            });
-            return;
-          }
-          setAuthFeedback({
-            type: 'success',
-            message: `${AUTH_CONFIRMATION_RESENT} (Resend)`,
-          });
-          setOtpResendCooldown(60);
-          return;
-        }
-
-        const { error } = await supabase.auth.signInWithOtp({
-          email: trimmedEmail,
-          options: {
-            shouldCreateUser: isSignUp,
-            emailRedirectTo: redirectTo,
-          },
-        });
-        if (error) {
-          setAuthFeedback({ type: 'error', message: mapAuthErrorToArabic(error, 'otp') });
-          return;
-        }
+        return;
       }
-      setAuthFeedback({
-        type: 'success',
-        message: AUTH_CONFIRMATION_RESENT,
+
+      const redirectTo = getAuthCallbackUrl();
+      const normalized = trimmedEmail.toLowerCase();
+
+      const viaResend = await trySendLoginOtpViaResendApi({
+        email: normalized,
+        emailRedirectTo: redirectTo,
       });
-      setOtpResendCooldown(60);
+
+      if (!('unavailable' in viaResend)) {
+        if (!viaResend.ok) {
+          setAuthFeedback({
+            type: 'error',
+            message: mapAuthErrorToArabic(viaResend.error, 'otp'),
+          });
+          return;
+        }
+        setAuthFeedback({
+          type: 'success',
+          message: `${AUTH_CONFIRMATION_RESENT} (Resend)`,
+        });
+        setOtpResendCooldown(60);
+        return;
+      }
+
+      setAuthFeedback({
+        type: 'error',
+        message: 'خدمة إرسال رمز الدخول غير متاحة حالياً. تواصل مع الدعم على eysalk.com.',
+      });
     } finally {
       setAuthSubmitting(false);
     }
@@ -732,7 +685,7 @@ export default function Home() {
 
   const handleVerifyOtp = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!supabase) return;
+    if (!isFirebaseConfigured()) return;
 
     const token = otpCode.replace(/\D/g, '');
     if (token.length !== OTP_CODE_LENGTH) {
@@ -759,12 +712,12 @@ export default function Home() {
 
       const payload = (await response.json()) as {
         ok?: boolean;
-        session?: { access_token: string; refresh_token: string };
+        session?: { customToken: string };
         error?: { message?: string; code?: string } | null;
         message?: string;
       };
 
-      if (!response.ok || !payload.ok || !payload.session) {
+      if (!response.ok || !payload.ok || !payload.session?.customToken) {
         setAuthFeedback({
           type: 'error',
           message: mapAuthErrorToArabic(payload.error ?? null, 'otp'),
@@ -772,15 +725,17 @@ export default function Home() {
         return;
       }
 
-      const { error: sessionError } = await supabase.auth.setSession({
-        access_token: payload.session.access_token,
-        refresh_token: payload.session.refresh_token,
-      });
-
-      if (sessionError) {
+      try {
+        await firebaseSignInWithCustomToken(payload.session.customToken);
+      } catch (signInError) {
         setAuthFeedback({
           type: 'error',
-          message: mapAuthErrorToArabic(sessionError, 'otp'),
+          message: mapAuthErrorToArabic(
+            signInError instanceof Error
+              ? { message: signInError.message, code: (signInError as { code?: string }).code }
+              : null,
+            'otp'
+          ),
         });
         return;
       }
@@ -798,11 +753,11 @@ export default function Home() {
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!isSupabaseConfigured() || !supabase) {
+    if (!isFirebaseConfigured()) {
       setAuthFeedback({
         type: 'error',
         message:
-          'إعداد Supabase غير مكتمل. أضف NEXT_PUBLIC_SUPABASE_URL و NEXT_PUBLIC_SUPABASE_ANON_KEY في .env.local ثم أعد تشغيل الخادم.',
+          'إعداد Firebase غير مكتمل. أضف متغيرات NEXT_PUBLIC_FIREBASE_* في .env.local ثم أعد تشغيل الخادم.',
       });
       return;
     }
@@ -843,7 +798,7 @@ export default function Home() {
           message:
             redirectError instanceof Error
               ? redirectError.message
-              : 'تعذّر تجهيز إعداد التسجيل الداخلي. تواصل مع الدعم.',
+              : 'تعذّر تجهيز إعداد التسجيل الداخلي. تواصل مع الدعم على eysalk.com.',
         });
         return;
       }
@@ -870,7 +825,7 @@ export default function Home() {
         logAuthRedirectDiagnostics(redirectTo);
 
         if (process.env.NODE_ENV === 'development') {
-          console.log('Supabase signUp request:', {
+          console.log('Firebase signUp request:', {
             email: normalizedEmail,
             redirectTo,
             passwordLength: password.length,
@@ -879,7 +834,7 @@ export default function Home() {
 
         let signUpResult;
         try {
-          signUpResult = await executeSignUp(supabase, {
+          signUpResult = await executeSignUp({
             email: normalizedEmail,
             password,
             emailRedirectTo: redirectTo,
@@ -899,15 +854,15 @@ export default function Home() {
         const { data, error, recoveredAfterServerError, emailSentViaResend } = signUpResult;
 
         if (process.env.NODE_ENV === 'development') {
-          console.log('Supabase signUp response:', {
+          console.log('Firebase signUp response:', {
             userId: data?.user?.id,
-            hasSession: Boolean(data?.session),
+            emailVerified: data?.user?.emailVerified,
             identitiesCount: data?.user?.identities?.length ?? 0,
             recoveredAfterServerError,
             emailSentViaResend,
           });
           if (error) {
-            logSupabaseAuthErrorJson(error, 'signUp/page');
+            console.warn('[signUp/page]', error);
           }
         }
 
@@ -928,10 +883,8 @@ export default function Home() {
         }
 
         if (flow.kind === 'logged_in') {
-          // حارس إضافي مستقل عن إعداد "Confirm email" في Supabase: لا نثق
-          // بمجرد وجود جلسة — يجب أن يكون البريد مؤكداً فعلياً برمز الـ OTP.
-          if (!isEmailVerifiedUser(data?.session?.user)) {
-            await supabase.auth.signOut().catch(() => undefined);
+          if (!isEmailVerifiedUser(data?.user)) {
+            await firebaseSignOut().catch(() => undefined);
             beginConfirmationPhase(
               'signup',
               `تم إنشاء حسابك. أدخل رمز التحقق (${OTP_LENGTH_AR}) المرسل إلى بريدك لإكمال تسجيل الدخول.`
@@ -961,36 +914,39 @@ export default function Home() {
         return;
       }
 
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: trimmedEmail,
-        password,
-      });
+      try {
+        const credential = await firebaseSignInWithPassword(trimmedEmail, password);
+        const signedInUser = credential.user;
 
-      if (error) {
-        if (error.code === 'email_not_confirmed') {
+        if (!isEmailVerifiedUser(signedInUser)) {
+          await firebaseSignOut().catch(() => undefined);
           beginConfirmationPhase('signup');
           setAuthFeedback({ type: 'success', message: AUTH_UNCONFIRMED_LOGIN });
           return;
         }
-        setAuthFeedback({
-          type: 'error',
-          message: mapAuthErrorToArabic(error, isSignUp ? 'signup' : 'login'),
-        });
-        return;
-      }
 
-      if (data.session) {
-        // نفس الحارس: تسجيل دخول ناجح بكلمة المرور لا يكفي وحده — لا بد أن
-        // يكون البريد مؤكداً فعلياً برمز الـ OTP، بمعزل عن إعداد Supabase.
-        if (!isEmailVerifiedUser(data.session.user)) {
-          await supabase.auth.signOut().catch(() => undefined);
-          beginConfirmationPhase('signup');
-          setAuthFeedback({ type: 'success', message: AUTH_UNCONFIRMED_LOGIN });
-          return;
-        }
         setAuthFeedback({ type: 'success', message: 'تم التحقق من بياناتك وتسجيل الدخول بنجاح.' });
         setShowWelcomeSuccess(true);
         setPassword('');
+      } catch (loginError: unknown) {
+        const err = loginError as { message?: string; code?: string } | null;
+        const authError = err
+          ? {
+              message: err.message ?? 'فشل تسجيل الدخول.',
+              code: err.code ?? '',
+            }
+          : null;
+
+        if (authError?.code === 'auth/user-not-verified' || authError?.code === 'email_not_confirmed') {
+          beginConfirmationPhase('signup');
+          setAuthFeedback({ type: 'success', message: AUTH_UNCONFIRMED_LOGIN });
+          return;
+        }
+
+        setAuthFeedback({
+          type: 'error',
+          message: mapAuthErrorToArabic(authError, isSignUp ? 'signup' : 'login'),
+        });
       }
     } catch (unexpected) {
       console.error('[handleAuth]', unexpected);
@@ -1007,7 +963,7 @@ export default function Home() {
     const targetEmail = 'rraddad@hotmail.com';
     if (
       !window.confirm(
-        `[DEV] حذف نهائي للمستخدم ${targetEmail} من Supabase Auth؟`
+        `[DEV] حذف نهائي للمستخدم ${targetEmail} من Firebase Auth؟`
       )
     ) {
       return;
@@ -1058,8 +1014,7 @@ export default function Home() {
         const fullPhone = `${cCode}${localPhone}`;
         try {
           const hit = await lookupTailorCustomerByPhone(
-            supabase,
-            user?.id ?? 'guest-local-user',
+            user ? appUserId(user) : 'guest-local-user',
             fullPhone,
             organizationId
           );
@@ -1131,8 +1086,7 @@ export default function Home() {
     }
     try {
       await upsertTailorCustomer(
-        supabase,
-        user?.id ?? 'guest-local-user',
+        user ? appUserId(user) : 'guest-local-user',
         `${customerCountryCode}${localPhone}`,
         name,
         organizationId
@@ -1176,7 +1130,7 @@ export default function Home() {
 
     setIsSearchingInvoices(true);
     try {
-      if (!supabase) {
+      if (!isFirebaseConfigured()) {
         const savedInvoices = JSON.parse(localStorage.getItem('mistarh_local_invoices') || '[]');
         const filtered = savedInvoices.filter((inv: { customer_phone?: string }) =>
           variants.some((variant) => phonesMatch(String(inv.customer_phone ?? ''), variant))
@@ -1190,27 +1144,18 @@ export default function Home() {
         return;
       }
 
-      const invoiceQuery = supabase
-        .from('invoices')
-        .select('id, user_id, organization_id, customer_phone, image_url, pdf_url, created_at')
-        .order('created_at', { ascending: false });
-
-      const { data, error } = organizationId
-        ? await invoiceQuery.or(
-            `organization_id.eq.${organizationId},and(organization_id.is.null,user_id.eq.${user.id})`
-          )
-        : await invoiceQuery.eq('user_id', user.id);
-
-      if (error) {
-        if (process.env.NODE_ENV === 'development') {
-          console.warn('[invoices] search failed', error);
-        }
+      if (!user) {
         setCustomerInvoices([]);
         setWhatsappMessages({});
         return;
       }
 
-      const filtered = (data ?? []).filter((inv) =>
+      const data = await fetchInvoicesForUser({
+        userId: appUserId(user),
+        organizationId,
+      });
+
+      const filtered = data.filter((inv) =>
         variants.some((variant) => phonesMatch(String(inv.customer_phone ?? ''), variant))
       );
       setCustomerInvoices(filtered);
@@ -1224,7 +1169,7 @@ export default function Home() {
     }
   };
 
-  /** يقرأ Blob ويحوّله إلى data URL (لاستخدامه في وضع الضيف بدون Supabase). */
+  /** يقرأ Blob ويحوّله إلى data URL (لاستخدامه في وضع الضيف بدون Firebase). */
   const blobToDataUrl = (blob: Blob): Promise<string> =>
     new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -1249,8 +1194,7 @@ export default function Home() {
     if (!nameToSave) {
       try {
         const hit = await lookupTailorCustomerByPhone(
-          supabase,
-          user?.id ?? 'guest-local-user',
+          user ? appUserId(user) : 'guest-local-user',
           fullCustomerPhone,
           organizationId
         );
@@ -1272,7 +1216,7 @@ export default function Home() {
     setIsUploading(true);
 
     try {
-      if (!supabase) {
+      if (!isFirebaseConfigured()) {
         setUploadSavePhase('uploading');
         const imageUrl = await blobToDataUrl(jpegBlob);
         const pdfUrl = await blobToDataUrl(pdfBlob);
@@ -1291,8 +1235,7 @@ export default function Home() {
         localStorage.setItem('mistarh_local_invoices', JSON.stringify(updatedInvoices));
 
         await upsertTailorCustomer(
-          supabase,
-          user?.id ?? 'guest-local-user',
+          user ? appUserId(user) : 'guest-local-user',
           fullCustomerPhone,
           nameToSave,
           organizationId
@@ -1302,23 +1245,26 @@ export default function Home() {
         setUploadSavePhase('success');
         window.setTimeout(() => setUploadSavePhase('idle'), 2800);
       } else {
+        if (!user) {
+          throw new Error('يجب تسجيل الدخول لحفظ الفاتورة في السحابة.');
+        }
+        const userId = appUserId(user);
         setUploadSavePhase('uploading');
         const { imageUrl, pdfUrl } = await uploadScannedInvoiceFiles(
-          supabase,
-          user.id,
+          userId,
           { jpegBlob, pdfBlob },
           { label: fullCustomerPhone }
         );
 
-        await insertInvoiceRecord(supabase, {
-          user_id: user.id,
+        await insertInvoiceRecord({
+          user_id: userId,
           organization_id: organizationId ?? undefined,
           customer_phone: fullCustomerPhone,
           image_url: imageUrl,
           pdf_url: pdfUrl,
         });
 
-        await upsertTailorCustomer(supabase, user.id, fullCustomerPhone, nameToSave, organizationId);
+        await upsertTailorCustomer(userId, fullCustomerPhone, nameToSave, organizationId);
         setCustomerBookStatus('known');
 
         await searchInvoices(localPhone, customerCountryCode);
@@ -1419,7 +1365,7 @@ export default function Home() {
     );
   }
 
-  if (!user && isSupabaseConfigured()) {
+  if (!user && isFirebaseConfigured()) {
     return (
       <main
         className="relative min-h-screen bg-mistara-sand flex flex-col justify-center px-5 sm:px-8 py-8 sm:py-12 overflow-hidden"
@@ -1697,7 +1643,7 @@ export default function Home() {
         <div className="max-w-lg sm:max-w-2xl lg:max-w-4xl w-full mx-auto flex items-center justify-between">
         <div className="flex items-center gap-2.5">
           <AppBrand size="sm" layout="row" showTitle subtitle={null} />
-          {!isSupabaseConfigured() && (
+          {!isFirebaseConfigured() && (
             <span className="text-xs bg-primary/10 text-primary-dark border border-primary/30 px-2 py-0.5 rounded-full font-mono">وضع التجربة (بلا حساب)</span>
           )}
         </div>

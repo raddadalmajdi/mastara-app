@@ -1,5 +1,5 @@
 import { Resend } from 'resend';
-import { extractSupabaseEmailOtp } from '@/lib/supabase-email-otp';
+import { normalizeOtpCode } from '@/lib/otp-normalize';
 import {
   logResendApiFailure,
   logResendApiSuccess,
@@ -165,13 +165,13 @@ async function sendAuthOtpEmail(
 ): Promise<{ id: string | undefined; usedFallbackFrom: boolean }> {
   logResendEnvDiagnostics(`sendAuthOtpEmail:${context}`);
 
-  const normalizedOtp = extractSupabaseEmailOtp(params.otp);
+  const normalizedOtp = normalizeOtpCode(params.otp);
   if (!normalizedOtp) {
-    console.error(`[Resend] ${context} — INTERNAL_INVALID_SUPABASE_OTP`, {
+    console.error(`[Resend] ${context} — INTERNAL_INVALID_OTP`, {
       to: params.to,
       rawOtpLength: String(params.otp ?? '').replace(/\D/g, '').length,
     });
-    throw new Error('INTERNAL_INVALID_SUPABASE_OTP');
+    throw new Error('INTERNAL_INVALID_OTP');
   }
 
   let resend: Resend;

@@ -1,6 +1,6 @@
 import { randomUUID } from 'crypto';
 import { APP_NAME, APP_SITE_URL } from '@/lib/brand';
-import { getAppPublicUrl } from '@/lib/supabase/env';
+import { getAppPublicUrl } from '@/lib/app-env';
 
 export type OtpEmailContext = 'signup' | 'login';
 

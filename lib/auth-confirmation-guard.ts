@@ -24,9 +24,11 @@
 export type MinimalConfirmableUser = {
   email_confirmed_at?: string | null;
   confirmed_at?: string | null;
+  emailVerified?: boolean;
 } | null | undefined;
 
 export function isEmailVerifiedUser(user: MinimalConfirmableUser): boolean {
   if (!user) return false;
+  if (typeof user.emailVerified === 'boolean') return user.emailVerified;
   return Boolean(user.email_confirmed_at || user.confirmed_at);
 }

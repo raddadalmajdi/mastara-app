@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server';
-import type { EmailOtpType } from '@supabase/supabase-js';
+import type { OtpBridgeType } from '@/lib/otp-delivery-bridge';
 import { verifyEmailOtpOnServer } from '@/lib/auth-verify-otp-server';
 import { createClearOtpBridgeCookieHeader } from '@/lib/otp-delivery-bridge';
 
 export const runtime = 'nodejs';
 
 export async function POST(request: Request) {
-  let body: { email?: string; token?: string; preferredType?: EmailOtpType };
+  let body: { email?: string; token?: string; preferredType?: OtpBridgeType };
   try {
     body = (await request.json()) as typeof body;
   } catch {

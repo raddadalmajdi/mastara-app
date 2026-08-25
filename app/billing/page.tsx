@@ -1,10 +1,11 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { AppBrand } from '@/components/brand/AppBrand';
 import { useOrganization } from '@/components/organization/OrganizationProvider';
 import { resolveClientSession } from '@/lib/auth-session-client';
+import { isFirebaseConfigured } from '@/lib/firebase-auth-client';
 import {
   fetchBillingPlans,
   fetchOrganizationSubscription,
@@ -16,11 +17,6 @@ import {
   type SubscriptionPlan,
   type SubscriptionSummary,
 } from '@/lib/subscription';
-import {
-  getSupabaseBrowserClient,
-  getSupabaseConfigDiagnostic,
-  isSupabaseConfigured,
-} from '@/lib/supabase-browser';
 
 type BillingPageStatus =
   | 'loading'
@@ -73,7 +69,6 @@ function BillingStatusPanel({
 }
 
 export default function BillingPage() {
-  const supabase = useMemo(() => (isSupabaseConfigured() ? getSupabaseBrowserClient() : null), []);
   const { organizationId, organization, role, loading: orgLoading } = useOrganization();
 
   const [pageStatus, setPageStatus] = useState<BillingPageStatus>('loading');
@@ -87,9 +82,9 @@ export default function BillingPage() {
   );
 
   const loadBilling = useCallback(async () => {
-    if (!supabase || !organizationId) return;
+    if (!organizationId) return;
 
-    const sessionResult = await resolveClientSession(supabase);
+    const sessionResult = await resolveClientSession();
     if (!sessionResult.ok) {
       if (sessionResult.reason === 'not_configured') {
         setPageStatus('config_missing');
@@ -124,17 +119,12 @@ export default function BillingPage() {
       setPageStatus('fetch_error');
       setStatusMessage(message);
     }
-  }, [organizationId, supabase]);
+  }, [organizationId]);
 
   useEffect(() => {
-    if (!isSupabaseConfigured()) {
-      const diagnostic = getSupabaseConfigDiagnostic();
+    if (!isFirebaseConfigured()) {
       setPageStatus('config_missing');
-      setStatusMessage(
-        diagnostic.issues.length > 0
-          ? `إعداد Supabase غير مكتمل: ${diagnostic.issues.join(', ')}`
-          : 'إعداد Supabase غير متاح.'
-      );
+      setStatusMessage('إعداد Firebase غير متاح.');
       return;
     }
 
@@ -145,7 +135,7 @@ export default function BillingPage() {
 
     if (!organizationId) {
       void (async () => {
-        const sessionResult = await resolveClientSession(supabase);
+        const sessionResult = await resolveClientSession();
         if (!sessionResult.ok && sessionResult.reason === 'no_session') {
           setPageStatus('auth_required');
           setStatusMessage(sessionResult.message);
@@ -158,7 +148,7 @@ export default function BillingPage() {
     }
 
     void loadBilling();
-  }, [loadBilling, orgLoading, organizationId, supabase]);
+  }, [loadBilling, orgLoading, organizationId]);
 
   const handleUpgrade = async (planId: string) => {
     if (!accessToken || !organizationId) return;

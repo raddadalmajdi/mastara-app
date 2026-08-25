@@ -1,5 +1,4 @@
-import type { AuthResponse } from '@supabase/supabase-js';
-import type { SignUpExecutionResult } from '@/lib/auth-sign-up';
+import type { SignUpExecutionResult, SignUpSessionStub } from '@/lib/auth-sign-up';
 import type { AuthErrorLike } from '@/lib/auth-errors';
 import { fetchWithTimeout, isAsyncTimeoutError, logAuthFlowStep } from '@/lib/async-timeout';
 
@@ -50,9 +49,11 @@ function authErrorFromUnknown(error: unknown, fallbackCode: string): AuthErrorLi
 }
 
 /** تسجيل عبر `/api/auth/sign-up` + Resend؛ يُرجع null إذا لم يُضبط RESEND_API_KEY. */
-export async function trySignUpViaResendApi(
-  params: { email: string; password: string; emailRedirectTo: string }
-): Promise<SignUpExecutionResult | null> {
+export async function trySignUpViaResendApi(params: {
+  email: string;
+  password: string;
+  emailRedirectTo: string;
+}): Promise<SignUpExecutionResult | null> {
   const emailRedirectTo = params.emailRedirectTo;
 
   logAuthFlowStep('client', 'fetch:/api/auth/sign-up:start');
@@ -95,22 +96,17 @@ export async function trySignUpViaResendApi(
     };
   }
 
-  // ملاحظة أمان مقصودة: لا نحاول تسجيل الدخول تلقائياً هنا (signInWithPassword)
-  // مباشرة بعد إنشاء المستخدم. أُنشئ المستخدم للتو بـ email_confirm:false ولم
-  // يُدخل رمز الـ OTP بعد بأي شكل — أي محاولة دخول فورية هنا لا يمكن أن
-  // "تنجح شرعياً"، وإن نجحت فهذا فقط لأن إعداد "Confirm email" في لوحة
-  // Supabase معطّل، وهو ما يجعلها تتجاوز شاشة الـ OTP بالكامل بصمت. لذلك
-  // نمر دائماً إلى مرحلة التحقق بالرمز بعد إنشاء الحساب عبر Resend API.
   const user = parsed.user
     ? {
         id: parsed.user.id,
         email: parsed.user.email ?? params.email,
+        emailVerified: false,
         identities: [{ id: 'resend-signup' }],
       }
     : null;
 
-  const data: AuthResponse['data'] = {
-    user: user as AuthResponse['data']['user'],
+  const data: SignUpSessionStub = {
+    user,
     session: null,
   };
 

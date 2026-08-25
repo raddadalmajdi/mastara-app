@@ -1,5 +1,4 @@
-import type { SupabaseClient } from '@supabase/supabase-js';
-import { createSupabaseAdminClient } from '@/lib/delete-auth-user-admin';
+import { getFirebaseAdminFirestore } from '@/lib/firebase-admin';
 import {
   buildOrganizationSlug,
   defaultOrganizationNameFromEmail,
@@ -12,73 +11,73 @@ export type EnsureOrganizationResult =
   | { ok: true; organizationId: string; created: boolean }
   | { ok: false; message: string };
 
+function mapOrganizationDoc(id: string, data: FirebaseFirestore.DocumentData): OrganizationRecord {
+  return {
+    id,
+    name: String(data.name ?? ''),
+    slug: String(data.slug ?? ''),
+    owner_id: String(data.owner_id ?? ''),
+    created_at: data.created_at != null ? String(data.created_at) : undefined,
+    updated_at: data.updated_at != null ? String(data.updated_at) : undefined,
+  };
+}
+
 async function findExistingMembership(
-  admin: SupabaseClient,
   userId: string
 ): Promise<{ organizationId: string; role: 'owner' | 'member' } | null> {
-  const { data, error } = await admin
-    .from('organization_members')
-    .select('organization_id, role')
-    .eq('user_id', userId)
-    .maybeSingle();
+  const db = getFirebaseAdminFirestore();
+  const snap = await db
+    .collection('organization_members')
+    .where('user_id', '==', userId)
+    .limit(1)
+    .get();
 
-  if (error) {
-    if (
-      error.message.includes('organization_members') ||
-      error.code === 'PGRST204' ||
-      error.code === '42P01'
-    ) {
-      return null;
-    }
-    throw new Error(error.message);
-  }
+  if (snap.empty) return null;
 
-  if (!data?.organization_id) return null;
+  const doc = snap.docs[0]!;
+  const data = doc.data();
   return {
-    organizationId: data.organization_id,
+    organizationId: String(data.organization_id ?? ''),
     role: (data.role as 'owner' | 'member') ?? 'owner',
   };
 }
 
-async function insertOrganizationWithRetry(
-  admin: SupabaseClient,
-  params: { userId: string; email: string; shopName?: string }
-): Promise<string> {
+async function insertOrganizationWithRetry(params: {
+  userId: string;
+  email: string;
+  shopName?: string;
+}): Promise<string> {
+  const db = getFirebaseAdminFirestore();
   const baseName = params.shopName?.trim() || defaultOrganizationNameFromEmail(params.email);
   let slug = buildOrganizationSlug(params.email, params.userId);
+  const now = new Date().toISOString();
 
   for (let attempt = 0; attempt < 5; attempt++) {
-    const { data: org, error: orgError } = await admin
-      .from('organizations')
-      .insert({
-        name: baseName,
-        slug,
-        owner_id: params.userId,
-      })
-      .select('id')
-      .single();
-
-    if (!orgError && org?.id) {
-      const { error: memberError } = await admin.from('organization_members').insert({
-        organization_id: org.id,
-        user_id: params.userId,
-        role: 'owner',
-      });
-
-      if (memberError) {
-        await admin.from('organizations').delete().eq('id', org.id);
-        throw new Error(memberError.message);
-      }
-
-      return org.id;
-    }
-
-    if (orgError?.code === '23505' || (orgError?.message ?? '').includes('organizations_slug_unique')) {
+    const slugSnap = await db.collection('organizations').where('slug', '==', slug).limit(1).get();
+    if (!slugSnap.empty) {
       slug = `${buildOrganizationSlug(params.email, params.userId)}-${attempt + 2}`;
       continue;
     }
 
-    throw new Error(orgError?.message ?? 'تعذّر إنشاء المنظمة.');
+    const orgRef = db.collection('organizations').doc();
+    const orgId = orgRef.id;
+
+    await orgRef.set({
+      name: baseName,
+      slug,
+      owner_id: params.userId,
+      created_at: now,
+      updated_at: now,
+    });
+
+    await db.collection('organization_members').add({
+      organization_id: orgId,
+      user_id: params.userId,
+      role: 'owner',
+      created_at: now,
+    });
+
+    return orgId;
   }
 
   throw new Error('تعذّر إنشاء slug فريد للمنظمة.');
@@ -90,7 +89,6 @@ export async function getOrCreateOrganizationForUser(params: {
   email: string;
   shopName?: string;
 }): Promise<EnsureOrganizationResult> {
-  const admin = createSupabaseAdminClient();
   const userId = params.userId.trim();
   const email = params.email.trim().toLowerCase();
 
@@ -99,13 +97,13 @@ export async function getOrCreateOrganizationForUser(params: {
   }
 
   try {
-    const existing = await findExistingMembership(admin, userId);
-    if (existing) {
+    const existing = await findExistingMembership(userId);
+    if (existing?.organizationId) {
       await ensureStarterSubscription(existing.organizationId).catch(() => undefined);
       return { ok: true, organizationId: existing.organizationId, created: false };
     }
 
-    const organizationId = await insertOrganizationWithRetry(admin, {
+    const organizationId = await insertOrganizationWithRetry({
       userId,
       email,
       shopName: params.shopName,
@@ -125,67 +123,48 @@ export async function getOrCreateOrganizationForUser(params: {
   }
 }
 
-/** يجلب سياق المنظمة النشطة للمستخدم (عميل — RLS). */
+/** يجلب سياق المنظمة النشطة للمستخدم (Admin SDK — للخادم). */
 export async function fetchOrganizationContextForUser(
-  supabase: SupabaseClient,
   userId: string
 ): Promise<OrganizationContext | null> {
-  const { data, error } = await supabase
-    .from('organization_members')
-    .select(
-      `
-      organization_id,
-      role,
-      organizations (
-        id,
-        name,
-        slug,
-        owner_id,
-        created_at,
-        updated_at
-      )
-    `
-    )
-    .eq('user_id', userId)
-    .maybeSingle();
+  const db = getFirebaseAdminFirestore();
+  const memberSnap = await db
+    .collection('organization_members')
+    .where('user_id', '==', userId)
+    .limit(1)
+    .get();
 
-  if (error) {
-    if (
-      error.message.includes('organization_members') ||
-      error.code === 'PGRST204' ||
-      error.code === '42P01'
-    ) {
-      return null;
-    }
-    throw new Error(error.message);
-  }
+  if (memberSnap.empty) return null;
 
-  if (!data?.organization_id) return null;
+  const memberDoc = memberSnap.docs[0]!;
+  const memberData = memberDoc.data();
+  const organizationId = String(memberData.organization_id ?? '');
+  if (!organizationId) return null;
 
-  const orgRaw = data.organizations as OrganizationRecord | OrganizationRecord[] | null;
-  const organization = Array.isArray(orgRaw) ? orgRaw[0] : orgRaw;
-  if (!organization?.id) return null;
+  const orgSnap = await db.collection('organizations').doc(organizationId).get();
+  if (!orgSnap.exists) return null;
+
+  const organization = mapOrganizationDoc(orgSnap.id, orgSnap.data()!);
 
   return {
-    organizationId: data.organization_id,
-    role: (data.role as OrganizationContext['role']) ?? 'owner',
+    organizationId,
+    role: (memberData.role as OrganizationContext['role']) ?? 'owner',
     organization,
   };
 }
 
-/** يُحدّث organization_id على tailor_profiles إن وُجد العمود. */
+/** يُحدّث organization_id على tailor_profiles إن وُجد. */
 export async function backfillTailorProfileOrganizationId(
-  admin: SupabaseClient,
   userId: string,
   organizationId: string
 ): Promise<void> {
-  const { error } = await admin
-    .from('tailor_profiles')
-    .update({ organization_id: organizationId })
-    .eq('user_id', userId)
-    .is('organization_id', null);
+  const db = getFirebaseAdminFirestore();
+  const ref = db.collection('tailor_profiles').doc(userId);
+  const snap = await ref.get();
+  if (!snap.exists) return;
 
-  if (error && !error.message.toLowerCase().includes('organization_id')) {
-    console.warn('[organization-server] backfill tailor_profiles failed', error.message);
-  }
+  const data = snap.data();
+  if (data?.organization_id) return;
+
+  await ref.set({ organization_id: organizationId, updated_at: new Date().toISOString() }, { merge: true });
 }

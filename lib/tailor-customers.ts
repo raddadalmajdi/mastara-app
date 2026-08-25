@@ -1,5 +1,14 @@
-import type { PostgrestError, SupabaseClient } from '@supabase/supabase-js';
-import { isMissingOrganizationColumn } from '@/lib/organization';
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  limit,
+  query,
+  setDoc,
+  where,
+} from 'firebase/firestore';
+import { getFirebaseAuthClient, getFirebaseFirestoreClient, isFirebaseConfigured } from '@/lib/firebase';
 
 export type TailorCustomerRecord = {
   id: string;
@@ -10,8 +19,6 @@ export type TailorCustomerRecord = {
 };
 
 const LOCAL_CUSTOMERS_KEY = 'mistarh_local_customers';
-
-const FORBIDDEN_WRITE_COLUMNS = ['updated_at', 'created_at'] as const;
 
 type LocalCustomer = { phone: string; customer_name: string };
 
@@ -33,14 +40,12 @@ export function normalizeStoredPhone(fullPhone: string): string {
   return fullPhone.replace(/\D/g, '');
 }
 
-/** الحد الأدنى لأرقام الجوال المحلية قبل البحث في الفواتير أو دفتر العملاء. */
 export const MIN_CUSTOMER_PHONE_SEARCH_LENGTH = 1;
 
 export function isCustomerPhoneSearchable(localPhone: string): boolean {
   return localPhone.replace(/\D/g, '').length >= MIN_CUSTOMER_PHONE_SEARCH_LENGTH;
 }
 
-/** أشكال محتملة لرقم الجوال في الفواتير والدفتر (96550123456، +965…، 50123456). */
 export function phoneMatchVariants(countryCode: string, localPhone: string): string[] {
   const local = localPhone.replace(/\D/g, '');
   const cc = countryCode.replace(/\D/g, '');
@@ -62,26 +67,19 @@ export function phonesMatch(a: string, b: string): boolean {
   return false;
 }
 
-function isMissingSchemaColumn(error: PostgrestError, column: string): boolean {
-  const msg = (error.message ?? '').toLowerCase();
-  const col = column.toLowerCase();
-  return msg.includes(col) || (error.code === 'PGRST204' && msg.includes(col));
-}
-
-async function assertTailorOwnsSession(
-  supabase: SupabaseClient,
-  tailorUserId: string
-): Promise<void> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user || user.id !== tailorUserId) {
+function assertTailorOwnsSession(tailorUserId: string): void {
+  const user = getFirebaseAuthClient().currentUser;
+  if (!user || user.uid !== tailorUserId) {
     throw new Error('جهات الاتصال متاحة فقط لصاحب المحل المسجّل دخوله.');
   }
 }
 
+function customerDocId(tailorUserId: string, phone: string, organizationId?: string | null): string {
+  const orgPart = organizationId?.trim() || 'personal';
+  return `${tailorUserId}_${orgPart}_${phone}`.replace(/[^a-zA-Z0-9_-]/g, '_');
+}
+
 export async function lookupTailorCustomerByPhone(
-  supabase: SupabaseClient | null,
   tailorUserId: string,
   fullPhone: string,
   organizationId?: string | null
@@ -89,7 +87,7 @@ export async function lookupTailorCustomerByPhone(
   const normalized = normalizeStoredPhone(fullPhone);
   if (!normalized) return null;
 
-  if (!supabase) {
+  if (!isFirebaseConfigured()) {
     const hit = readLocalCustomers().find((c) => normalizeStoredPhone(c.phone) === normalized);
     return hit
       ? {
@@ -102,76 +100,45 @@ export async function lookupTailorCustomerByPhone(
       : null;
   }
 
-  await assertTailorOwnsSession(supabase, tailorUserId);
+  assertTailorOwnsSession(tailorUserId);
 
-  let query = supabase
-    .from('tailor_customers')
-    .select('id, tailor_user_id, organization_id, phone, customer_name')
-    .eq('tailor_user_id', tailorUserId)
-    .eq('phone', normalized);
+  const db = getFirebaseFirestoreClient();
+  const docId = customerDocId(tailorUserId, normalized, organizationId);
+  const directSnap = await getDoc(doc(db, 'tailor_customers', docId));
 
-  if (organizationId) {
-    query = query.eq('organization_id', organizationId);
+  if (directSnap.exists()) {
+    const data = directSnap.data();
+    return {
+      id: directSnap.id,
+      tailor_user_id: String(data.tailor_user_id),
+      organization_id: data.organization_id != null ? String(data.organization_id) : null,
+      phone: String(data.phone),
+      customer_name: String(data.customer_name),
+    };
   }
 
-  const { data, error } = await query.maybeSingle();
+  const snap = await getDocs(
+    query(
+      collection(db, 'tailor_customers'),
+      where('tailor_user_id', '==', tailorUserId),
+      where('phone', '==', normalized),
+      limit(1)
+    )
+  );
+  if (snap.empty) return null;
 
-  if (error) {
-    if (error.message.includes('tailor_customers') || error.code === 'PGRST204') {
-      return null;
-    }
-    throw new Error(error.message);
-  }
-
-  return data as TailorCustomerRecord | null;
-}
-
-async function writeTailorCustomerRow(
-  supabase: SupabaseClient,
-  tailorUserId: string,
-  phone: string,
-  customerName: string,
-  organizationId?: string | null
-): Promise<PostgrestError | null> {
-  const row: Record<string, string> = {
-    tailor_user_id: tailorUserId,
-    phone,
-    customer_name: customerName,
+  const docSnap = snap.docs[0]!;
+  const data = docSnap.data();
+  return {
+    id: docSnap.id,
+    tailor_user_id: String(data.tailor_user_id),
+    organization_id: data.organization_id != null ? String(data.organization_id) : null,
+    phone: String(data.phone),
+    customer_name: String(data.customer_name),
   };
-  if (organizationId) {
-    row.organization_id = organizationId;
-  }
-
-  let existingQuery = supabase
-    .from('tailor_customers')
-    .select('id')
-    .eq('tailor_user_id', tailorUserId)
-    .eq('phone', phone);
-
-  if (organizationId) {
-    existingQuery = existingQuery.eq('organization_id', organizationId);
-  }
-
-  const existing = await existingQuery.maybeSingle();
-
-  if (existing.error && !isMissingSchemaColumn(existing.error, 'updated_at')) {
-    return existing.error;
-  }
-
-  if (existing.data?.id) {
-    const { error } = await supabase
-      .from('tailor_customers')
-      .update({ customer_name: customerName })
-      .eq('id', existing.data.id);
-    return error;
-  }
-
-  const { error } = await supabase.from('tailor_customers').insert(row);
-  return error;
 }
 
 export async function upsertTailorCustomer(
-  supabase: SupabaseClient | null,
   tailorUserId: string,
   fullPhone: string,
   customerName: string,
@@ -181,37 +148,26 @@ export async function upsertTailorCustomer(
   const name = customerName.trim();
   if (!phone || !name) return;
 
-  if (!supabase) {
+  if (!isFirebaseConfigured()) {
     const list = readLocalCustomers().filter((c) => normalizeStoredPhone(c.phone) !== phone);
     list.unshift({ phone, customer_name: name });
     writeLocalCustomers(list);
     return;
   }
 
-  await assertTailorOwnsSession(supabase, tailorUserId);
+  assertTailorOwnsSession(tailorUserId);
 
-  let error = await writeTailorCustomerRow(
-    supabase,
-    tailorUserId,
-    phone,
-    name,
-    organizationId
+  const db = getFirebaseFirestoreClient();
+  const docId = customerDocId(tailorUserId, phone, organizationId);
+  await setDoc(
+    doc(db, 'tailor_customers', docId),
+    {
+      tailor_user_id: tailorUserId,
+      phone,
+      customer_name: name,
+      organization_id: organizationId ?? null,
+      updated_at: new Date().toISOString(),
+    },
+    { merge: true }
   );
-
-  if (error && FORBIDDEN_WRITE_COLUMNS.some((col) => isMissingSchemaColumn(error!, col))) {
-    error = await writeTailorCustomerRow(supabase, tailorUserId, phone, name, organizationId);
-  }
-
-  if (error && organizationId && isMissingOrganizationColumn(error.message)) {
-    error = await writeTailorCustomerRow(supabase, tailorUserId, phone, name);
-  }
-
-  if (error) {
-    if (error.message.includes('tailor_customers') || error.code === 'PGRST204') {
-      throw new Error(
-        'جدول tailor_customers غير موجود. نفّذ migration من supabase/migrations/20260729190000_tailor_shop_name_and_customers.sql.'
-      );
-    }
-    throw new Error(error.message);
-  }
 }

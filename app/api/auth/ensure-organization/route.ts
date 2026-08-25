@@ -5,7 +5,6 @@ import {
   fetchOrganizationContextForUser,
   getOrCreateOrganizationForUser,
 } from '@/lib/organization-server';
-import { createSupabaseAdminClient } from '@/lib/delete-auth-user-admin';
 
 export const runtime = 'nodejs';
 
@@ -55,13 +54,11 @@ export async function POST(request: Request) {
       );
     }
 
-    const admin = createSupabaseAdminClient();
-
     if (ensured.created) {
-      await backfillTailorProfileOrganizationId(admin, userId, ensured.organizationId);
+      await backfillTailorProfileOrganizationId(userId, ensured.organizationId);
     }
 
-    const context = await fetchOrganizationContextForUser(admin, userId);
+    const context = await fetchOrganizationContextForUser(userId);
 
     if (!context) {
       return NextResponse.json(

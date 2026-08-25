@@ -1,8 +1,5 @@
-import type { SupabaseClient } from '@supabase/supabase-js';
-import {
-  diagnoseSupabasePublicConfig,
-  formatSupabaseConfigIssues,
-} from '@/lib/supabase/env';
+import { getFirebaseIdToken, isFirebaseConfigured } from '@/lib/firebase-auth-client';
+import { getFirebaseAuthClient } from '@/lib/firebase';
 
 export type ClientSessionFailureReason =
   | 'not_configured'
@@ -24,43 +21,37 @@ export type ClientSessionResult =
     };
 
 /**
- * يحلّ جلسة Supabase في المتصفح بأمان — بدون رمي أخطاء.
- * يُستخدم في صفحات محمية (مثل /billing) لعرض fallback بدل الانهيار.
+ * يحلّ جلسة Firebase Auth في المتصفح بأمان — بدون رمي أخطاء.
  */
-export async function resolveClientSession(
-  supabase: SupabaseClient | null
-): Promise<ClientSessionResult> {
-  const diagnostic = diagnoseSupabasePublicConfig();
-  if (!diagnostic.ok) {
-    const message = formatSupabaseConfigIssues(diagnostic.issues);
-    if (process.env.NODE_ENV === 'development') {
-      console.error('[auth-session] Supabase not configured:', message);
-    }
-    return { ok: false, reason: 'not_configured', message };
+export async function resolveClientSession(): Promise<ClientSessionResult> {
+  if (!isFirebaseConfigured()) {
+    return {
+      ok: false,
+      reason: 'not_configured',
+      message: 'إعداد Firebase غير مكتمل.',
+    };
   }
 
-  if (!supabase) {
+  if (typeof window === 'undefined') {
     return {
       ok: false,
       reason: 'no_client',
-      message: 'تعذّر تهيئة عميل Supabase في المتصفح.',
+      message: 'تعذّر تهيئة عميل Firebase في المتصفح.',
     };
   }
 
   try {
-    const { data, error } = await supabase.auth.getSession();
-
-    if (error) {
-      console.warn('[auth-session] getSession failed:', error.message);
+    const user = getFirebaseAuthClient().currentUser;
+    if (!user) {
       return {
         ok: false,
-        reason: 'session_error',
-        message: error.message || 'تعذّر قراءة الجلسة.',
+        reason: 'no_session',
+        message: 'لا توجد جلسة نشطة — سجّل الدخول للمتابعة.',
       };
     }
 
-    const session = data.session;
-    if (!session?.access_token || !session.user?.id) {
+    const accessToken = await getFirebaseIdToken();
+    if (!accessToken) {
       return {
         ok: false,
         reason: 'no_session',
@@ -70,9 +61,9 @@ export async function resolveClientSession(
 
     return {
       ok: true,
-      accessToken: session.access_token,
-      userId: session.user.id,
-      email: session.user.email,
+      accessToken,
+      userId: user.uid,
+      email: user.email ?? undefined,
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : 'خطأ غير متوقع أثناء قراءة الجلسة.';

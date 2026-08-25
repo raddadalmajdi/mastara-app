@@ -1,22 +1,21 @@
-import type { AuthResponse } from '@supabase/supabase-js';
-import { mapAuthErrorToArabic, logSupabaseAuthError, type AuthErrorLike } from '@/lib/auth-errors';
-import { logSupabaseAuthErrorJson } from '@/lib/auth-debug';
+import { mapAuthErrorToArabic, type AuthErrorLike } from '@/lib/auth-errors';
 import { DUPLICATE_EMAIL_MESSAGE } from '@/lib/check-email-registered';
+import type { SignUpSessionStub } from '@/lib/auth-sign-up';
 
 export type SignUpFlowResult =
   | { kind: 'logged_in' }
   | { kind: 'needs_verification' }
   | { kind: 'error'; message: string };
 
-/** يفسّر استجابة signUp بعد SMTP/Resend (جلسة فورية أو انتظار تفعيل أو خطأ). */
+/** يفسّر استجابة signUp بعد Resend (جلسة فورية أو انتظار تفعيل أو خطأ). */
 export function resolveSignUpFlow(
-  data: AuthResponse['data'] | null,
+  data: SignUpSessionStub | null,
   error: AuthErrorLike | null | undefined,
   meta?: { emailRedirectTo?: string; recoveredAfterServerError?: boolean }
 ): SignUpFlowResult {
+  void meta;
+
   if (error) {
-    logSupabaseAuthErrorJson(error, 'signUp');
-    logSupabaseAuthError(error, 'signUp');
     return { kind: 'error', message: mapAuthErrorToArabic(error, 'signup') };
   }
 
@@ -27,7 +26,7 @@ export function resolveSignUpFlow(
     };
   }
 
-  if (data.session?.user) {
+  if (data.user?.emailVerified) {
     return { kind: 'logged_in' };
   }
 
@@ -41,5 +40,3 @@ export function resolveSignUpFlow(
 
   return { kind: 'needs_verification' };
 }
-
-export { verifyEmailOtpFlexible } from '@/lib/auth-verify-otp';

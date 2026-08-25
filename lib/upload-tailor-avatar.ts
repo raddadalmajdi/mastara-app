@@ -1,16 +1,14 @@
-import type { SupabaseClient } from '@supabase/supabase-js';
+import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
+import { getFirebaseAuthClient, getFirebaseStorageClient } from '@/lib/firebase';
 
-const STORAGE_BUCKET = 'invoices-images';
+const STORAGE_BUCKET_PATH = 'invoices-images';
 
-async function assertSessionMatchesUser(supabase: SupabaseClient, userId: string): Promise<void> {
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser();
-  if (error || !user) {
+async function assertSessionMatchesUser(userId: string): Promise<void> {
+  const user = getFirebaseAuthClient().currentUser;
+  if (!user) {
     throw new Error('يجب تسجيل الدخول لرفع صورة الحساب.');
   }
-  if (user.id !== userId) {
+  if (user.uid !== userId) {
     throw new Error('لا يمكن رفع صورة إلا لحسابك الحالي.');
   }
 }
@@ -31,7 +29,6 @@ function loadImageFromFile(file: File): Promise<HTMLImageElement> {
   });
 }
 
-/** يُصغّر الصورة إلى مربّع مناسب لأيقونة الحساب ويُحوّلها JPEG. */
 export async function fileToAvatarJpegBlob(file: File, maxSize = 512): Promise<Blob> {
   const img = await loadImageFromFile(file);
   const side = Math.min(img.naturalWidth || img.width, img.naturalHeight || img.height);
@@ -55,28 +52,17 @@ export async function fileToAvatarJpegBlob(file: File, maxSize = 512): Promise<B
   });
 }
 
-/** يرفع صورة الحساب إلى مجلد المستخدم في Storage ويُرجع الرابط العام. */
-export async function uploadTailorAvatar(
-  supabase: SupabaseClient,
-  userId: string,
-  jpegBlob: Blob
-): Promise<string> {
-  await assertSessionMatchesUser(supabase, userId);
+export async function uploadTailorAvatar(userId: string, jpegBlob: Blob): Promise<string> {
+  await assertSessionMatchesUser(userId);
 
-  const objectPath = `${userId}/avatar.jpg`;
-  const { error } = await supabase.storage.from(STORAGE_BUCKET).upload(objectPath, jpegBlob, {
+  const objectPath = `${STORAGE_BUCKET_PATH}/${userId}/avatar.jpg`;
+  const storage = getFirebaseStorageClient();
+
+  await uploadBytes(ref(storage, objectPath), jpegBlob, {
     contentType: 'image/jpeg',
-    upsert: true,
-    cacheControl: '3600',
+    customMetadata: { cacheControl: '3600' },
   });
 
-  if (error) {
-    throw new Error(`تعذّر رفع صورة الحساب: ${error.message}`);
-  }
-
-  const {
-    data: { publicUrl },
-  } = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(objectPath);
-
+  const publicUrl = await getDownloadURL(ref(storage, objectPath));
   return `${publicUrl}?v=${Date.now()}`;
 }

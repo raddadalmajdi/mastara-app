@@ -1,16 +1,15 @@
-import type { SupabaseClient } from '@supabase/supabase-js';
+import { collection, addDoc, getDocs, orderBy, query, where } from 'firebase/firestore';
+import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
+import { getFirebaseAuthClient, getFirebaseFirestoreClient, getFirebaseStorageClient, isFirebaseConfigured } from '@/lib/firebase';
 
-const STORAGE_BUCKET = 'invoices-images';
+const STORAGE_BUCKET_PATH = 'invoices-images';
 
-async function assertSessionMatchesUser(supabase: SupabaseClient, userId: string): Promise<void> {
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser();
-  if (error || !user) {
+async function assertSessionMatchesUser(userId: string): Promise<void> {
+  const user = getFirebaseAuthClient().currentUser;
+  if (!user) {
     throw new Error('يجب تسجيل الدخول لرفع أو حفظ المستندات.');
   }
-  if (user.id !== userId) {
+  if (user.uid !== userId) {
     throw new Error('لا يمكن حفظ المستند إلا في حساب المحل الحالي.');
   }
 }
@@ -27,57 +26,41 @@ export type ScannedUploadResult = {
 };
 
 export type ScannedUploadOptions = {
-  /** بادئة اختيارية لاسم الملف (مثل رقم جوال العميل) داخل مجلد المستخدم. */
   label?: string;
 };
 
-/**
- * يرفع مستنداً ممسوحاً (PDF إلزامي + JPEG للمعاينة) إلى Supabase Storage
- * ويُرجع روابطه العامة — PDF هو الملف الرسمي المحفوظ في السجل.
- */
 export async function uploadScannedInvoiceFiles(
-  supabase: SupabaseClient,
   userId: string,
   { jpegBlob, pdfBlob }: ScannedUploadInput,
   options?: ScannedUploadOptions
 ): Promise<ScannedUploadResult> {
-  await assertSessionMatchesUser(supabase, userId);
+  await assertSessionMatchesUser(userId);
 
   const safeLabel = options?.label?.replace(/[^\d+a-zA-Z_-]/g, '') ?? '';
   const storagePath = safeLabel ? `${userId}/${safeLabel}_${Date.now()}` : `${userId}/${Date.now()}`;
-  const pdfObjectPath = `${storagePath}.pdf`;
-  const jpegObjectPath = `${storagePath}.jpg`;
+  const pdfObjectPath = `${STORAGE_BUCKET_PATH}/${storagePath}.pdf`;
+  const jpegObjectPath = `${STORAGE_BUCKET_PATH}/${storagePath}.jpg`;
 
-  const { error: pdfError } = await supabase.storage
-    .from(STORAGE_BUCKET)
-    .upload(pdfObjectPath, pdfBlob, {
-      contentType: 'application/pdf',
-      upsert: true,
-      cacheControl: '3600',
-    });
+  const storage = getFirebaseStorageClient();
 
-  if (pdfError) {
-    throw new Error(`تعذّر رفع ملف PDF: ${pdfError.message}`);
-  }
-
-  const { error: jpegError } = await supabase.storage.from(STORAGE_BUCKET).upload(jpegObjectPath, jpegBlob, {
-    contentType: 'image/jpeg',
-    upsert: true,
-    cacheControl: '3600',
+  await uploadBytes(ref(storage, pdfObjectPath), pdfBlob, {
+    contentType: 'application/pdf',
+    customMetadata: { cacheControl: '3600' },
   });
 
-  if (jpegError) {
-    await supabase.storage.from(STORAGE_BUCKET).remove([pdfObjectPath]).catch(() => undefined);
-    throw new Error(`تعذّر رفع صورة المعاينة: ${jpegError.message}`);
+  try {
+    await uploadBytes(ref(storage, jpegObjectPath), jpegBlob, {
+      contentType: 'image/jpeg',
+      customMetadata: { cacheControl: '3600' },
+    });
+  } catch (jpegError) {
+    throw new Error(
+      `تعذّر رفع صورة المعاينة: ${jpegError instanceof Error ? jpegError.message : 'خطأ غير معروف'}`
+    );
   }
 
-  const {
-    data: { publicUrl: pdfUrl },
-  } = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(pdfObjectPath);
-
-  const {
-    data: { publicUrl: imageUrl },
-  } = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(jpegObjectPath);
+  const pdfUrl = await getDownloadURL(ref(storage, pdfObjectPath));
+  const imageUrl = await getDownloadURL(ref(storage, jpegObjectPath));
 
   return { pdfUrl, imageUrl, storagePath };
 }
@@ -90,55 +73,72 @@ export type InvoiceInsertPayload = {
   pdf_url: string;
 };
 
-/**
- * يُدرج سجل فاتورة/مستند في جدول `invoices` مع رابط PDF الرسمي وصورة المعاينة.
- * إن لم يكن عمود `pdf_url` موجوداً بعد في Supabase، تُعرض رسالة تنفيذ migration.
- */
-export async function insertInvoiceRecord(
-  supabase: SupabaseClient,
-  payload: InvoiceInsertPayload
-): Promise<void> {
-  await assertSessionMatchesUser(supabase, payload.user_id);
+export type InvoiceRecord = InvoiceInsertPayload & {
+  id: string;
+  created_at: string;
+};
 
-  const row: Record<string, string> = {
+export async function insertInvoiceRecord(payload: InvoiceInsertPayload): Promise<string> {
+  await assertSessionMatchesUser(payload.user_id);
+
+  const db = getFirebaseFirestoreClient();
+  const docRef = await addDoc(collection(db, 'invoices'), {
     user_id: payload.user_id,
+    organization_id: payload.organization_id ?? null,
     customer_phone: payload.customer_phone,
     image_url: payload.image_url,
     pdf_url: payload.pdf_url,
-  };
-  if (payload.organization_id) {
-    row.organization_id = payload.organization_id;
-  }
+    created_at: new Date().toISOString(),
+  });
 
-  let result = await supabase.from('invoices').insert([row]);
+  return docRef.id;
+}
 
-  if (
-    result.error &&
-    payload.organization_id &&
-    (result.error.message.includes('organization_id') || result.error.code === 'PGRST204')
-  ) {
-    delete row.organization_id;
-    result = await supabase.from('invoices').insert([row]);
-  }
+export async function fetchInvoicesForUser(params: {
+  userId: string;
+  organizationId?: string | null;
+}): Promise<InvoiceRecord[]> {
+  if (!isFirebaseConfigured()) return [];
 
-  if (!result.error) return;
+  const db = getFirebaseFirestoreClient();
+  let q;
 
-  const msg = result.error.message ?? '';
-  const missingPdfColumn =
-    msg.includes('pdf_url') ||
-    (msg.includes('column') && msg.includes('pdf')) ||
-    result.error?.code === 'PGRST204';
-
-  if (missingPdfColumn) {
-    throw new Error(
-      'عمود pdf_url غير موجود في جدول invoices. نفّذ migration من supabase/migrations/20260729140000_add_invoices_pdf_url.sql في Supabase SQL Editor ثم أعد المحاولة.'
+  if (params.organizationId) {
+    q = query(
+      collection(db, 'invoices'),
+      where('organization_id', '==', params.organizationId),
+      orderBy('created_at', 'desc')
+    );
+  } else {
+    q = query(
+      collection(db, 'invoices'),
+      where('user_id', '==', params.userId),
+      orderBy('created_at', 'desc')
     );
   }
 
-  throw new Error(`تعذّر حفظ سجل المستند: ${msg}`);
+  const snap = await getDocs(q).catch(async () => {
+    const fallback = query(
+      collection(db, 'invoices'),
+      where('user_id', '==', params.userId)
+    );
+    return getDocs(fallback);
+  });
+
+  return snap.docs.map((docSnap) => {
+    const data = docSnap.data();
+    return {
+      id: docSnap.id,
+      user_id: String(data.user_id),
+      organization_id: data.organization_id != null ? String(data.organization_id) : undefined,
+      customer_phone: String(data.customer_phone),
+      image_url: String(data.image_url),
+      pdf_url: String(data.pdf_url),
+      created_at: String(data.created_at ?? new Date().toISOString()),
+    };
+  });
 }
 
-/** رابط المستند المفضّل للمشاركة (PDF إن وُجد). */
 export function invoiceShareDocumentUrl(invoice: { pdf_url?: string | null; image_url: string }): string {
   return invoice.pdf_url?.trim() || invoice.image_url;
 }

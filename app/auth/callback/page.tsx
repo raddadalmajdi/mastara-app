@@ -1,77 +1,18 @@
 'use client';
 
 import { Suspense, useEffect, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
-import { completeAuthFromCallbackParams } from '@/lib/auth-callback';
-import { logSupabaseAuthErrorJson } from '@/lib/auth-debug';
-import { getAuthCallbackUrl, getSupabaseBrowserClient } from '@/lib/supabase-browser';
+import { useRouter } from 'next/navigation';
 import { AuthBootScreen } from '@/components/auth/AuthBootScreen';
 import { AppBrand } from '@/components/brand/AppBrand';
-import { withTimeout } from '@/lib/async-timeout';
 
 function AuthCallbackContent() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
-  const [errorMessage, setErrorMessage] = useState('');
 
   useEffect(() => {
-    const supabase = getSupabaseBrowserClient();
-    if (!supabase) {
-      setStatus('error');
-      setErrorMessage('إعدادات Supabase غير مكتملة. تحقق من متغيرات البيئة.');
-      return;
-    }
-
-    const client = supabase;
-
-    async function completeAuth() {
-      const params = {
-        code: searchParams.get('code'),
-        tokenHash: searchParams.get('token_hash'),
-        type: searchParams.get('type'),
-        error: searchParams.get('error'),
-        errorDescription: searchParams.get('error_description'),
-      };
-
-      if (process.env.NODE_ENV === 'development') {
-        console.group('Supabase auth/callback (client page)');
-        console.log('expected redirect base:', getAuthCallbackUrl());
-        console.log('query params:', params);
-        console.log('full URL:', window.location.href);
-        console.groupEnd();
-      }
-
-      const result = await withTimeout(
-        completeAuthFromCallbackParams(client, params),
-        25_000,
-        'تأكيد الحساب من الرابط'
-      );
-
-      if (!result.ok && process.env.NODE_ENV === 'development') {
-        logSupabaseAuthErrorJson(result.error ?? { message: result.message }, 'auth/callback');
-      }
-
-      if (result.ok) {
-        setStatus('success');
-        window.setTimeout(() => router.replace('/'), 1600);
-        return;
-      }
-
-      setStatus('error');
-      setErrorMessage(result.message);
-    }
-
-    void completeAuth().catch((error) => {
-      console.error('[auth/callback]', error);
-      setStatus('error');
-      setErrorMessage(
-        error instanceof Error
-          ? error.message
-          : 'تعذّر تأكيد الحساب. ارجع للصفحة الرئيسية وحاول مجدداً.'
-      );
-    });
-  }, [searchParams, router]);
+    setStatus('success');
+    window.setTimeout(() => router.replace('/'), 1200);
+  }, [router]);
 
   return (
     <main
@@ -88,7 +29,7 @@ function AuthCallbackContent() {
         {status === 'loading' && (
           <>
             <div className="mx-auto h-12 w-12 rounded-full border-2 border-primary/30 border-t-primary animate-spin" />
-            <p className="text-base text-mistara-brown">جاري تأكيد حسابك بأمان...</p>
+            <p className="text-base text-mistara-brown">جاري التحويل...</p>
           </>
         )}
 
@@ -105,27 +46,8 @@ function AuthCallbackContent() {
                 />
               </svg>
             </div>
-            <p className="text-base font-bold text-primary-dark">تم تأكيد حسابك بنجاح!</p>
+            <p className="text-base font-bold text-primary-dark">مرحباً بك في إيصالك!</p>
             <p className="text-sm text-mistara-brown/80">سيتم تحويلك إلى لوحة التحكم...</p>
-          </>
-        )}
-
-        {status === 'error' && (
-          <>
-            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-red-800/10 ring-4 ring-red-800/25">
-              <svg className="h-8 w-8 text-red-800" viewBox="0 0 24 24" fill="none" aria-hidden>
-                <path d="M8 8l8 8M16 8l-8 8" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
-              </svg>
-            </div>
-            <p className="text-base font-bold text-red-700">تعذّر تأكيد الحساب</p>
-            <p className="text-sm text-mistara-brown/80 leading-relaxed">{errorMessage}</p>
-            <button
-              type="button"
-              onClick={() => router.replace('/')}
-              className="auth-primary-btn w-full rounded-xl py-3 font-bold text-base"
-            >
-              العودة لإدخال رمز التحقق
-            </button>
           </>
         )}
       </div>
