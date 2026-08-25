@@ -2,10 +2,15 @@
 
 import { useCallback, useState } from 'react';
 import DocumentScanner from './DocumentScanner';
-import { MAX_OUTPUT_DIMENSION } from '@/lib/document-scanner/constants';
+import { MAX_OUTPUT_DIMENSION, SCAN_JPEG_QUALITY } from '@/lib/document-scanner/constants';
 import { canvasToDocumentPdfBlob } from '@/lib/document-scanner/to-pdf';
-import { dataUrlToCanvas } from '@/lib/scanner-data-url';
-import { assertBlobWithinLimit, MAX_INVOICE_PDF_BYTES, scaleCanvasToMaxDimension, toUploadUserMessage } from '@/lib/upload-blob-utils';
+import {
+  assertBlobWithinLimit,
+  canvasToJpegBlob,
+  MAX_INVOICE_PDF_BYTES,
+  scaleCanvasToMaxDimension,
+  toUploadUserMessage,
+} from '@/lib/upload-blob-utils';
 import type { DocumentScanResult } from '@/lib/document-scanner/scan-result';
 
 type OpenCvDocumentScannerModalProps = {
@@ -39,21 +44,14 @@ export function OpenCvDocumentScannerModal({ onClose, onConfirm }: OpenCvDocumen
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const handleCapture = useCallback(
-    async (dataUrl: string) => {
+    async (canvas: HTMLCanvasElement) => {
       setIsSaving(true);
       setErrorMessage(null);
 
       try {
-        const rawCanvas = await dataUrlToCanvas(dataUrl);
-        const canvas = scaleCanvasToMaxDimension(rawCanvas, MAX_OUTPUT_DIMENSION);
-        const jpegBlob = await new Promise<Blob>((resolve, reject) => {
-          canvas.toBlob(
-            (b) => (b ? resolve(b) : reject(new Error('تعذّر إنشاء JPEG.'))),
-            'image/jpeg',
-            0.88
-          );
-        });
-        const pdfBlob = await canvasToDocumentPdfBlob(canvas, { preferPng: false, highQuality: true });
+        const scaled = scaleCanvasToMaxDimension(canvas, MAX_OUTPUT_DIMENSION);
+        const jpegBlob = await canvasToJpegBlob(scaled, SCAN_JPEG_QUALITY);
+        const pdfBlob = await canvasToDocumentPdfBlob(scaled, { preferPng: false, highQuality: true });
 
         assertBlobWithinLimit(pdfBlob, 'ملف PDF', MAX_INVOICE_PDF_BYTES);
 

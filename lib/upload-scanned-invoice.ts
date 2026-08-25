@@ -1,6 +1,10 @@
 import { collection, addDoc, getDocs, limit, orderBy, query, where } from 'firebase/firestore';
-import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
+import { getDownloadURL, ref } from 'firebase/storage';
 import { getCached, invalidateCachePrefix, setCached } from '@/lib/client-cache';
+import {
+  rollbackStorageObjects,
+  uploadBlobResumable,
+} from '@/lib/firebase-storage-upload';
 import { getFirebaseAuthClient, getFirebaseFirestoreClient, getFirebaseStorageClient, isFirebaseConfigured } from '@/lib/firebase';
 import { normalizeStoredPhone } from '@/lib/tailor-customers';
 import {
@@ -11,6 +15,18 @@ import {
 const STORAGE_BUCKET_PATH = 'invoices-images';
 const INVOICE_LIST_CACHE_TTL_MS = 45_000;
 const INVOICE_QUERY_LIMIT = 80;
+const INVOICE_UPLOAD_TIMEOUT_MS = 180_000;
+
+const INVOICE_FILE_METADATA = {
+  pdf: {
+    contentType: 'application/pdf',
+    cacheControl: 'public, max-age=31536000, immutable',
+  },
+  jpeg: {
+    contentType: 'image/jpeg',
+    cacheControl: 'public, max-age=31536000, immutable',
+  },
+} as const;
 
 async function assertSessionMatchesUser(userId: string): Promise<void> {
   const auth = getFirebaseAuthClient();
@@ -67,31 +83,38 @@ export async function uploadScannedInvoiceFiles(
   const jpegObjectPath = `${STORAGE_BUCKET_PATH}/${storagePath}.jpg`;
 
   const storage = getFirebaseStorageClient();
+  const uploadedPaths: string[] = [];
 
   try {
-    await uploadBytes(ref(storage, pdfObjectPath), pdfBlob, {
-      contentType: 'application/pdf',
-      cacheControl: 'public, max-age=31536000, immutable',
-    });
-  } catch (error) {
-    throw new Error(`تعذّر رفع PDF: ${toUploadUserMessage(error)}`);
-  }
+    await uploadBlobResumable(
+      ref(storage, pdfObjectPath),
+      pdfBlob,
+      INVOICE_FILE_METADATA.pdf,
+      { timeoutMs: INVOICE_UPLOAD_TIMEOUT_MS }
+    );
+    uploadedPaths.push(pdfObjectPath);
 
-  try {
-    await uploadBytes(ref(storage, jpegObjectPath), jpegBlob, {
-      contentType: 'image/jpeg',
-      cacheControl: 'public, max-age=31536000, immutable',
-    });
-  } catch (error) {
-    throw new Error(`تعذّر رفع صورة المعاينة: ${toUploadUserMessage(error)}`);
-  }
+    await uploadBlobResumable(
+      ref(storage, jpegObjectPath),
+      jpegBlob,
+      INVOICE_FILE_METADATA.jpeg,
+      { timeoutMs: INVOICE_UPLOAD_TIMEOUT_MS }
+    );
+    uploadedPaths.push(jpegObjectPath);
 
-  try {
     const pdfUrl = await getDownloadURL(ref(storage, pdfObjectPath));
     const imageUrl = await getDownloadURL(ref(storage, jpegObjectPath));
     return { pdfUrl, imageUrl, storagePath };
   } catch (error) {
-    throw new Error(`تعذّر الحصول على روابط الملف: ${toUploadUserMessage(error)}`);
+    await rollbackStorageObjects(storage, uploadedPaths);
+    const message = toUploadUserMessage(error);
+    if (uploadedPaths.length === 0) {
+      throw new Error(`تعذّر رفع PDF: ${message}`);
+    }
+    if (uploadedPaths.length === 1) {
+      throw new Error(`تعذّر رفع صورة المعاينة: ${message}`);
+    }
+    throw new Error(`تعذّر إتمام الرفع: ${message}`);
   }
 }
 

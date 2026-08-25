@@ -1,9 +1,11 @@
-import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
+import { getDownloadURL, ref } from 'firebase/storage';
+import { uploadBlobResumable } from '@/lib/firebase-storage-upload';
 import { getFirebaseAuthClient, getFirebaseStorageClient } from '@/lib/firebase';
-import { optimizeJpegForStorage } from '@/lib/upload-blob-utils';
+import { optimizeJpegForStorage, toUploadUserMessage } from '@/lib/upload-blob-utils';
 
 const STORAGE_BUCKET_PATH = 'invoices-images';
 const AVATAR_MAX_BYTES = 120_000;
+const AVATAR_UPLOAD_TIMEOUT_MS = 90_000;
 
 async function assertSessionMatchesUser(userId: string): Promise<void> {
   const user = getFirebaseAuthClient().currentUser;
@@ -71,12 +73,21 @@ export async function uploadTailorAvatar(userId: string, jpegBlob: Blob): Promis
 
   const objectPath = `${STORAGE_BUCKET_PATH}/${userId}/avatar.jpg`;
   const storage = getFirebaseStorageClient();
+  const storageRef = ref(storage, objectPath);
 
-  await uploadBytes(ref(storage, objectPath), optimized, {
-    contentType: 'image/jpeg',
-    cacheControl: 'public, max-age=86400',
-  });
-
-  const publicUrl = await getDownloadURL(ref(storage, objectPath));
-  return `${publicUrl}?v=${Date.now()}`;
+  try {
+    await uploadBlobResumable(
+      storageRef,
+      optimized,
+      {
+        contentType: 'image/jpeg',
+        cacheControl: 'public, max-age=86400',
+      },
+      { timeoutMs: AVATAR_UPLOAD_TIMEOUT_MS }
+    );
+    const publicUrl = await getDownloadURL(storageRef);
+    return `${publicUrl}?v=${Date.now()}`;
+  } catch (error) {
+    throw new Error(`تعذّر رفع صورة الحساب: ${toUploadUserMessage(error)}`);
+  }
 }

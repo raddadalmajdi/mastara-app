@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getOpenCvRuntime, loadOpenCv, OPENCV_SLOW_HINT_MS, retryLoadOpenCv } from '@/lib/opencv-loader';
 import { BRAND_COLORS } from '@/lib/brand-colors';
+import { SCAN_JPEG_QUALITY } from '@/lib/document-scanner/constants';
+import { canvasToJpegBlob } from '@/lib/upload-blob-utils';
 import { CameraScanIcon, ReceiptIcon } from '@/components/icons/BrandIcons';
 
 type FilterMode = 'color' | 'gray' | 'bw' | 'original';
@@ -13,7 +15,8 @@ interface Point {
 }
 
 export interface DocumentScannerProps {
-  onCapture?: (dataUrl: string) => void;
+  /** يُمرَّر كانفاس النتيجة مباشرة — بدون PNG/data URL لتوفير الذاكرة على الموبايل. */
+  onCapture?: (canvas: HTMLCanvasElement) => void | Promise<void>;
   onClose?: () => void;
   className?: string;
   /** يبدأ الكاميرا فوراً عند فتح الماسح (ضغطة واحدة من الشاشة الرئيسية). */
@@ -680,15 +683,20 @@ export default function DocumentScanner({
   const handleSave = () => {
     const canvas = resultCanvasRef.current;
     if (!canvas) return;
-    const dataUrl = canvas.toDataURL('image/png');
     if (onCapture) {
-      onCapture(dataUrl);
-    } else {
-      const link = document.createElement('a');
-      link.download = `scanned-document-${Date.now()}.png`;
-      link.href = dataUrl;
-      link.click();
+      void Promise.resolve(onCapture(canvas)).catch((err) => {
+        console.error('[DocumentScanner] onCapture failed', err);
+      });
+      return;
     }
+    void canvasToJpegBlob(canvas, SCAN_JPEG_QUALITY).then((blob) => {
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.download = `scanned-document-${Date.now()}.jpg`;
+      link.href = url;
+      link.click();
+      URL.revokeObjectURL(url);
+    });
   };
 
   return (

@@ -47,8 +47,17 @@ export function toUploadUserMessage(error: unknown): string {
   }
 
   const message = error instanceof Error ? error.message : String(error ?? '');
-  if (/load failed|failed to fetch|networkerror|network error/i.test(message)) {
-    return 'فشل الاتصال بالتخزين السحابي (Load failed). تحقق من الإنترنت وحاول مجدداً.';
+
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    return 'لا يوجد اتصال بالإنترنت. تحقق من الشبكة وحاول مجدداً.';
+  }
+
+  if (/timeout|انتهت مهلة|deadline|aborted/i.test(message)) {
+    return 'انقطع الرفع بسبب بطء الشبكة. حاول مجدداً على شبكة أقوى.';
+  }
+
+  if (/load failed|failed to fetch|networkerror|network error|err_network|econnreset/i.test(message)) {
+    return 'فشل الاتصال بالتخزين السحابي — تحقق من الإنترنت وحاول مجدداً.';
   }
   if (/quota exceeded|quotaexceeded/i.test(message)) {
     return 'مساحة التخزين المحلية ممتلئة. سجّل الدخول للحفظ السحابي.';
@@ -65,6 +74,14 @@ function canvasToJpeg(canvas: HTMLCanvasElement, quality: number): Promise<Blob>
       quality
     );
   });
+}
+
+/** يحوّل كانفاس المسح إلى JPEG مباشرة — بدون PNG/data URL (توفير ذاكرة على الموبايل). */
+export function canvasToJpegBlob(
+  canvas: HTMLCanvasElement,
+  quality = SCAN_JPEG_QUALITY
+): Promise<Blob> {
+  return canvasToJpeg(canvas, quality);
 }
 
 async function blobToOptimizedCanvas(
