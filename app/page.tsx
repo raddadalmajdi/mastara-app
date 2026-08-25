@@ -40,7 +40,6 @@ import {
   AUTH_OTP_INCOMPLETE,
   AUTH_UNCONFIRMED_LOGIN,
 } from '@/lib/auth-confirmation-copy';
-import { downloadInvoiceAsPdf, openInvoicePdfForPrint, downloadStoredPdf, openStoredPdfForPrint } from '@/lib/pdf-export';
 import {
   fetchInvoicesByCustomerPhone,
   fetchInvoicesForUser,
@@ -1220,6 +1219,11 @@ export default function Home() {
 
       if (searchSeq !== invoiceSearchSeqRef.current) return;
       applyInvoiceSearchResults(data);
+    } catch (searchErr) {
+      if (searchSeq !== invoiceSearchSeqRef.current) return;
+      console.warn('[invoices] search failed', searchErr);
+      setCustomerInvoices([]);
+      setWhatsappMessages({});
     } finally {
       if (searchSeq === invoiceSearchSeqRef.current) {
         setIsSearchingInvoices(false);
@@ -1309,7 +1313,11 @@ export default function Home() {
           organizationId
         );
 
-        await searchInvoices(localPhone, customerCountryCode);
+        try {
+          await searchInvoices(localPhone, customerCountryCode);
+        } catch (searchErr) {
+          console.warn('[invoices] refresh after save failed', searchErr);
+        }
         setUploadSavePhase('success');
         setShowOpenCvScanner(false);
         window.setTimeout(() => setUploadSavePhase('idle'), 2800);
@@ -1336,7 +1344,11 @@ export default function Home() {
         await upsertTailorCustomer(userId, fullCustomerPhone, nameToSave, organizationId);
         setCustomerBookStatus('known');
 
-        await searchInvoices(localPhone, customerCountryCode);
+        try {
+          await searchInvoices(localPhone, customerCountryCode);
+        } catch (searchErr) {
+          console.warn('[invoices] refresh after save failed', searchErr);
+        }
         setUploadSavePhase('success');
         setShowOpenCvScanner(false);
         window.setTimeout(() => setUploadSavePhase('idle'), 2800);

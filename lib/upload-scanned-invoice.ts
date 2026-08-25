@@ -1,6 +1,7 @@
 import { collection, addDoc, getDocs, limit, orderBy, query, where } from 'firebase/firestore';
 import { getDownloadURL, ref } from 'firebase/storage';
 import { getCached, invalidateCachePrefix, setCached } from '@/lib/client-cache';
+import { isFirestoreMissingIndexError, sortByCreatedAtDesc } from '@/lib/firestore-query-utils';
 import {
   rollbackStorageObjects,
   uploadBlobResumable,
@@ -202,9 +203,35 @@ export async function fetchInvoicesByCustomerPhone(params: {
     const records = snap.docs.map(mapInvoiceDoc);
     setCached(cacheKey, records, INVOICE_LIST_CACHE_TTL_MS);
     return records;
-  } catch {
-    const snap = await getDocs(userQuery);
-    const records = snap.docs.map(mapInvoiceDoc);
+  } catch (error) {
+    if (orgQuery) {
+      try {
+        const snap = await getDocs(userQuery);
+        const records = snap.docs.map(mapInvoiceDoc);
+        setCached(cacheKey, records, INVOICE_LIST_CACHE_TTL_MS);
+        return records;
+      } catch (userQueryError) {
+        if (!isFirestoreMissingIndexError(userQueryError)) throw userQueryError;
+      }
+    } else if (!isFirestoreMissingIndexError(error)) {
+      throw error;
+    }
+
+    const fallbackQuery = params.organizationId
+      ? query(
+          invoicesRef,
+          where('organization_id', '==', params.organizationId),
+          limit(INVOICE_QUERY_LIMIT * 3)
+        )
+      : query(invoicesRef, where('user_id', '==', params.userId), limit(INVOICE_QUERY_LIMIT * 3));
+
+    const snap = await getDocs(fallbackQuery);
+    const records = sortByCreatedAtDesc(
+      snap.docs
+        .map(mapInvoiceDoc)
+        .filter((inv) => normalizeStoredPhone(inv.customer_phone) === normalizedPhone)
+    ).slice(0, INVOICE_QUERY_LIMIT);
+
     setCached(cacheKey, records, INVOICE_LIST_CACHE_TTL_MS);
     return records;
   }
@@ -240,10 +267,27 @@ export async function fetchInvoicesForUser(params: {
         limit(INVOICE_QUERY_LIMIT)
       );
 
-  const snap = await getDocs(q);
-  const records = snap.docs.map(mapInvoiceDoc);
-  setCached(cacheKey, records, INVOICE_LIST_CACHE_TTL_MS);
-  return records;
+  try {
+    const snap = await getDocs(q);
+    const records = snap.docs.map(mapInvoiceDoc);
+    setCached(cacheKey, records, INVOICE_LIST_CACHE_TTL_MS);
+    return records;
+  } catch (error) {
+    if (!isFirestoreMissingIndexError(error)) throw error;
+
+    const fallbackQuery = params.organizationId
+      ? query(
+          invoicesRef,
+          where('organization_id', '==', params.organizationId),
+          limit(INVOICE_QUERY_LIMIT * 2)
+        )
+      : query(invoicesRef, where('user_id', '==', params.userId), limit(INVOICE_QUERY_LIMIT * 2));
+
+    const snap = await getDocs(fallbackQuery);
+    const records = sortByCreatedAtDesc(snap.docs.map(mapInvoiceDoc)).slice(0, INVOICE_QUERY_LIMIT);
+    setCached(cacheKey, records, INVOICE_LIST_CACHE_TTL_MS);
+    return records;
+  }
 }
 
 export function invoiceShareDocumentUrl(invoice: { pdf_url?: string | null; image_url: string }): string {
