@@ -1,12 +1,23 @@
 import type { NextConfig } from 'next';
 
+const isMobileExport = process.env.MOBILE_EXPORT === '1';
+
 const nextConfig: NextConfig = {
-  serverExternalPackages: ['firebase-admin'],
+  ...(isMobileExport
+    ? {
+        output: 'export',
+        // Capacitor serves files from `out/` — no Next image optimizer server.
+        images: { unoptimized: true },
+      }
+    : {
+        serverExternalPackages: ['firebase-admin'],
+        images: {
+          remotePatterns: [{ protocol: 'https', hostname: 'firebasestorage.googleapis.com' }],
+        },
+      }),
   allowedDevOrigins: ['172.20.10.3'],
-  images: {
-    remotePatterns: [{ protocol: 'https', hostname: 'firebasestorage.googleapis.com' }],
-  },
   async headers() {
+    if (isMobileExport) return [];
     return [
       {
         source: '/libs/:path*',
