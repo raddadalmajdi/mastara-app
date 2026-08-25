@@ -12,7 +12,14 @@ service cloud.firestore {
     }
 
     match /invoices/{docId} {
-      allow read: if request.auth != null && resource.data.user_id == request.auth.uid;
+      allow read: if request.auth != null && (
+        resource.data.user_id == request.auth.uid
+        || (
+          resource.data.organization_id != null
+          && get(/databases/$(database)/documents/tailor_profiles/$(request.auth.uid)).data.organization_id
+             == resource.data.organization_id
+        )
+      );
       allow create: if request.auth != null && request.resource.data.user_id == request.auth.uid;
     }
 

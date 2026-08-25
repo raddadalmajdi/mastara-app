@@ -123,8 +123,6 @@ export function OrganizationProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    void refreshOrganization();
-
     const unsubscribe = subscribeFirebaseAuth((user) => {
       if (!user) {
         applyContext(null);
@@ -132,6 +130,7 @@ export function OrganizationProvider({ children }: { children: ReactNode }) {
         return;
       }
 
+      setLoading(true);
       void loadOrganizationForUser(user)
         .then(applyContext)
         .catch(() => applyContext(null))
@@ -139,7 +138,7 @@ export function OrganizationProvider({ children }: { children: ReactNode }) {
     });
 
     return () => unsubscribe();
-  }, [applyContext, firebaseReady, refreshOrganization]);
+  }, [applyContext, firebaseReady]);
 
   const value = useMemo(
     () => ({

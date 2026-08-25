@@ -45,14 +45,14 @@ export const MIN_CANDIDATE_BLOB_RATIO = 0.02;
  */
 export const MAX_INTERIOR_TEXTURE = 30;
 
-/** أعلى بُعد (طول الضلع الأطول بالبكسل) للمستند النهائي بعد تصحيح المنظور — مرتفع لـ PDF واضح. */
-export const MAX_OUTPUT_DIMENSION = 2400;
+/** أعلى بُعد للمستند النهائي — يُوازَن مع STORAGE_JPEG_MAX_DIMENSION للتخزين. */
+export const MAX_OUTPUT_DIMENSION = 2000;
 
 /** جودة ضغط JPEG المستخدمة لمعاينة المستند الممسوح فقط (المعاينة داخل الماسح، وليست ملف PDF النهائي). */
 export const SCAN_JPEG_QUALITY = 0.92;
 
-/** جودة ضغط JPEG الاحتياطية عند تضمين الصورة داخل ملف PDF إن لم يُطلَب PNG صراحةً (راجع `to-pdf.ts`). */
-export const PDF_FALLBACK_JPEG_QUALITY = 0.85;
+/** جودة JPEG داخل PDF — أقل قليلاً لتقليل تكلفة التخزين مع وضوح مقروء. */
+export const PDF_FALLBACK_JPEG_QUALITY = 0.78;
 
 /* ----------------------------------------------------------------------- */
 /* ثوابت تحسين المستند الملون (lib/document-scanner/enhance.ts)              */

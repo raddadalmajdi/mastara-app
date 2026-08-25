@@ -42,12 +42,14 @@ import {
 } from '@/lib/auth-confirmation-copy';
 import { downloadInvoiceAsPdf, openInvoicePdfForPrint, downloadStoredPdf, openStoredPdfForPrint } from '@/lib/pdf-export';
 import {
+  fetchInvoicesByCustomerPhone,
   fetchInvoicesForUser,
   insertInvoiceRecord,
   invoiceShareDocumentUrl,
   uploadScannedInvoiceFiles,
 } from '@/lib/upload-scanned-invoice';
 import type { DocumentScanResult } from '@/lib/document-scanner/scan-result';
+import { InvoiceThumbnail } from '@/components/invoices/InvoiceThumbnail';
 
 const OpenCvDocumentScannerModal = dynamic(
   () =>
@@ -67,6 +69,7 @@ import { useIdleLogout } from '@/lib/use-idle-logout';
 import {
   lookupTailorCustomerByPhone,
   isCustomerPhoneSearchable,
+  normalizeStoredPhone,
   phoneMatchVariants,
   phonesMatch,
   upsertTailorCustomer,
@@ -158,6 +161,8 @@ export default function Home() {
   const [customerNameEditing, setCustomerNameEditing] = useState(false);
   const [customerInvoices, setCustomerInvoices] = useState<any[]>([]);
   const customerLookupTimerRef = useRef<number | null>(null);
+  const invoiceSearchTimerRef = useRef<number | null>(null);
+  const invoiceSearchSeqRef = useRef(0);
   const profileOnboardingShownRef = useRef(false);
   const [isSearchingInvoices, setIsSearchingInvoices] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -260,6 +265,9 @@ export default function Home() {
     return () => {
       if (customerLookupTimerRef.current !== null) {
         window.clearTimeout(customerLookupTimerRef.current);
+      }
+      if (invoiceSearchTimerRef.current !== null) {
+        window.clearTimeout(invoiceSearchTimerRef.current);
       }
     };
   }, []);
@@ -1053,7 +1061,7 @@ export default function Home() {
       setCustomerBookStatus('searching');
     }
     if (isCustomerPhoneSearchable(cleanVal)) {
-      void searchInvoices(cleanVal, customerCountryCode);
+      scheduleInvoiceSearch(cleanVal, customerCountryCode);
       scheduleCustomerDirectoryLookup(cleanVal, customerCountryCode);
     }
   };
@@ -1114,9 +1122,37 @@ export default function Home() {
       setWhatsappMessages({});
     }
     if (isCustomerPhoneSearchable(customerLocalPhone)) {
-      void searchInvoices(customerLocalPhone, newCode);
+      scheduleInvoiceSearch(customerLocalPhone, newCode);
       scheduleCustomerDirectoryLookup(customerLocalPhone, newCode);
     }
+  };
+
+  const INVOICE_SEARCH_DEBOUNCE_MS = 350;
+  const FULL_PHONE_LOCAL_LENGTH = 7;
+
+  const scheduleInvoiceSearch = (localPhone: string, cCode: string) => {
+    if (invoiceSearchTimerRef.current !== null) {
+      window.clearTimeout(invoiceSearchTimerRef.current);
+    }
+    if (!isCustomerPhoneSearchable(localPhone)) {
+      setCustomerInvoices([]);
+      setWhatsappMessages({});
+      return;
+    }
+    invoiceSearchTimerRef.current = window.setTimeout(() => {
+      void searchInvoices(localPhone, cCode);
+    }, INVOICE_SEARCH_DEBOUNCE_MS);
+  };
+
+  const applyInvoiceSearchResults = (
+    filtered: Array<{ id: string; image_url: string; pdf_url?: string | null; created_at?: string }>
+  ) => {
+    setCustomerInvoices(filtered);
+    const initialMessages: { [key: string]: string } = {};
+    filtered.forEach((inv) => {
+      initialMessages[inv.id] = `تم! شكراً لتعاملك معنا، نسعد بخدمتك. رابط مستندك (PDF): ${invoiceShareDocumentUrl(inv)}`;
+    });
+    setWhatsappMessages(initialMessages);
   };
 
   const searchInvoices = async (localPhone: string, cCode: string) => {
@@ -1127,6 +1163,7 @@ export default function Home() {
     }
 
     const variants = phoneMatchVariants(cCode, localPhone);
+    const searchSeq = ++invoiceSearchSeqRef.current;
 
     setIsSearchingInvoices(true);
     try {
@@ -1135,37 +1172,58 @@ export default function Home() {
         const filtered = savedInvoices.filter((inv: { customer_phone?: string }) =>
           variants.some((variant) => phonesMatch(String(inv.customer_phone ?? ''), variant))
         );
-        setCustomerInvoices(filtered);
-        const initialMessages: { [key: string]: string } = {};
-        filtered.forEach((inv: { id: string; image_url: string; pdf_url?: string | null }) => {
-          initialMessages[inv.id] = `تم! شكراً لتعاملك معنا، نسعد بخدمتك. رابط مستندك (PDF): ${invoiceShareDocumentUrl(inv)}`;
-        });
-        setWhatsappMessages(initialMessages);
+        if (searchSeq !== invoiceSearchSeqRef.current) return;
+        applyInvoiceSearchResults(filtered);
         return;
       }
 
       if (!user) {
+        if (searchSeq !== invoiceSearchSeqRef.current) return;
         setCustomerInvoices([]);
         setWhatsappMessages({});
         return;
       }
 
-      const data = await fetchInvoicesForUser({
-        userId: appUserId(user),
-        organizationId,
-      });
+      const userId = appUserId(user);
+      const localDigits = localPhone.replace(/\D/g, '');
+      let data;
 
-      const filtered = data.filter((inv) =>
-        variants.some((variant) => phonesMatch(String(inv.customer_phone ?? ''), variant))
-      );
-      setCustomerInvoices(filtered);
-      const initialMessages: { [key: string]: string } = {};
-      filtered.forEach((inv) => {
-        initialMessages[inv.id] = `تم! شكراً لتعاملك معنا، نسعد بخدمتك. رابط مستندك (PDF): ${invoiceShareDocumentUrl(inv)}`;
-      });
-      setWhatsappMessages(initialMessages);
+      if (localDigits.length >= FULL_PHONE_LOCAL_LENGTH) {
+        const fullPhone = normalizeStoredPhone(`${cCode}${localPhone}`);
+        data = await fetchInvoicesByCustomerPhone({
+          userId,
+          customerPhone: fullPhone,
+          organizationId,
+        });
+
+        if (data.length === 0) {
+          for (const variant of variants) {
+            const normalized = normalizeStoredPhone(variant);
+            if (!normalized || normalized === fullPhone) continue;
+            const alt = await fetchInvoicesByCustomerPhone({
+              userId,
+              customerPhone: normalized,
+              organizationId,
+            });
+            if (alt.length > 0) {
+              data = alt;
+              break;
+            }
+          }
+        }
+      } else {
+        const all = await fetchInvoicesForUser({ userId, organizationId });
+        data = all.filter((inv) =>
+          variants.some((variant) => phonesMatch(String(inv.customer_phone ?? ''), variant))
+        );
+      }
+
+      if (searchSeq !== invoiceSearchSeqRef.current) return;
+      applyInvoiceSearchResults(data);
     } finally {
-      setIsSearchingInvoices(false);
+      if (searchSeq === invoiceSearchSeqRef.current) {
+        setIsSearchingInvoices(false);
+      }
     }
   };
 
@@ -1188,7 +1246,7 @@ export default function Home() {
     }
 
     const localPhone = customerLocalPhone;
-    const fullCustomerPhone = `${customerCountryCode}${localPhone}`;
+        const fullCustomerPhone = normalizeStoredPhone(`${customerCountryCode}${localPhone}`);
 
     let nameToSave = customerDisplayName.trim();
     if (!nameToSave) {
@@ -1322,11 +1380,12 @@ export default function Home() {
     setExportingPdfId(invoice.id);
     try {
       const { fileName, meta } = buildInvoicePdfLabel(invoice, invoiceNumber);
+      const pdf = await import('@/lib/pdf-export');
       if (invoice.pdf_url) {
-        await downloadStoredPdf(invoice.pdf_url, fileName);
+        await pdf.downloadStoredPdf(invoice.pdf_url, fileName);
         return;
       }
-      await downloadInvoiceAsPdf(invoice.image_url, fileName, meta);
+      await pdf.downloadInvoiceAsPdf(invoice.image_url, fileName, meta);
     } catch (error: any) {
       alert(`تعذّر تنزيل PDF: ${error?.message || 'خطأ غير متوقع'}`);
     } finally {
@@ -1339,12 +1398,13 @@ export default function Home() {
     if ((!invoice?.image_url && !invoice?.pdf_url) || exportingPdfId) return;
     setExportingPdfId(invoice.id);
     try {
+      const pdf = await import('@/lib/pdf-export');
       if (invoice.pdf_url) {
-        openStoredPdfForPrint(invoice.pdf_url);
+        pdf.openStoredPdfForPrint(invoice.pdf_url);
         return;
       }
       const { meta } = buildInvoicePdfLabel(invoice, invoiceNumber);
-      await openInvoicePdfForPrint(invoice.image_url, meta);
+      await pdf.openInvoicePdfForPrint(invoice.image_url, meta);
     } catch (error: any) {
       alert(`تعذّر تجهيز معاينة الطباعة: ${error?.message || 'خطأ غير متوقع'}`);
     } finally {
@@ -1829,10 +1889,11 @@ export default function Home() {
                       onClick={() => setActiveImageIndex(latestIndex)}
                       className="w-full h-96 sm:h-[28rem] lg:h-[32rem] rounded-xl overflow-hidden border border-mistara-gold/30 glass-panel cursor-pointer relative shadow-inner flex items-center justify-center"
                     >
-                      <img 
-                        src={latestInvoice.image_url} 
-                        alt="Latest Invoice" 
+                      <InvoiceThumbnail
+                        src={latestInvoice.image_url}
+                        alt="Latest Invoice"
                         className="w-full h-full object-contain"
+                        priority
                       />
                     </div>
 
@@ -1913,7 +1974,11 @@ export default function Home() {
                             onClick={() => setActiveImageIndex(actualIndex)}
                             className="w-24 h-32 shrink-0 rounded-xl overflow-hidden bg-mistara-cream border border-mistara-brown/15 cursor-pointer relative flex items-center justify-center"
                           >
-                            <img src={inv.image_url} alt="Old Invoice" className="w-full h-full object-contain" />
+                            <InvoiceThumbnail
+                              src={inv.image_url}
+                              alt="Old Invoice"
+                              className="w-full h-full object-contain"
+                            />
                           </div>
 
                           <div className="flex-1 min-w-0 space-y-2">
@@ -2139,11 +2204,12 @@ export default function Home() {
             </button>
           </div>
 
-          <div className="w-full max-w-lg lg:max-w-2xl h-[70vh] sm:h-[80vh] glass-panel border border-mistara-gold/30 rounded-2xl overflow-hidden flex items-center justify-center p-2 shadow-2xl">
-            <img 
-              src={customerInvoices[activeImageIndex]?.image_url} 
-              alt="Invoice Large" 
+          <div className="relative w-full max-w-lg lg:max-w-2xl h-[70vh] sm:h-[80vh] glass-panel border border-mistara-gold/30 rounded-2xl overflow-hidden flex items-center justify-center p-2 shadow-2xl">
+            <InvoiceThumbnail
+              src={customerInvoices[activeImageIndex]?.image_url ?? ''}
+              alt="Invoice Large"
               className="w-full h-full object-contain"
+              priority
             />
           </div>
 

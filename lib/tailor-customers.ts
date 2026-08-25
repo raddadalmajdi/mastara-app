@@ -40,7 +40,7 @@ export function normalizeStoredPhone(fullPhone: string): string {
   return fullPhone.replace(/\D/g, '');
 }
 
-export const MIN_CUSTOMER_PHONE_SEARCH_LENGTH = 1;
+export const MIN_CUSTOMER_PHONE_SEARCH_LENGTH = 4;
 
 export function isCustomerPhoneSearchable(localPhone: string): boolean {
   return localPhone.replace(/\D/g, '').length >= MIN_CUSTOMER_PHONE_SEARCH_LENGTH;

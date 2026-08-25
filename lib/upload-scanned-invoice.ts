@@ -1,15 +1,16 @@
-import { collection, addDoc, getDocs, orderBy, query, where } from 'firebase/firestore';
+import { collection, addDoc, getDocs, limit, orderBy, query, where } from 'firebase/firestore';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
+import { getCached, invalidateCachePrefix, setCached } from '@/lib/client-cache';
 import { getFirebaseAuthClient, getFirebaseFirestoreClient, getFirebaseStorageClient, isFirebaseConfigured } from '@/lib/firebase';
+import { normalizeStoredPhone } from '@/lib/tailor-customers';
 import {
-  assertBlobWithinLimit,
-  compressJpegBlobIfNeeded,
-  MAX_INVOICE_JPEG_BYTES,
-  MAX_INVOICE_PDF_BYTES,
+  prepareInvoiceBlobsForUpload,
   toUploadUserMessage,
 } from '@/lib/upload-blob-utils';
 
 const STORAGE_BUCKET_PATH = 'invoices-images';
+const INVOICE_LIST_CACHE_TTL_MS = 45_000;
+const INVOICE_QUERY_LIMIT = 80;
 
 async function assertSessionMatchesUser(userId: string): Promise<void> {
   const auth = getFirebaseAuthClient();
@@ -20,8 +21,20 @@ async function assertSessionMatchesUser(userId: string): Promise<void> {
   if (user.uid !== userId) {
     throw new Error('لا يمكن حفظ المستند إلا في حساب المحل الحالي.');
   }
-  // يجدّد التوكن قبل الرفع — يمنع storage/unauthenticated بعد جلسة طويلة.
   await user.getIdToken(true);
+}
+
+function mapInvoiceDoc(docSnap: { id: string; data: () => Record<string, unknown> }): InvoiceRecord {
+  const data = docSnap.data();
+  return {
+    id: docSnap.id,
+    user_id: String(data.user_id),
+    organization_id: data.organization_id != null ? String(data.organization_id) : undefined,
+    customer_phone: String(data.customer_phone),
+    image_url: String(data.image_url),
+    pdf_url: String(data.pdf_url),
+    created_at: String(data.created_at ?? new Date().toISOString()),
+  };
 }
 
 export type ScannedUploadInput = {
@@ -41,14 +54,12 @@ export type ScannedUploadOptions = {
 
 export async function uploadScannedInvoiceFiles(
   userId: string,
-  { jpegBlob, pdfBlob }: ScannedUploadInput,
+  input: ScannedUploadInput,
   options?: ScannedUploadOptions
 ): Promise<ScannedUploadResult> {
   await assertSessionMatchesUser(userId);
 
-  assertBlobWithinLimit(pdfBlob, 'ملف PDF', MAX_INVOICE_PDF_BYTES);
-  const jpegForUpload = await compressJpegBlobIfNeeded(jpegBlob, MAX_INVOICE_JPEG_BYTES);
-  assertBlobWithinLimit(jpegForUpload, 'صورة المعاينة', MAX_INVOICE_JPEG_BYTES);
+  const { jpegBlob, pdfBlob } = await prepareInvoiceBlobsForUpload(input);
 
   const safeLabel = options?.label?.replace(/[^\d+a-zA-Z_-]/g, '') ?? '';
   const storagePath = safeLabel ? `${userId}/${safeLabel}_${Date.now()}` : `${userId}/${Date.now()}`;
@@ -60,16 +71,16 @@ export async function uploadScannedInvoiceFiles(
   try {
     await uploadBytes(ref(storage, pdfObjectPath), pdfBlob, {
       contentType: 'application/pdf',
-      customMetadata: { cacheControl: '3600' },
+      cacheControl: 'public, max-age=31536000, immutable',
     });
   } catch (error) {
     throw new Error(`تعذّر رفع PDF: ${toUploadUserMessage(error)}`);
   }
 
   try {
-    await uploadBytes(ref(storage, jpegObjectPath), jpegForUpload, {
+    await uploadBytes(ref(storage, jpegObjectPath), jpegBlob, {
       contentType: 'image/jpeg',
-      customMetadata: { cacheControl: '3600' },
+      cacheControl: 'public, max-age=31536000, immutable',
     });
   } catch (error) {
     throw new Error(`تعذّر رفع صورة المعاينة: ${toUploadUserMessage(error)}`);
@@ -101,18 +112,78 @@ export async function insertInvoiceRecord(payload: InvoiceInsertPayload): Promis
   await assertSessionMatchesUser(payload.user_id);
 
   const db = getFirebaseFirestoreClient();
+  const normalizedPhone = normalizeStoredPhone(payload.customer_phone);
+
   try {
     const docRef = await addDoc(collection(db, 'invoices'), {
       user_id: payload.user_id,
       organization_id: payload.organization_id ?? null,
-      customer_phone: payload.customer_phone,
+      customer_phone: normalizedPhone,
       image_url: payload.image_url,
       pdf_url: payload.pdf_url,
       created_at: new Date().toISOString(),
     });
+
+    invalidateCachePrefix(`inv:${payload.user_id}:`);
+    if (payload.organization_id) {
+      invalidateCachePrefix(`inv:org:${payload.organization_id}:`);
+    }
+
     return docRef.id;
   } catch (error) {
     throw new Error(`تعذّر حفظ سجل الفاتورة: ${toUploadUserMessage(error)}`);
+  }
+}
+
+/** استعلام مفهرس بالبريد/الجوال — أسرع من جلب كل الفواتير ثم التصفية في الذاكرة. */
+export async function fetchInvoicesByCustomerPhone(params: {
+  userId: string;
+  customerPhone: string;
+  organizationId?: string | null;
+}): Promise<InvoiceRecord[]> {
+  if (!isFirebaseConfigured()) return [];
+
+  const normalizedPhone = normalizeStoredPhone(params.customerPhone);
+  if (!normalizedPhone) return [];
+
+  const cacheKey = params.organizationId
+    ? `inv:org:${params.organizationId}:${normalizedPhone}`
+    : `inv:${params.userId}:${normalizedPhone}`;
+
+  const cached = getCached<InvoiceRecord[]>(cacheKey);
+  if (cached) return cached;
+
+  const db = getFirebaseFirestoreClient();
+  const invoicesRef = collection(db, 'invoices');
+
+  const orgQuery = params.organizationId
+    ? query(
+        invoicesRef,
+        where('organization_id', '==', params.organizationId),
+        where('customer_phone', '==', normalizedPhone),
+        orderBy('created_at', 'desc'),
+        limit(INVOICE_QUERY_LIMIT)
+      )
+    : null;
+
+  const userQuery = query(
+    invoicesRef,
+    where('user_id', '==', params.userId),
+    where('customer_phone', '==', normalizedPhone),
+    orderBy('created_at', 'desc'),
+    limit(INVOICE_QUERY_LIMIT)
+  );
+
+  try {
+    const snap = orgQuery ? await getDocs(orgQuery) : await getDocs(userQuery);
+    const records = snap.docs.map(mapInvoiceDoc);
+    setCached(cacheKey, records, INVOICE_LIST_CACHE_TTL_MS);
+    return records;
+  } catch {
+    const snap = await getDocs(userQuery);
+    const records = snap.docs.map(mapInvoiceDoc);
+    setCached(cacheKey, records, INVOICE_LIST_CACHE_TTL_MS);
+    return records;
   }
 }
 
@@ -122,43 +193,34 @@ export async function fetchInvoicesForUser(params: {
 }): Promise<InvoiceRecord[]> {
   if (!isFirebaseConfigured()) return [];
 
+  const cacheKey = params.organizationId
+    ? `inv:org:${params.organizationId}:all`
+    : `inv:${params.userId}:all`;
+
+  const cached = getCached<InvoiceRecord[]>(cacheKey);
+  if (cached) return cached;
+
   const db = getFirebaseFirestoreClient();
-  let q;
+  const invoicesRef = collection(db, 'invoices');
 
-  if (params.organizationId) {
-    q = query(
-      collection(db, 'invoices'),
-      where('organization_id', '==', params.organizationId),
-      orderBy('created_at', 'desc')
-    );
-  } else {
-    q = query(
-      collection(db, 'invoices'),
-      where('user_id', '==', params.userId),
-      orderBy('created_at', 'desc')
-    );
-  }
+  const q = params.organizationId
+    ? query(
+        invoicesRef,
+        where('organization_id', '==', params.organizationId),
+        orderBy('created_at', 'desc'),
+        limit(INVOICE_QUERY_LIMIT)
+      )
+    : query(
+        invoicesRef,
+        where('user_id', '==', params.userId),
+        orderBy('created_at', 'desc'),
+        limit(INVOICE_QUERY_LIMIT)
+      );
 
-  const snap = await getDocs(q).catch(async () => {
-    const fallback = query(
-      collection(db, 'invoices'),
-      where('user_id', '==', params.userId)
-    );
-    return getDocs(fallback);
-  });
-
-  return snap.docs.map((docSnap) => {
-    const data = docSnap.data();
-    return {
-      id: docSnap.id,
-      user_id: String(data.user_id),
-      organization_id: data.organization_id != null ? String(data.organization_id) : undefined,
-      customer_phone: String(data.customer_phone),
-      image_url: String(data.image_url),
-      pdf_url: String(data.pdf_url),
-      created_at: String(data.created_at ?? new Date().toISOString()),
-    };
-  });
+  const snap = await getDocs(q);
+  const records = snap.docs.map(mapInvoiceDoc);
+  setCached(cacheKey, records, INVOICE_LIST_CACHE_TTL_MS);
+  return records;
 }
 
 export function invoiceShareDocumentUrl(invoice: { pdf_url?: string | null; image_url: string }): string {
