@@ -1,6 +1,7 @@
 'use client';
 
-import { PDF_FALLBACK_JPEG_QUALITY } from './constants';
+import { PDF_FALLBACK_JPEG_QUALITY, MAX_OUTPUT_DIMENSION } from './constants';
+import { assertBlobWithinLimit, MAX_INVOICE_PDF_BYTES, scaleCanvasToMaxDimension } from '@/lib/upload-blob-utils';
 
 export type PdfExportOptions = {
   /**
@@ -30,8 +31,10 @@ export async function canvasToDocumentPdfBlob(canvas: HTMLCanvasElement, options
 
   const { jsPDF } = await import('jspdf');
 
-  const widthPx = canvas.width;
-  const heightPx = canvas.height;
+  const scaled = scaleCanvasToMaxDimension(canvas, MAX_OUTPUT_DIMENSION);
+
+  const widthPx = scaled.width;
+  const heightPx = scaled.height;
   const orientation = widthPx >= heightPx ? 'landscape' : 'portrait';
 
   const ppi = options?.highQuality ? 200 : 150;
@@ -42,12 +45,14 @@ export async function canvasToDocumentPdfBlob(canvas: HTMLCanvasElement, options
   const doc = new jsPDF({ orientation, unit: 'mm', format: [widthMm, heightMm], compress: true });
 
   if (options?.preferPng) {
-    const dataUrl = canvas.toDataURL('image/png');
+    const dataUrl = scaled.toDataURL('image/png');
     doc.addImage(dataUrl, 'PNG', 0, 0, widthMm, heightMm, undefined, 'FAST');
   } else {
-    const dataUrl = canvas.toDataURL('image/jpeg', PDF_FALLBACK_JPEG_QUALITY);
+    const dataUrl = scaled.toDataURL('image/jpeg', PDF_FALLBACK_JPEG_QUALITY);
     doc.addImage(dataUrl, 'JPEG', 0, 0, widthMm, heightMm, undefined, 'FAST');
   }
 
-  return doc.output('blob');
+  const blob = doc.output('blob');
+  assertBlobWithinLimit(blob, 'ملف PDF', MAX_INVOICE_PDF_BYTES);
+  return blob;
 }

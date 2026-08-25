@@ -1,17 +1,27 @@
 import { collection, addDoc, getDocs, orderBy, query, where } from 'firebase/firestore';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { getFirebaseAuthClient, getFirebaseFirestoreClient, getFirebaseStorageClient, isFirebaseConfigured } from '@/lib/firebase';
+import {
+  assertBlobWithinLimit,
+  compressJpegBlobIfNeeded,
+  MAX_INVOICE_JPEG_BYTES,
+  MAX_INVOICE_PDF_BYTES,
+  toUploadUserMessage,
+} from '@/lib/upload-blob-utils';
 
 const STORAGE_BUCKET_PATH = 'invoices-images';
 
 async function assertSessionMatchesUser(userId: string): Promise<void> {
-  const user = getFirebaseAuthClient().currentUser;
+  const auth = getFirebaseAuthClient();
+  const user = auth.currentUser;
   if (!user) {
     throw new Error('يجب تسجيل الدخول لرفع أو حفظ المستندات.');
   }
   if (user.uid !== userId) {
     throw new Error('لا يمكن حفظ المستند إلا في حساب المحل الحالي.');
   }
+  // يجدّد التوكن قبل الرفع — يمنع storage/unauthenticated بعد جلسة طويلة.
+  await user.getIdToken(true);
 }
 
 export type ScannedUploadInput = {
@@ -36,6 +46,10 @@ export async function uploadScannedInvoiceFiles(
 ): Promise<ScannedUploadResult> {
   await assertSessionMatchesUser(userId);
 
+  assertBlobWithinLimit(pdfBlob, 'ملف PDF', MAX_INVOICE_PDF_BYTES);
+  const jpegForUpload = await compressJpegBlobIfNeeded(jpegBlob, MAX_INVOICE_JPEG_BYTES);
+  assertBlobWithinLimit(jpegForUpload, 'صورة المعاينة', MAX_INVOICE_JPEG_BYTES);
+
   const safeLabel = options?.label?.replace(/[^\d+a-zA-Z_-]/g, '') ?? '';
   const storagePath = safeLabel ? `${userId}/${safeLabel}_${Date.now()}` : `${userId}/${Date.now()}`;
   const pdfObjectPath = `${STORAGE_BUCKET_PATH}/${storagePath}.pdf`;
@@ -43,26 +57,31 @@ export async function uploadScannedInvoiceFiles(
 
   const storage = getFirebaseStorageClient();
 
-  await uploadBytes(ref(storage, pdfObjectPath), pdfBlob, {
-    contentType: 'application/pdf',
-    customMetadata: { cacheControl: '3600' },
-  });
+  try {
+    await uploadBytes(ref(storage, pdfObjectPath), pdfBlob, {
+      contentType: 'application/pdf',
+      customMetadata: { cacheControl: '3600' },
+    });
+  } catch (error) {
+    throw new Error(`تعذّر رفع PDF: ${toUploadUserMessage(error)}`);
+  }
 
   try {
-    await uploadBytes(ref(storage, jpegObjectPath), jpegBlob, {
+    await uploadBytes(ref(storage, jpegObjectPath), jpegForUpload, {
       contentType: 'image/jpeg',
       customMetadata: { cacheControl: '3600' },
     });
-  } catch (jpegError) {
-    throw new Error(
-      `تعذّر رفع صورة المعاينة: ${jpegError instanceof Error ? jpegError.message : 'خطأ غير معروف'}`
-    );
+  } catch (error) {
+    throw new Error(`تعذّر رفع صورة المعاينة: ${toUploadUserMessage(error)}`);
   }
 
-  const pdfUrl = await getDownloadURL(ref(storage, pdfObjectPath));
-  const imageUrl = await getDownloadURL(ref(storage, jpegObjectPath));
-
-  return { pdfUrl, imageUrl, storagePath };
+  try {
+    const pdfUrl = await getDownloadURL(ref(storage, pdfObjectPath));
+    const imageUrl = await getDownloadURL(ref(storage, jpegObjectPath));
+    return { pdfUrl, imageUrl, storagePath };
+  } catch (error) {
+    throw new Error(`تعذّر الحصول على روابط الملف: ${toUploadUserMessage(error)}`);
+  }
 }
 
 export type InvoiceInsertPayload = {
@@ -82,16 +101,19 @@ export async function insertInvoiceRecord(payload: InvoiceInsertPayload): Promis
   await assertSessionMatchesUser(payload.user_id);
 
   const db = getFirebaseFirestoreClient();
-  const docRef = await addDoc(collection(db, 'invoices'), {
-    user_id: payload.user_id,
-    organization_id: payload.organization_id ?? null,
-    customer_phone: payload.customer_phone,
-    image_url: payload.image_url,
-    pdf_url: payload.pdf_url,
-    created_at: new Date().toISOString(),
-  });
-
-  return docRef.id;
+  try {
+    const docRef = await addDoc(collection(db, 'invoices'), {
+      user_id: payload.user_id,
+      organization_id: payload.organization_id ?? null,
+      customer_phone: payload.customer_phone,
+      image_url: payload.image_url,
+      pdf_url: payload.pdf_url,
+      created_at: new Date().toISOString(),
+    });
+    return docRef.id;
+  } catch (error) {
+    throw new Error(`تعذّر حفظ سجل الفاتورة: ${toUploadUserMessage(error)}`);
+  }
 }
 
 export async function fetchInvoicesForUser(params: {

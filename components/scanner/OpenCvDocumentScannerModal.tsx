@@ -2,8 +2,10 @@
 
 import { useCallback, useState } from 'react';
 import DocumentScanner from './DocumentScanner';
+import { MAX_OUTPUT_DIMENSION } from '@/lib/document-scanner/constants';
 import { canvasToDocumentPdfBlob } from '@/lib/document-scanner/to-pdf';
-import { dataUrlToCanvas, dataUrlToJpegBlob } from '@/lib/scanner-data-url';
+import { dataUrlToCanvas } from '@/lib/scanner-data-url';
+import { assertBlobWithinLimit, MAX_INVOICE_PDF_BYTES, scaleCanvasToMaxDimension, toUploadUserMessage } from '@/lib/upload-blob-utils';
 import type { DocumentScanResult } from '@/lib/document-scanner/scan-result';
 
 type OpenCvDocumentScannerModalProps = {
@@ -11,9 +13,26 @@ type OpenCvDocumentScannerModalProps = {
   onConfirm: (result: DocumentScanResult) => Promise<void>;
 };
 
+const UPLOAD_TIMEOUT_MS = 120_000;
+
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(new Error(message)), ms);
+    promise
+      .then((value) => {
+        window.clearTimeout(timer);
+        resolve(value);
+      })
+      .catch((error) => {
+        window.clearTimeout(timer);
+        reject(error);
+      });
+  });
+}
+
 /**
  * غلاف ملء الشاشة لماسح OpenCV — يحوّل data URL إلى JPEG+PDF
- * ثم يمرّرهما لمسار رفع Supabase الموجود في الصفحة الرئيسية.
+ * ثم يرفعها مباشرة إلى Firebase Storage (بدون Base64 عبر API).
  */
 export function OpenCvDocumentScannerModal({ onClose, onConfirm }: OpenCvDocumentScannerModalProps) {
   const [isSaving, setIsSaving] = useState(false);
@@ -23,18 +42,35 @@ export function OpenCvDocumentScannerModal({ onClose, onConfirm }: OpenCvDocumen
     async (dataUrl: string) => {
       setIsSaving(true);
       setErrorMessage(null);
+
       try {
-        const canvas = await dataUrlToCanvas(dataUrl);
-        const jpegBlob = await dataUrlToJpegBlob(dataUrl);
+        const rawCanvas = await dataUrlToCanvas(dataUrl);
+        const canvas = scaleCanvasToMaxDimension(rawCanvas, MAX_OUTPUT_DIMENSION);
+        const jpegBlob = await new Promise<Blob>((resolve, reject) => {
+          canvas.toBlob(
+            (b) => (b ? resolve(b) : reject(new Error('تعذّر إنشاء JPEG.'))),
+            'image/jpeg',
+            0.88
+          );
+        });
         const pdfBlob = await canvasToDocumentPdfBlob(canvas, { preferPng: false, highQuality: true });
-        await onConfirm({ jpegBlob, pdfBlob });
+
+        assertBlobWithinLimit(pdfBlob, 'ملف PDF', MAX_INVOICE_PDF_BYTES);
+
+        await withTimeout(
+          onConfirm({ jpegBlob, pdfBlob }),
+          UPLOAD_TIMEOUT_MS,
+          'انتهت مهلة الرفع. تحقق من الإنترنت وحاول مجدداً.'
+        );
+        onClose();
       } catch (err) {
         console.error('[opencv-scanner] save failed', err);
-        setErrorMessage(err instanceof Error ? err.message : 'تعذّر حفظ المستند.');
+        setErrorMessage(toUploadUserMessage(err));
+      } finally {
         setIsSaving(false);
       }
     },
-    [onConfirm]
+    [onClose, onConfirm]
   );
 
   return (
@@ -63,7 +99,8 @@ export function OpenCvDocumentScannerModal({ onClose, onConfirm }: OpenCvDocumen
       {isSaving ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-3">
           <span className="h-10 w-10 animate-spin rounded-full border-2 border-mistara-gold/30 border-t-mistara-gold" />
-          <p className="text-sm font-bold text-mistara-warm">جاري رفع المستند...</p>
+          <p className="text-sm font-bold text-mistara-warm">جاري رفع وحفظ المستند...</p>
+          <p className="text-xs text-mistara-brown/80">قد يستغرق ذلك لحظات للملفات الكبيرة</p>
         </div>
       ) : (
         <DocumentScanner

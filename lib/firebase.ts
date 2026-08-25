@@ -7,7 +7,7 @@ const firebaseConfig = {
   apiKey: 'AIzaSyBLuNdKEL9N3tw-wYZRoCO2jukC4mYNjnM',
   authDomain: 'eysalk-2c7be.firebaseapp.com',
   projectId: 'eysalk-2c7be',
-  storageBucket: 'eysalk-2c7be.appspot.com',
+  storageBucket: 'eysalk-2c7be.firebasestorage.app',
   messagingSenderId: '1006612883323',
   appId: '1:1006612883323:web:3014c259dbd41e72493fde',
 };

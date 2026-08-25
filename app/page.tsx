@@ -1232,7 +1232,17 @@ export default function Home() {
 
         const savedInvoices = JSON.parse(localStorage.getItem('mistarh_local_invoices') || '[]');
         const updatedInvoices = [newInvoice, ...savedInvoices];
-        localStorage.setItem('mistarh_local_invoices', JSON.stringify(updatedInvoices));
+        try {
+          localStorage.setItem('mistarh_local_invoices', JSON.stringify(updatedInvoices));
+        } catch (storageErr) {
+          const name = storageErr instanceof DOMException ? storageErr.name : '';
+          if (name === 'QuotaExceededError') {
+            throw new Error(
+              'حجم المستند كبير جداً للحفظ المحلي. سجّل الدخول لحفظ المستندات في السحابة.'
+            );
+          }
+          throw storageErr;
+        }
 
         await upsertTailorCustomer(
           user ? appUserId(user) : 'guest-local-user',
@@ -1241,8 +1251,9 @@ export default function Home() {
           organizationId
         );
 
-        searchInvoices(localPhone, customerCountryCode);
+        await searchInvoices(localPhone, customerCountryCode);
         setUploadSavePhase('success');
+        setShowOpenCvScanner(false);
         window.setTimeout(() => setUploadSavePhase('idle'), 2800);
       } else {
         if (!user) {
@@ -1273,13 +1284,16 @@ export default function Home() {
         window.setTimeout(() => setUploadSavePhase('idle'), 2800);
       }
     } catch (saveErr) {
-      const msg = saveErr instanceof Error ? saveErr.message : 'تعذّر حفظ الفاتورة.';
+      const msg =
+        saveErr instanceof Error
+          ? saveErr.message
+          : 'تعذّر حفظ الفاتورة.';
       setUploadSaveError(msg);
       setUploadSavePhase('error');
       window.setTimeout(() => {
         setUploadSavePhase('idle');
         setUploadSaveError(null);
-      }, 4000);
+      }, 6000);
       throw saveErr;
     } finally {
       setIsUploading(false);

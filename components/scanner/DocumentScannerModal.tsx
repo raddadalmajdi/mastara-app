@@ -12,6 +12,7 @@ import {
   SCAN_JPEG_QUALITY,
 } from '@/lib/document-scanner/constants';
 import type { DocumentScanResult } from '@/lib/document-scanner/scan-result';
+import { toUploadUserMessage } from '@/lib/upload-blob-utils';
 
 export type { DocumentScanResult } from '@/lib/document-scanner/scan-result';
 
@@ -484,7 +485,7 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
         );
       });
       // PNG (ضغط بلا فقد): المستند مُحسَّن بالألوان مع خلفية بيضاء وتباين عالٍ.
-      const pdfBlob = await canvasToDocumentPdfBlob(canvas, { preferPng: true, highQuality: true });
+      const pdfBlob = await canvasToDocumentPdfBlob(canvas, { preferPng: false, highQuality: true });
 
       await onConfirm({
         jpegBlob,
@@ -494,7 +495,7 @@ export function DocumentScannerModal({ onClose, onConfirm }: DocumentScannerModa
       onClose();
     } catch (err) {
       console.error('[scanner] confirm/upload failed', err);
-      setErrorMessage(err instanceof Error ? err.message : 'تعذّر رفع المستند. حاول مجدداً.');
+      setErrorMessage(toUploadUserMessage(err));
       setPhase('preview');
     }
   };
