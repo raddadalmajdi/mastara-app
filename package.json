@@ -15,6 +15,7 @@
     "cap:open:ios": "npx cap open ios",
     "cap:run:android": "npx cap run android",
     "cap:run:ios": "npx cap run ios",
+    "cap:assets": "npx capacitor-assets generate --ios --android --iconBackgroundColor '#F0F7FF' --splashBackgroundColor '#F0F7FF'",
     "build:capacitor": "npm run build:mobile && npm run cap:sync",
     "build:capacitor:static": "npm run build:mobile:static && npm run cap:sync",
     "dev:delete-user": "node --env-file=.env.local scripts/delete-auth-user.mjs",
@@ -33,6 +34,7 @@
     "resend": "^6.18.0"
   },
   "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
     "@capacitor/cli": "^8.5.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
