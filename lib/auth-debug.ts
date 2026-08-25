@@ -1,8 +1,8 @@
 /**
- * تسجيل تشخيصي مؤقت لأخطاء Supabase Auth (تطوير فقط).
+ * تسجيل تشخيصي لأخطاء المصادقة (تطوير فقط).
  */
 
-export function serializeSupabaseAuthError(error: unknown): string {
+export function serializeAuthError(error: unknown): string {
   if (error == null) {
     return 'null';
   }
@@ -44,34 +44,32 @@ export function serializeSupabaseAuthError(error: unknown): string {
   }
 }
 
-export function logSupabaseAuthErrorJson(error: unknown, context?: string): void {
+export function logAuthErrorJson(error: unknown, context?: string): void {
   if (process.env.NODE_ENV !== 'development') return;
 
   try {
-    const label = context ? `Supabase Auth Error JSON [${context}]` : 'Supabase Auth Error JSON';
-    console.log(`${label}:\n`, serializeSupabaseAuthError(error));
-    console.log(context ? `Supabase Raw Error [${context}]:` : 'Supabase Raw Error:', error);
+    const label = context ? `Auth Error JSON [${context}]` : 'Auth Error JSON';
+    console.log(`${label}:\n`, serializeAuthError(error));
+    console.log(context ? `Auth Raw Error [${context}]:` : 'Auth Raw Error:', error);
   } catch (logError) {
     console.warn('[auth-debug] failed to log auth error', logError);
   }
 }
 
-/** يطبع رابط التفعيل المتوقع ومطابقة Supabase Redirect URLs (تطوير). */
+/** يطبع رابط التفعيل المتوقع (تطوير). */
 export function logAuthRedirectDiagnostics(emailRedirectTo: string): void {
   if (process.env.NODE_ENV !== 'development') return;
 
   try {
     const siteUrlHint = process.env.NEXT_PUBLIC_SITE_URL ?? '(غير معرّف — يُستخدم origin المتصفح)';
-    console.group('Supabase Auth Redirect diagnostics');
+    console.group('Auth redirect diagnostics');
     console.log('emailRedirectTo (يُرسل مع signUp):', emailRedirectTo);
     console.log('NEXT_PUBLIC_SITE_URL:', siteUrlHint);
     console.log(
-      'تحقق في Supabase Dashboard → Authentication → URL Configuration:\n' +
-        '  • Site URL: غالباً http://localhost:3000 للتطوير\n' +
-        '  • Redirect URLs: يجب أن تتضمن بالضبط:\n' +
-        `      ${emailRedirectTo}\n` +
-        '  • التسجيل عبر Resend API: /api/auth/sign-up (لا يعتمد على SMTP Supabase)\n' +
-        '  • خطأ 400 غالباً = بريد/كلمة مرور/redirect غير مسموح أو حساب موجود'
+      'تحقق من إعدادات Firebase Auth → Authorized domains و NEXT_PUBLIC_APP_URL:\n' +
+        '  • التطوير: http://localhost:3000\n' +
+        `  • يجب أن يتضمن مسار الاستدعاء: ${emailRedirectTo}\n` +
+        '  • التسجيل عبر Resend API: /api/auth/sign-up'
     );
     console.groupEnd();
   } catch {

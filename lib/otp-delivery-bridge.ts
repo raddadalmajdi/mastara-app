@@ -2,7 +2,7 @@ import { createHmac, timingSafeEqual } from 'crypto';
 
 export type OtpBridgeType = 'signup' | 'email' | 'magiclink';
 
-/** مدة صلاحية جسر التحقق — يجب أن تكون ≥ نافذة Supabase OTP (افتراضياً 3600 ث). */
+/** مدة صلاحية جسر التحقق — يجب أن تكون ≥ نافذة OTP (افتراضياً 3600 ث). */
 const OTP_BRIDGE_TTL_MS = 60 * 60 * 1000;
 export const OTP_BRIDGE_COOKIE_NAME = '__mastara_otp_v';
 
@@ -35,11 +35,9 @@ function normalizeEmailKey(email: string): string {
 }
 
 function getSigningSecret(): string {
-  const secret =
-    process.env.OTP_BRIDGE_SECRET?.trim() ||
-    process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+  const secret = process.env.OTP_BRIDGE_SECRET?.trim();
   if (!secret) {
-    throw new Error('Missing OTP bridge signing secret (SUPABASE_SERVICE_ROLE_KEY).');
+    throw new Error('Missing OTP bridge signing secret (OTP_BRIDGE_SECRET).');
   }
   return secret;
 }

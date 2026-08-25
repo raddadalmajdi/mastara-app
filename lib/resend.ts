@@ -149,7 +149,7 @@ function buildOtpEmailHtml(params: {
 export type { OtpEmailContext as SendAuthOtpEmailContext } from '@/lib/resend-email-deliverability';
 
 /**
- * إرسال بريد OTP عبر Resend API (بدون SMTP Supabase).
+ * إرسال بريد OTP عبر Resend API.
  * يسجّل تفاصيل الفشل/النجاح في سجلات Vercel ويجرب onboarding@resend.dev تلقائياً عند فشل النطاق الرسمي.
  */
 async function sendAuthOtpEmail(

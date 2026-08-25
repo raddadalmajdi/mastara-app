@@ -27,7 +27,7 @@ function guessImageFormat(src: string): 'PNG' | 'WEBP' | 'JPEG' {
 function loadImageElement(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
-    // روابط Supabase Storage العامة (وأي رابط بعيد) تحتاج crossOrigin حتى لا
+    // روابط Firebase Storage العامة (وأي رابط بعيد) تحتاج crossOrigin حتى لا
     // "تُلوَّث" الصورة عند تمريرها لـ jsPDF/Canvas. روابط data: لا تحتاجها.
     if (!src.startsWith('data:')) {
       img.crossOrigin = 'anonymous';
@@ -136,7 +136,7 @@ function triggerBlobDownload(blob: Blob, fileName: string) {
   window.setTimeout(() => URL.revokeObjectURL(url), 5000);
 }
 
-/** تنزيل ملف PDF مخزّن مسبقاً (رابط Supabase Storage مثلاً). */
+/** تنزيل ملف PDF مخزّن مسبقاً (رابط Firebase Storage مثلاً). */
 export async function downloadStoredPdf(pdfUrl: string, fileName: string): Promise<void> {
   const res = await fetch(pdfUrl);
   if (!res.ok) {

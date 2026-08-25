@@ -3,8 +3,8 @@ const GENERIC_ERROR = 'حدث خطأ غير متوقع، يرجى المحاول
 const SCHEMA_CACHE_HINT =
   'تعذّر إتمام العملية مؤقتاً. حدّث الصفحة وحاول مجدداً، أو تواصل مع الدعم إن استمرّ الخطأ.';
 
-/** يكتشف رسائل PostgREST/Supabase التقنية التي لا يجب عرضها للمستخدم. */
-export function isSupabaseTechnicalMessage(message: string): boolean {
+/** يكتشف رسائل backend تقنية (PostgREST، أعمدة DB، …) لا يجب عرضها للمستخدم. */
+export function isBackendTechnicalMessage(message: string): boolean {
   const lower = message.toLowerCase();
 
   if (
@@ -39,7 +39,7 @@ export function sanitizeUserFacingMessage(
 
   const trimmed = message.trim();
 
-  if (isSupabaseTechnicalMessage(trimmed)) {
+  if (isBackendTechnicalMessage(trimmed)) {
     return SCHEMA_CACHE_HINT;
   }
 

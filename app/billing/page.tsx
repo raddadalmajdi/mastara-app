@@ -221,7 +221,7 @@ export default function BillingPage() {
             title="إعداد النظام غير مكتمل"
             message={
               statusMessage ??
-              'متغيرات Supabase غير مضبوطة على الخادم. تحقق من NEXT_PUBLIC_SUPABASE_URL و NEXT_PUBLIC_SUPABASE_ANON_KEY.'
+              'متغيرات Firebase غير مضبوطة على الخادم. تحقق من NEXT_PUBLIC_FIREBASE_* و FIREBASE_SERVICE_ACCOUNT_KEY.'
             }
             actionHref="/"
             actionLabel="العودة للرئيسية"

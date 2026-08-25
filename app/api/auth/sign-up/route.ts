@@ -3,7 +3,7 @@ import { registerUserWithResendVerification } from '@/lib/auth-sign-up-server';
 import { logResendEnvDiagnostics } from '@/lib/resend-diagnostics';
 import { logServerException } from '@/lib/server-error-log';
 
-// هذا المسار يستدعي Supabase Admin API ثم Resend API بالتسلسل، وقد يستغرق
+// هذا المسار يستدعي Firebase Admin ثم Resend API بالتسلسل، وقد يستغرق
 // أكثر من المهلة الافتراضية لدوال Vercel الخادمة (10 ثوانٍ على خطة Hobby)،
 // مما كان يتسبب في إنهاء Vercel للدالة قسراً وإرجاع 502 قبل أن يكمل الكود
 // معالجة الاستجابة بنفسه. نرفع السقف صراحةً هنا (تُقيَّده Vercel تلقائياً

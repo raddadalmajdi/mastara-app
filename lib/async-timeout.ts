@@ -4,7 +4,7 @@ export class AsyncTimeoutError extends Error {
 
   constructor(label: string, timeoutMs: number) {
     super(
-      `انتهت مهلة «${label}» (${Math.round(timeoutMs / 1000)} ثانية). تحقق من الشبكة أو إعدادات Supabase/Resend وحاول مجدداً.`
+      `انتهت مهلة «${label}» (${Math.round(timeoutMs / 1000)} ثانية). تحقق من الشبكة أو إعدادات Firebase/Resend وحاول مجدداً.`
     );
     this.name = 'AsyncTimeoutError';
     this.label = label;

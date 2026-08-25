@@ -1,4 +1,4 @@
-import { serializeSupabaseAuthError } from '@/lib/auth-debug';
+import { serializeAuthError } from '@/lib/auth-debug';
 
 /** ي serializes أي خطأ/استثناء لعرضه كاملاً في Runtime Logs. */
 export function serializeUnknownError(error: unknown): Record<string, unknown> {
@@ -45,7 +45,7 @@ export function serializeUnknownError(error: unknown): Record<string, unknown> {
       // ignore accessor errors
     }
 
-    snapshot.authJson = serializeSupabaseAuthError(error);
+    snapshot.authJson = serializeAuthError(error);
     return snapshot;
   }
 
@@ -95,15 +95,15 @@ export function logServerException(
   }
 }
 
-/** خطأ Supabase Admin API (generateLink, createUser, …) — تفاصيل كاملة. */
-export function logSupabaseAdminError(
+/** خطأ Firebase Admin API — تفاصيل كاملة. */
+export function logFirebaseAdminError(
   context: string,
   error: unknown,
   meta?: Record<string, unknown>
 ): void {
-  console.error(`[Supabase Admin] ${context}`, meta ?? {});
+  console.error(`[Firebase Admin] ${context}`, meta ?? {});
   console.error(
-    `[Supabase Admin] ${context} — auth error JSON:\n${serializeSupabaseAuthError(error)}`
+    `[Firebase Admin] ${context} — auth error JSON:\n${serializeAuthError(error)}`
   );
-  logServerException(`Supabase Admin/${context}`, error, meta);
+  logServerException(`Firebase Admin/${context}`, error, meta);
 }

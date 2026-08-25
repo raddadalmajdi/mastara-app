@@ -1,4 +1,4 @@
-import { logSupabaseAuthErrorJson } from '@/lib/auth-debug';
+import { logAuthErrorJson } from '@/lib/auth-debug';
 import { OTP_CODE_LENGTH, OTP_LENGTH_AR } from '@/lib/otp-config';
 
 type AuthErrorLike = {
@@ -35,7 +35,7 @@ const APP_AUTH_ERROR_CODES = new Set([
   'request_timeout',
 ]);
 
-/** يكتشف أخطاء إرسال البريد (SMTP Supabase / Resend / 5xx). */
+/** يكتشف أخطاء إرسال البريد (Resend / 5xx). */
 export function isEmailDeliveryFailure(error: AuthErrorLike | null | undefined): boolean {
   if (!error) return false;
 
@@ -74,7 +74,7 @@ export function logEmailDeliveryDiagnostic(
     name: (error as { name?: string }).name,
     message: error.message,
     hint:
-      'تحقق من Supabase → Authentication → SMTP (Host/User/Pass/Port) وResend API key + توثيق malaktout.com.',
+      'تحقق من Resend API key و RESEND_FROM_EMAIL وتوثيق النطاق في لوحة Resend.',
   });
 }
 
@@ -82,12 +82,12 @@ function hasArabic(text: string): boolean {
   return /[\u0600-\u06FF]/.test(text);
 }
 
-/** للتشخيص المؤقت في التطوير — يطبع الخطأ الكامل من Supabase/GoTrue. */
-export function logSupabaseAuthError(
+/** للتشخيص في التطوير — يطبع الخطأ الكامل من خدمة المصادقة. */
+function logAuthError(
   error: AuthErrorLike | null | undefined,
   context?: string
 ): void {
-  logSupabaseAuthErrorJson(error, context);
+  logAuthErrorJson(error, context);
 }
 
 /**
@@ -156,14 +156,14 @@ export function sanitizeAuthUserMessage(message: string): string {
     lower.includes('send email') ||
     lower.includes('email address is not authorized')
   ) {
-    return 'تعذّر إرسال بريد التفعيل. تحقق من إعدادات SMTP (Resend) في Supabase أو انتظر دقيقة وحاول مجدداً.';
+    return 'تعذّر إرسال بريد التفعيل. تحقق من إعدادات Resend أو انتظر دقيقة وحاول مجدداً.';
   }
 
   if (
     lower.includes('redirect') &&
     (lower.includes('not allowed') || lower.includes('invalid') || lower.includes('mismatch'))
   ) {
-    return 'إعداد عنوان الاستدعاء (Redirect URL) غير صحيح في Supabase → Authentication → URL Configuration.';
+    return 'إعداد عنوان الاستدعاء (Redirect URL) غير صحيح. تحقق من NEXT_PUBLIC_APP_URL و /auth/callback في Firebase Authorized domains.';
   }
 
   if (lower.includes('signup') && lower.includes('disabled')) {
@@ -171,7 +171,7 @@ export function sanitizeAuthUserMessage(message: string): string {
   }
 
   if (lower.includes('hook') && lower.includes('fail')) {
-    return 'فشل إرسال البريد عبر خطاف Auth. راجع إعدادات SMTP/Resend في Supabase.';
+    return 'فشل إرسال البريد. راجع إعدادات Resend على الخادم.';
   }
 
   if (lower.includes('captcha') || lower.includes('turnstile')) {
@@ -189,7 +189,7 @@ export function mapAuthErrorToArabic(
   error: AuthErrorLike | null | undefined,
   context: 'signup' | 'login' | 'otp' = 'login'
 ): string {
-  logSupabaseAuthError(error);
+  logAuthError(error);
 
   if (!error) {
     return GENERIC_ERROR;
@@ -208,7 +208,7 @@ export function mapAuthErrorToArabic(
       }
       return context === 'signup' ? SIGNUP_EMAIL_DISPATCH_ERROR : OTP_EMAIL_DISPATCH_ERROR;
     }
-    if (rawMessage.includes('INTERNAL_INVALID_SUPABASE_OTP')) {
+    if (rawMessage.includes('INTERNAL_INVALID_OTP')) {
       return context === 'signup' ? SIGNUP_EMAIL_DISPATCH_ERROR : OTP_EMAIL_DISPATCH_ERROR;
     }
     return rawMessage;
@@ -236,7 +236,7 @@ export function mapAuthErrorToArabic(
   }
 
   if (code === 'unexpected_failure' || code === 'bad_json') {
-    return 'تعذّر الاتصال بخدمة المصادقة. حاول مجدداً أو راجع إعدادات Supabase/SMTP.';
+    return 'تعذّر الاتصال بخدمة المصادقة. حاول مجدداً أو راجع إعدادات Firebase/Resend.';
   }
 
   if (code === 'email_address_invalid' || msg.includes('invalid email address')) {
@@ -248,7 +248,7 @@ export function mapAuthErrorToArabic(
   }
 
   if (code === 'otp_disabled' || (msg.includes('otp') && msg.includes('disabled'))) {
-    return 'التحقق برمز OTP غير مفعّل حالياً في إعدادات Supabase. تواصل مع الدعم.';
+    return 'التحقق برمز OTP غير متاح حالياً. تواصل مع الدعم.';
   }
 
   if (
@@ -330,11 +330,11 @@ export function mapAuthErrorToArabic(
     msg.includes('redirect') &&
     (msg.includes('not allowed') || msg.includes('invalid') || msg.includes('url'))
   ) {
-    return 'إعداد عنوان الاستدعاء (Redirect URL) غير مسموح. أضف /auth/callback في Redirect URLs ضمن Supabase.';
+    return 'إعداد عنوان الاستدعاء (Redirect URL) غير مسموح. أضف /auth/callback في NEXT_PUBLIC_APP_URL و Firebase Authorized domains.';
   }
 
   if (msg.includes('network') || msg.includes('fetch') || msg.includes('failed to fetch')) {
-    return 'تعذّر الاتصال بالخادم. تحقق من الإنترنت ومتغيرات NEXT_PUBLIC_SUPABASE_* محلياً.';
+    return 'تعذّر الاتصال بالخادم. تحقق من الإنترنت ومتغيرات NEXT_PUBLIC_FIREBASE_* و NEXT_PUBLIC_APP_URL محلياً.';
   }
 
   if (error.message) {
