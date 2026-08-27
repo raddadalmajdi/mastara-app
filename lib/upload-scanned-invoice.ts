@@ -8,7 +8,7 @@ import {
 } from '@/lib/firebase-storage-upload';
 import { getFirebaseFirestoreClient, getFirebaseStorageClient, isFirebaseConfigured } from '@/lib/firebase';
 import { assertAuthenticatedUserId, assertOrganizationScope } from '@/lib/tenant-guard';
-import { normalizeStoredPhone } from '@/lib/tailor-customers';
+import { normalizeStoredPhone, upsertTailorCustomer } from '@/lib/tailor-customers';
 import {
   prepareInvoiceBlobsForUpload,
   toUploadUserMessage,
@@ -36,15 +36,56 @@ async function assertSessionMatchesUser(userId: string): Promise<void> {
 
 function mapInvoiceDoc(docSnap: { id: string; data: () => Record<string, unknown> }): InvoiceRecord {
   const data = docSnap.data();
+  const customerNameRaw = data.customer_name ?? data.name;
   return {
     id: docSnap.id,
     user_id: String(data.user_id),
     organization_id: data.organization_id != null ? String(data.organization_id) : undefined,
     customer_phone: String(data.customer_phone),
+    customer_name:
+      typeof customerNameRaw === 'string' && customerNameRaw.trim()
+        ? customerNameRaw.trim()
+        : '',
     image_url: String(data.image_url),
     pdf_url: String(data.pdf_url),
     created_at: String(data.created_at ?? new Date().toISOString()),
   };
+}
+
+function sanitizeFirestoreRecord(record: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(record)) {
+    if (value !== undefined) {
+      out[key] = value;
+    }
+  }
+  return out;
+}
+
+function buildInvoiceWritePayload(payload: InvoiceInsertPayload): Record<string, unknown> {
+  const userId = payload.user_id.trim();
+  const customerPhone = normalizeStoredPhone(payload.customer_phone);
+  const customerName = payload.customer_name.trim();
+  const imageUrl = payload.image_url.trim();
+  const pdfUrl = payload.pdf_url.trim();
+  const orgId = payload.organization_id?.trim() || null;
+
+  if (!userId) throw new Error('معرّف التاجر غير صالح.');
+  if (!customerPhone) throw new Error('رقم جوال العميل غير صالح.');
+  if (!customerName) throw new Error('اسم العميل مطلوب قبل حفظ الفاتورة.');
+  if (!imageUrl) throw new Error('رابط صورة الفاتورة مفقود.');
+  if (!pdfUrl) throw new Error('رابط PDF الفاتورة مفقود.');
+
+  return sanitizeFirestoreRecord({
+    user_id: userId,
+    organization_id: orgId,
+    customer_phone: customerPhone,
+    customer_name: customerName,
+    name: customerName,
+    image_url: imageUrl,
+    pdf_url: pdfUrl,
+    created_at: new Date().toISOString(),
+  });
 }
 
 export type ScannedUploadInput = {
@@ -114,8 +155,9 @@ export async function uploadScannedInvoiceFiles(
 
 export type InvoiceInsertPayload = {
   user_id: string;
-  organization_id?: string;
+  organization_id?: string | null;
   customer_phone: string;
+  customer_name: string;
   image_url: string;
   pdf_url: string;
 };
@@ -138,27 +180,71 @@ export async function insertInvoiceRecord(
   assertOrganizationScope(payload.organization_id, options?.allowedOrganizationId);
 
   const db = getFirebaseFirestoreClient();
-  const normalizedPhone = normalizeStoredPhone(payload.customer_phone);
+  const writePayload = buildInvoiceWritePayload(payload);
 
   try {
-    const docRef = await addDoc(collection(db, 'invoices'), {
-      user_id: payload.user_id,
-      organization_id: payload.organization_id ?? null,
-      customer_phone: normalizedPhone,
-      image_url: payload.image_url,
-      pdf_url: payload.pdf_url,
-      created_at: new Date().toISOString(),
-    });
+    const docRef = await addDoc(collection(db, 'invoices'), writePayload);
 
     invalidateCachePrefix(`inv:${payload.user_id}:`);
-    if (payload.organization_id) {
-      invalidateCachePrefix(`inv:org:${payload.organization_id}:`);
+    const orgId = payload.organization_id?.trim();
+    if (orgId) {
+      invalidateCachePrefix(`inv:org:${orgId}:`);
     }
 
     return docRef.id;
   } catch (error) {
     throw new Error(`تعذّر حفظ سجل الفاتورة: ${toUploadUserMessage(error)}`);
   }
+}
+
+export type SaveScannedInvoiceInput = {
+  userId: string;
+  customerPhone: string;
+  customerName: string;
+  organizationId?: string | null;
+  allowedOrganizationId?: string | null;
+  jpegBlob: Blob;
+  pdfBlob: Blob;
+};
+
+/** يحفظ/يحدّث الزبون في tailor_customers أولاً، ثم يرفع الملفات ويُنشئ سجل الفاتورة. */
+export async function saveScannedInvoiceWithCustomer(
+  input: SaveScannedInvoiceInput
+): Promise<{ invoiceId: string; customerId: string }> {
+  const userId = input.userId.trim();
+  const customerPhone = normalizeStoredPhone(input.customerPhone);
+  const customerName = input.customerName.trim();
+
+  if (!userId) throw new Error('يجب تسجيل الدخول لحفظ الفاتورة.');
+  if (!customerPhone) throw new Error('رقم جوال العميل غير صالح.');
+  if (!customerName) throw new Error('اسم العميل مطلوب قبل حفظ الفاتورة.');
+
+  const customer = await upsertTailorCustomer(
+    userId,
+    customerPhone,
+    customerName,
+    input.organizationId
+  );
+
+  const { imageUrl, pdfUrl } = await uploadScannedInvoiceFiles(
+    userId,
+    { jpegBlob: input.jpegBlob, pdfBlob: input.pdfBlob },
+    { label: customerPhone }
+  );
+
+  const invoiceId = await insertInvoiceRecord(
+    {
+      user_id: userId,
+      organization_id: input.organizationId?.trim() || null,
+      customer_phone: customerPhone,
+      customer_name: customerName,
+      image_url: imageUrl,
+      pdf_url: pdfUrl,
+    },
+    { allowedOrganizationId: input.allowedOrganizationId }
+  );
+
+  return { invoiceId, customerId: customer.id };
 }
 
 /** استعلام مفهرس بالبريد/الجوال — أسرع من جلب كل الفواتير ثم التصفية في الذاكرة. */

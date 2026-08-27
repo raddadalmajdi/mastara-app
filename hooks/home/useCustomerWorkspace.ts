@@ -14,9 +14,8 @@ import { isFirebaseConfigured } from '@/lib/firebase-auth-client';
 import {
   fetchInvoicesByCustomerPhone,
   fetchInvoicesForUser,
-  insertInvoiceRecord,
+  saveScannedInvoiceWithCustomer,
   invoiceShareDocumentUrl,
-  uploadScannedInvoiceFiles,
 } from '@/lib/upload-scanned-invoice';
 import {
   isCustomerNameLookupReady,
@@ -358,6 +357,13 @@ export function useCustomerWorkspace({ user, organizationId }: UseCustomerWorksp
           created_at: new Date().toISOString(),
         };
 
+        await upsertTailorCustomer(
+          user ? appUserId(user) : 'guest-local-user',
+          fullCustomerPhone,
+          nameToSave,
+          organizationId
+        );
+
         const savedInvoices = JSON.parse(localStorage.getItem('mistarh_local_invoices') || '[]');
         const updatedInvoices = [newInvoice, ...savedInvoices];
         try {
@@ -371,13 +377,6 @@ export function useCustomerWorkspace({ user, organizationId }: UseCustomerWorksp
           }
           throw storageErr;
         }
-
-        await upsertTailorCustomer(
-          user ? appUserId(user) : 'guest-local-user',
-          fullCustomerPhone,
-          nameToSave,
-          organizationId
-        );
 
         try {
           await searchInvoices(localPhone, customerCountryCode);
@@ -393,26 +392,19 @@ export function useCustomerWorkspace({ user, organizationId }: UseCustomerWorksp
         }
         const userId = appUserId(user);
         setUploadSavePhase('uploading');
-        const { imageUrl, pdfUrl } = await uploadScannedInvoiceFiles(
-          userId,
-          { jpegBlob, pdfBlob },
-          { label: fullCustomerPhone }
-        );
 
-        await upsertTailorCustomer(userId, fullCustomerPhone, nameToSave, organizationId);
+        await saveScannedInvoiceWithCustomer({
+          userId,
+          customerPhone: fullCustomerPhone,
+          customerName: nameToSave,
+          organizationId,
+          allowedOrganizationId: organizationId,
+          jpegBlob,
+          pdfBlob,
+        });
+
         setCustomerBookStatus('known');
         setCustomerNameLocked(true);
-
-        await insertInvoiceRecord(
-          {
-            user_id: userId,
-            organization_id: organizationId ?? undefined,
-            customer_phone: fullCustomerPhone,
-            image_url: imageUrl,
-            pdf_url: pdfUrl,
-          },
-          { allowedOrganizationId: organizationId }
-        );
 
         try {
           await searchInvoices(localPhone, customerCountryCode);

@@ -346,43 +346,105 @@ export async function lookupTailorCustomerByPhone(
   return localHit;
 }
 
+function sanitizeFirestoreRecord(record: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(record)) {
+    if (value !== undefined) {
+      out[key] = value;
+    }
+  }
+  return out;
+}
+
+function buildTailorCustomerWritePayload(params: {
+  tailorUserId: string;
+  phone: string;
+  localDigits: string;
+  suffix: string;
+  customerName: string;
+  organizationId?: string | null;
+  isNew: boolean;
+}): Record<string, unknown> {
+  const orgId = params.organizationId?.trim() || null;
+  return sanitizeFirestoreRecord({
+    tailor_user_id: params.tailorUserId,
+    phone: params.phone,
+    phone_local: params.localDigits,
+    phone_suffix: params.suffix,
+    customer_name: params.customerName,
+    name: params.customerName,
+    organization_id: orgId,
+    updated_at: new Date().toISOString(),
+    ...(params.isNew ? { created_at: new Date().toISOString() } : {}),
+  });
+}
+
+export type UpsertTailorCustomerResult = {
+  id: string;
+  tailor_user_id: string;
+  phone: string;
+  customer_name: string;
+  organization_id: string | null;
+};
+
 export async function upsertTailorCustomer(
   tailorUserId: string,
   fullPhone: string,
   customerName: string,
   organizationId?: string | null
-): Promise<void> {
+): Promise<UpsertTailorCustomerResult> {
+  const merchantId = tailorUserId.trim();
   const phone = normalizeStoredPhone(fullPhone);
   const name = customerName.trim();
-  if (!phone || !name) return;
+
+  if (!merchantId) {
+    throw new Error('معرّف التاجر غير صالح — يجب تسجيل الدخول.');
+  }
+  if (!phone) {
+    throw new Error('رقم جوال العميل غير صالح.');
+  }
+  if (!name) {
+    throw new Error('اسم العميل مطلوب قبل الحفظ.');
+  }
 
   const localDigits = stripKnownCountryCode(phone);
   const suffix = phoneSuffix(localDigits || phone, 8);
+  const orgId = organizationId?.trim() || null;
+  const docId = customerDocId(merchantId, phone, organizationId);
 
-  cacheLocalCustomer(tailorUserId, phone, name, organizationId);
+  cacheLocalCustomer(merchantId, phone, name, orgId);
 
-  if (!isFirebaseConfigured() || isGuestTailor(tailorUserId)) {
-    return;
+  if (!isFirebaseConfigured() || isGuestTailor(merchantId)) {
+    return {
+      id: docId,
+      tailor_user_id: merchantId,
+      phone,
+      customer_name: name,
+      organization_id: orgId,
+    };
   }
 
-  await assertAuthenticatedUserId(tailorUserId);
+  await assertAuthenticatedUserId(merchantId);
 
   const db = getFirebaseFirestoreClient();
-  const docId = customerDocId(tailorUserId, phone, organizationId);
   const existing = await getDoc(doc(db, 'tailor_customers', docId));
-  const payload: Record<string, unknown> = {
-    tailor_user_id: tailorUserId,
+  const payload = buildTailorCustomerWritePayload({
+    tailorUserId: merchantId,
     phone,
-    phone_local: localDigits,
-    phone_suffix: suffix,
-    customer_name: name,
-    name,
-    organization_id: organizationId ?? null,
-    updated_at: new Date().toISOString(),
-  };
-  if (!existing.exists()) {
-    payload.created_at = new Date().toISOString();
-  }
+    localDigits,
+    suffix,
+    customerName: name,
+    organizationId: orgId,
+    isNew: !existing.exists(),
+  });
 
   await setDoc(doc(db, 'tailor_customers', docId), payload, { merge: true });
+
+  return {
+    id: docId,
+    tailor_user_id: merchantId,
+    phone,
+    customer_name: name,
+    organization_id: orgId,
+  };
 }
