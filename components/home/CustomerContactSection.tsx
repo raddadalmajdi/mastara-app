@@ -43,20 +43,25 @@ export function CustomerContactSection({
   return (
     <section className="glass-panel border border-mistara-gold/35 p-4 rounded-3xl space-y-3 shadow-xl">
       <div className="space-y-1.5">
-        <label className="text-sm text-mistara-gold font-bold block">رقم هاتف العميل</label>
-        <div className="flex gap-2 items-center">
+        <label className="auth-field-label block">رقم هاتف العميل</label>
+        <div className="flex items-stretch gap-2">
           <input
             type="tel"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            autoComplete="tel-national"
+            enterKeyHint="done"
             value={customerLocalPhone}
             onChange={(e) => onPhoneChange(e.target.value)}
             placeholder="50123456"
-            className="flex-1 min-w-0 rounded-xl bg-mistara-cream border border-mistara-brown/15 p-3.5 text-lg font-bold text-mistara-espresso font-mono tnum text-right"
+            className="auth-phone-input tnum text-right font-mono"
             dir="ltr"
           />
           <select
             value={customerCountryCode}
             onChange={(e) => onCountryCodeChange(e.target.value)}
-            className="bg-mistara-cream border border-mistara-brown/15 text-sm text-mistara-warm rounded-xl p-3.5 font-mono tnum w-28 text-center shrink-0"
+            className="auth-phone-select tnum font-mono"
+            aria-label="رمز الدولة"
           >
             {COUNTRY_CODES.map((c) => (
               <option key={c.code} value={c.code}>

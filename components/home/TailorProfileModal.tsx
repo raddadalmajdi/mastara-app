@@ -39,40 +39,47 @@ export function TailorProfileModal({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 glass-modal-backdrop flex items-center justify-center p-4 z-50">
-      <div className="glass-panel border border-mistara-gold/35 rounded-3xl p-6 w-full max-w-sm sm:max-w-md space-y-4 shadow-2xl">
-        <div className="flex justify-between items-center border-b border-mistara-brown/15 pb-2">
-          <h3 className="font-bold text-mistara-espresso text-base">الإعدادات الشخصية</h3>
-          <button type="button" onClick={onClose} className="text-mistara-gold text-lg">
+    <div className="auth-page fixed inset-0 z-50 flex items-end justify-center sm:items-center glass-modal-backdrop p-0 sm:p-4">
+      <div className="auth-shell-card glass-panel w-full max-h-[92dvh] overflow-y-auto border border-primary/20 shadow-2xl sm:max-h-none">
+        <div className="mb-[clamp(0.75rem,3vw,1rem)] flex items-center justify-between border-b border-mistara-brown/15 pb-2">
+          <h3 className="text-[clamp(1rem,4.2vw,1.125rem)] font-bold text-mistara-espresso">
+            إكمال تسجيل المحل
+          </h3>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg px-2 py-1 text-lg text-primary touch-manipulation"
+            aria-label="إغلاق"
+          >
             ✕
           </button>
         </div>
 
-        <form onSubmit={onSubmit} className="space-y-4">
+        <form onSubmit={onSubmit} className="space-y-[clamp(0.875rem,3.5vw,1.125rem)]">
           <div className="flex items-center gap-3 rounded-2xl border border-mistara-brown/15 bg-mistara-cream/60 p-3">
             {tailorAvatarUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={tailorAvatarUrl}
                 alt="معاينة صورة الحساب"
-                className="h-14 w-14 shrink-0 rounded-2xl border border-mistara-gold/30 object-cover"
+                className="h-14 w-14 shrink-0 rounded-2xl border border-primary/30 object-cover"
               />
             ) : (
-              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-mistara-gold/15 text-lg font-black text-mistara-warm">
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-lg font-black text-primary">
                 م
               </div>
             )}
-            <p className="text-xs leading-relaxed text-mistara-brown/80">
-              غيّر صورة الحساب أو الشعار من قائمة أيقونة «م» في الأعلى، أو احفظ الإعدادات بعد إضافة رقمك.
+            <p className="text-[clamp(0.6875rem,3vw,0.8125rem)] leading-relaxed text-mistara-brown/80">
+              أدخل رقم جوالك لإكمال تسجيل محلّك. يمكنك لاحقاً إضافة الشعار من قائمة الحساب.
             </p>
           </div>
 
           {settingsFeedback && (
             <div
               role="alert"
-              className={`flex items-start gap-2 rounded-xl border px-3 py-2.5 text-sm leading-relaxed ${
+              className={`flex items-start gap-2 rounded-xl border px-3 py-2.5 text-[clamp(0.8125rem,3.6vw,0.9375rem)] leading-relaxed ${
                 settingsFeedback.type === 'success'
-                  ? 'border-mistara-gold-dark/40 bg-mistara-gold/10 text-mistara-brown'
+                  ? 'border-primary/35 bg-primary/10 text-mistara-espresso'
                   : 'border-red-800/35 bg-red-800/8 text-red-900'
               }`}
             >
@@ -81,32 +88,43 @@ export function TailorProfileModal({
           )}
 
           <div>
-            <label className="block text-sm font-bold text-mistara-gold mb-1">اسم المحل</label>
+            <label htmlFor="tailor-shop-name" className="auth-field-label block">
+              اسم المحل
+            </label>
             <input
+              id="tailor-shop-name"
               type="text"
               value={tailorShopName}
               onChange={(e) => onShopNameChange(e.target.value)}
               placeholder="اسم محل الخياطة (اختياري)"
-              className="w-full rounded-xl bg-mistara-cream border border-mistara-brown/15 p-3 text-base font-bold text-mistara-espresso"
+              className="auth-field-input font-bold"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-bold text-mistara-gold mb-1">رقم هاتف الخياط</label>
-            <div className="flex gap-2 items-center">
+            <label htmlFor="tailor-phone" className="auth-field-label block">
+              رقم جوال التاجر
+            </label>
+            <div className="flex items-stretch gap-2">
               <input
+                id="tailor-phone"
                 type="tel"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                autoComplete="tel-national"
+                enterKeyHint="done"
                 required
                 value={tailorLocalPhone}
                 onChange={(e) => onLocalPhoneChange(e.target.value.replace(/\D/g, ''))}
-                placeholder="رقم الجوال"
-                className="flex-1 min-w-0 rounded-xl bg-mistara-cream border border-mistara-brown/15 p-3 text-base font-bold text-mistara-espresso font-mono tnum text-right"
+                placeholder="50123456"
+                className="auth-phone-input tnum text-right font-mono"
                 dir="ltr"
               />
               <select
                 value={tailorCountryCode}
                 onChange={(e) => onCountryCodeChange(e.target.value)}
-                className="bg-mistara-cream border border-mistara-brown/15 text-sm text-mistara-warm rounded-xl p-3 font-mono tnum w-24 text-center"
+                className="auth-phone-select tnum font-mono"
+                aria-label="رمز الدولة"
               >
                 {COUNTRY_CODES.map((c) => (
                   <option key={c.code} value={c.code}>
@@ -118,30 +136,33 @@ export function TailorProfileModal({
           </div>
 
           <div>
-            <label className="block text-sm font-bold text-mistara-gold mb-1">ملاحظات سحابية عامة</label>
+            <label htmlFor="tailor-notes" className="auth-field-label block">
+              ملاحظات سحابية عامة
+            </label>
             <textarea
+              id="tailor-notes"
               value={cloudNotes}
               onChange={(e) => onCloudNotesChange(e.target.value)}
               placeholder="اكتب ملاحظات عامة تحفظ في حسابك..."
               rows={3}
-              className="w-full rounded-xl bg-mistara-cream border border-mistara-brown/15 p-3 text-sm text-mistara-espresso focus:border-mistara-gold focus:outline-none resize-none"
+              className="auth-field-input resize-none text-[clamp(0.8125rem,3.6vw,0.9375rem)]"
             />
           </div>
 
-          <div className="flex gap-2 pt-2">
+          <div className="flex gap-2 pt-1">
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 bg-mistara-beige text-mistara-espresso text-sm py-3 rounded-xl font-bold"
+              className="flex-1 rounded-xl bg-mistara-beige py-[clamp(0.75rem,3vw,0.875rem)] text-[clamp(0.8125rem,3.6vw,0.9375rem)] font-bold text-mistara-espresso touch-manipulation"
             >
               إلغاء
             </button>
             <button
               type="submit"
               disabled={savingSettings}
-              className="flex-1 bg-mistara-gold text-mistara-cream font-bold text-sm py-3 rounded-xl shadow"
+              className="auth-primary-btn flex-1 rounded-xl font-bold text-[clamp(0.8125rem,3.6vw,0.9375rem)] shadow disabled:opacity-50 touch-manipulation"
             >
-              {savingSettings ? 'جاري الحفظ...' : 'حفظ الإعدادات'}
+              {savingSettings ? 'جاري الحفظ...' : 'حفظ وإكمال التسجيل'}
             </button>
           </div>
         </form>

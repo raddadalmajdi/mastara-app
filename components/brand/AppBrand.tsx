@@ -28,7 +28,7 @@ export function AppBrand({
         <div className="flex flex-col items-center">
           <AppLogo size="hero" priority={priority} />
           {showTitle && (
-            <h1 className="-mt-1 font-black text-[1.85rem] leading-none tracking-tight text-primary-dark sm:text-[2rem]">
+            <h1 className="-mt-1 text-[clamp(1.65rem,7vw,2rem)] font-black leading-none tracking-tight text-primary">
               {APP_NAME}
             </h1>
           )}

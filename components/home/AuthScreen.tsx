@@ -41,6 +41,14 @@ type AuthScreenProps = {
   onDevDelete: () => void;
 };
 
+function authInputClass(hasError: boolean): string {
+  const base = 'auth-field-input';
+  if (hasError) {
+    return `${base} border-red-500/50 focus:border-red-600 focus:ring-red-500/15`;
+  }
+  return base;
+}
+
 export function AuthScreen({
   sessionCheckPending,
   sessionFeedback,
@@ -72,25 +80,27 @@ export function AuthScreen({
   onDevDelete,
 }: AuthScreenProps) {
   const displayFeedback = sessionFeedback ?? authFeedback;
+  const emailHasError = Boolean(emailDuplicateError) || displayFeedback?.type === 'error';
+  const passwordHasError = displayFeedback?.type === 'error';
 
   return (
     <main
-      className="relative min-h-screen bg-mistara-sand flex flex-col justify-center px-5 sm:px-8 py-8 sm:py-12 overflow-hidden"
+      className="auth-page relative flex min-h-[100dvh] flex-col justify-center overflow-hidden bg-mistara-sand text-mistara-espresso"
       dir="rtl"
     >
       <div
-        className="pointer-events-none absolute -top-32 left-1/2 h-72 w-72 -translate-x-1/2 rounded-full bg-primary/12 blur-[100px]"
+        className="pointer-events-none absolute -top-[20vh] left-1/2 h-[min(18rem,45vw)] w-[min(18rem,45vw)] -translate-x-1/2 rounded-full bg-primary/12 blur-[100px]"
         aria-hidden
       />
       <div
-        className="pointer-events-none absolute -bottom-32 left-1/2 h-72 w-72 -translate-x-1/2 rounded-full bg-primary/8 blur-[100px]"
+        className="pointer-events-none absolute -bottom-[20vh] left-1/2 h-[min(18rem,45vw)] w-[min(18rem,45vw)] -translate-x-1/2 rounded-full bg-primary/8 blur-[100px]"
         aria-hidden
       />
-      <div className="auth-shell-card relative mx-auto w-full max-w-sm sm:max-w-md glass-panel rounded-[2rem] p-6 backdrop-blur-xl sm:p-8">
-        <div className="space-y-5">
+      <div className="auth-shell-card glass-panel relative mx-auto w-full backdrop-blur-xl">
+        <div className="space-y-[clamp(1rem,4vw,1.5rem)]">
           <AppBrand size="hero" subtitle={APP_TAGLINE} priority className="w-full" />
           {sessionCheckPending && (
-            <p className="text-xs text-mistara-brown/60 text-center animate-pulse">
+            <p className="text-center text-[clamp(0.6875rem,3vw,0.8125rem)] text-mistara-brown/60 animate-pulse">
               جاري التحقق من جلسة الدخول...
             </p>
           )}
@@ -122,12 +132,18 @@ export function AuthScreen({
                 role="tabpanel"
                 aria-labelledby={isSignUp ? 'auth-tab-signup' : 'auth-tab-signin'}
                 onSubmit={onSubmitAuth}
-                className="space-y-4 relative z-10"
+                className="relative z-10 space-y-[clamp(0.875rem,3.5vw,1.125rem)]"
               >
                 <div>
-                  <label className="block text-sm font-bold text-primary mb-1.5">البريد الإلكتروني</label>
+                  <label htmlFor="auth-email" className="auth-field-label block">
+                    البريد الإلكتروني
+                  </label>
                   <input
+                    id="auth-email"
                     type="email"
+                    inputMode="email"
+                    autoCapitalize="none"
+                    autoCorrect="off"
                     required
                     autoComplete="email"
                     value={email}
@@ -136,7 +152,7 @@ export function AuthScreen({
                       if (authFeedback) setAuthFeedback(null);
                       if (emailDuplicateError) setEmailDuplicateError(null);
                     }}
-        onBlur={() => {
+                    onBlur={() => {
                       if (!isSignUp) return;
                       const trimmed = email.trim().toLowerCase();
                       if (!trimmed || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) return;
@@ -148,18 +164,12 @@ export function AuthScreen({
                       })();
                     }}
                     aria-invalid={Boolean(emailDuplicateError)}
-                    className={`w-full rounded-2xl bg-mistara-cream/70 border p-3.5 text-base text-mistara-espresso placeholder:text-mistara-brown/50 outline-none transition-all focus:ring-4 ${
-                      emailDuplicateError
-                        ? 'border-red-500/50 focus:border-red-600 focus:ring-red-500/15'
-                        : displayFeedback?.type === 'error'
-                          ? 'border-red-800/50 focus:border-rose-400 focus:ring-rose-500/10'
-                          : 'border-mistara-brown/15 focus:border-primary focus:ring-primary/15'
-                    }`}
+                    className={authInputClass(emailHasError)}
                   />
                   {emailDuplicateError && (
                     <div
                       role="alert"
-                      className="mt-2 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-xs font-bold leading-relaxed text-red-600"
+                      className="mt-2 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-[clamp(0.6875rem,3vw,0.8125rem)] font-bold leading-relaxed text-red-600"
                     >
                       <p>
                         <span>هذا البريد الإلكتروني مسجل مسبقاً</span>
@@ -177,15 +187,15 @@ export function AuthScreen({
                 </div>
 
                 {!isSignUp && (
-                  <div className="grid grid-cols-2 gap-1 p-1 rounded-2xl bg-white/70 border border-primary/10">
+                  <div className="grid grid-cols-2 gap-1 rounded-2xl border border-primary/10 bg-white/70 p-1">
                     <button
                       type="button"
                       onClick={() => {
                         setLoginMethod('password');
                         setAuthFeedback(null);
                       }}
-                      className={`rounded-xl py-2.5 text-xs sm:text-sm font-bold transition-all ${
-                        loginMethod === 'password' ? 'auth-tab-active' : 'text-mistara-brown/60 hover:text-mistara-brown'
+                      className={`rounded-xl py-[clamp(0.625rem,2.5vw,0.75rem)] text-[clamp(0.6875rem,3vw,0.875rem)] font-bold transition-all touch-manipulation ${
+                        loginMethod === 'password' ? 'auth-tab-active' : 'text-mistara-brown/60 hover:text-mistara-espresso'
                       }`}
                     >
                       كلمة المرور
@@ -196,8 +206,8 @@ export function AuthScreen({
                         setLoginMethod('otp');
                         setAuthFeedback(null);
                       }}
-                      className={`rounded-xl py-2.5 text-xs sm:text-sm font-bold transition-all ${
-                        loginMethod === 'otp' ? 'auth-tab-active' : 'text-mistara-brown/60 hover:text-mistara-brown'
+                      className={`rounded-xl py-[clamp(0.625rem,2.5vw,0.75rem)] text-[clamp(0.6875rem,3vw,0.875rem)] font-bold transition-all touch-manipulation ${
+                        loginMethod === 'otp' ? 'auth-tab-active' : 'text-mistara-brown/60 hover:text-mistara-espresso'
                       }`}
                     >
                       رمز مؤقت (OTP)
@@ -207,8 +217,11 @@ export function AuthScreen({
 
                 {(isSignUp || loginMethod === 'password') && (
                   <div>
-                    <label className="block text-sm font-bold text-primary mb-1.5">كلمة المرور</label>
+                    <label htmlFor="auth-password" className="auth-field-label block">
+                      كلمة المرور
+                    </label>
                     <input
+                      id="auth-password"
                       type="password"
                       required={isSignUp || loginMethod === 'password'}
                       minLength={6}
@@ -218,20 +231,18 @@ export function AuthScreen({
                         setPassword(e.target.value);
                         if (authFeedback) setAuthFeedback(null);
                       }}
-                      className={`w-full rounded-2xl bg-mistara-cream/70 border p-3.5 text-base text-mistara-espresso placeholder:text-mistara-brown/50 outline-none transition-all focus:ring-4 ${
-                        displayFeedback?.type === 'error'
-                          ? 'border-red-800/50 focus:border-rose-400 focus:ring-rose-500/10'
-                          : 'border-mistara-brown/15 focus:border-primary focus:ring-primary/15'
-                      }`}
+                      className={authInputClass(passwordHasError)}
                     />
                     {isSignUp && (
-                      <p className="text-xs text-mistara-brown/60 mt-1.5">6 أحرف على الأقل — يُفضّل أرقام ورموز.</p>
+                      <p className="mt-1.5 text-[clamp(0.6875rem,3vw,0.8125rem)] text-mistara-brown/60">
+                        6 أحرف على الأقل — يُفضّل أرقام ورموز.
+                      </p>
                     )}
                   </div>
                 )}
 
                 {!isSignUp && loginMethod === 'otp' && (
-                  <p className="text-xs text-mistara-brown/80 leading-relaxed bg-mistara-cream/50 border border-mistara-brown/15 rounded-xl p-2.5">
+                  <p className="rounded-xl border border-mistara-brown/15 bg-mistara-cream/50 p-2.5 text-[clamp(0.6875rem,3vw,0.8125rem)] leading-relaxed text-mistara-brown/80">
                     {`سنرسل رمز تحقق مكوّناً من ${OTP_LENGTH_AR} إلى بريدك لتسجيل الدخول دون كلمة مرور.`}
                   </p>
                 )}
@@ -239,10 +250,10 @@ export function AuthScreen({
                 <button
                   type="submit"
                   disabled={authSubmitting || emailCheckPending || Boolean(emailDuplicateError)}
-                  className="auth-primary-btn w-full rounded-2xl py-3.5 font-black text-base disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none flex items-center justify-center gap-2 transition-all active:scale-[0.99]"
+                  className="auth-primary-btn flex w-full items-center justify-center gap-2 rounded-2xl font-black transition-all active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none touch-manipulation"
                 >
                   {authSubmitting && (
-                    <span className="h-4 w-4 rounded-full border-2 border-primary-foreground/25 border-t-primary-foreground animate-spin" />
+                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground/25 border-t-primary-foreground" />
                   )}
                   {authSubmitting
                     ? isSignUp
@@ -259,28 +270,28 @@ export function AuthScreen({
           )}
 
           {authPhase === 'form' && (
-            <div className="text-center pt-2 border-t border-mistara-brown/15 space-y-2">
+            <div className="space-y-2 border-t border-mistara-brown/15 pt-2 text-center">
               <button
                 type="button"
                 onClick={onEnterGuest}
-                className="w-full bg-white/80 hover:bg-white text-mistara-warm text-sm py-3 rounded-xl border border-primary/15 font-bold"
+                className="w-full rounded-xl border border-primary/15 bg-white/80 py-[clamp(0.75rem,3vw,0.875rem)] text-[clamp(0.8125rem,3.6vw,0.9375rem)] font-bold text-mistara-warm touch-manipulation hover:bg-white"
               >
                 الدخول الفوري وتجربة النظام (بلا حساب)
               </button>
 
               {process.env.NODE_ENV === 'development' && (
-                <div className="rounded-xl border border-primary-dark/35 bg-primary/5 p-3 text-right space-y-2">
+                <div className="space-y-2 rounded-xl border border-primary-dark/35 bg-primary/5 p-3 text-right">
                   <p className="text-xs font-bold text-primary-dark">أدوات المطوّر (DEV فقط)</p>
                   <button
                     type="button"
                     disabled={devDeleteLoading}
                     onClick={onDevDelete}
-                    className="w-full bg-primary/10 text-mistara-warm text-[10px] py-2 rounded-lg border border-primary/35 font-mono disabled:opacity-50"
+                    className="w-full rounded-lg border border-primary/35 bg-primary/10 py-2 font-mono text-[10px] text-mistara-warm disabled:opacity-50"
                   >
                     {devDeleteLoading ? 'جاري الحذف عبر Admin API...' : 'حذف Auth: rraddad@hotmail.com'}
                   </button>
                   {devDeleteStatus && (
-                    <p className="text-[10px] text-mistara-warm/80 font-mono break-all leading-relaxed">
+                    <p className="break-all font-mono text-[10px] leading-relaxed text-mistara-warm/80">
                       {devDeleteStatus}
                     </p>
                   )}

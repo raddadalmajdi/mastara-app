@@ -61,7 +61,7 @@ export function AuthConfirmationPanel({
   return (
     <div className="space-y-6">
       <div className="text-center space-y-2.5">
-        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 ring-1 ring-primary/25 shadow-[0_0_25px_-5px_rgba(0,115,207,0.35)]">
+        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 ring-1 ring-primary/25 shadow-[0_0_25px_-5px_rgba(23,70,158,0.35)]">
           <svg className="h-7 w-7 text-primary" viewBox="0 0 24 24" fill="none" aria-hidden>
             <path
               d="M3.5 8.5 12 14l8.5-5.5M4.5 6.5h15A1.5 1.5 0 0 1 21 8v9a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17V8a1.5 1.5 0 0 1 1.5-1.5Z"
@@ -72,7 +72,7 @@ export function AuthConfirmationPanel({
             />
           </svg>
         </div>
-        <h2 className="text-xl sm:text-2xl font-black text-mistara-espresso">تحقق من بريدك الإلكتروني</h2>
+        <h2 className="text-[clamp(1.125rem,4.8vw,1.5rem)] font-black text-mistara-espresso">تحقق من بريدك الإلكتروني</h2>
         <p className="text-sm text-mistara-brown/80 leading-relaxed">
           {`أرسلنا رمز تحقق مكوّناً من ${OTP_LENGTH_AR} إلى`}
           <br />
