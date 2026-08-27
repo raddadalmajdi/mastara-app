@@ -1,5 +1,6 @@
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { deleteField, doc, getDoc, setDoc } from 'firebase/firestore';
 import { getFirebaseAuthClient, getFirebaseFirestoreClient, isFirebaseConfigured } from '@/lib/firebase';
+import { isDataAvatarSrc, normalizeAvatarSrc } from '@/lib/avatar-src';
 
 export type TailorProfileRecord = {
   user_id: string;
@@ -57,8 +58,10 @@ export function saveLocalTailorProfile(profile: Omit<TailorProfileUpsert, 'user_
 
 export function saveLocalAvatarUrl(userId: string, avatarUrl: string): void {
   if (typeof window === 'undefined' || !userId) return;
+  const normalized = normalizeAvatarSrc(avatarUrl);
+  if (!normalized) return;
   try {
-    localStorage.setItem(`${LOCAL_AVATAR_PREFIX}${userId}`, avatarUrl.trim());
+    localStorage.setItem(`${LOCAL_AVATAR_PREFIX}${userId}`, normalized);
   } catch {
     /* ignore */
   }
@@ -67,7 +70,9 @@ export function saveLocalAvatarUrl(userId: string, avatarUrl: string): void {
 export function loadLocalAvatarUrl(userId: string): string | null {
   if (typeof window === 'undefined' || !userId) return null;
   try {
-    return localStorage.getItem(`${LOCAL_AVATAR_PREFIX}${userId}`);
+    const raw = localStorage.getItem(`${LOCAL_AVATAR_PREFIX}${userId}`);
+    const normalized = normalizeAvatarSrc(raw);
+    return normalized || null;
   } catch {
     return null;
   }
@@ -90,15 +95,24 @@ export function persistAvatarLocally(userId: string, avatarDataUrl: string): voi
 }
 
 export function resolveAvatarUrl(dbUrl: string | null | undefined, userId: string): string {
-  const fromDb = dbUrl?.trim();
+  const local = normalizeAvatarSrc(loadLocalAvatarUrl(userId));
+  const fromDb = normalizeAvatarSrc(dbUrl);
+
+  // Base64 المحلي يُعرض فوراً ولا يعتمد على الشبكة أو CORS.
+  if (local && isDataAvatarSrc(local)) return local;
   if (fromDb) return fromDb;
-  return loadLocalAvatarUrl(userId)?.trim() ?? '';
+  if (local) return local;
+  return '';
 }
 
 function cacheAvatarLocally(userId: string, avatarUrl: string): void {
-  if (avatarUrl.trim()) {
-    saveLocalAvatarUrl(userId, avatarUrl);
-  }
+  const normalized = normalizeAvatarSrc(avatarUrl);
+  if (!normalized) return;
+
+  const existing = normalizeAvatarSrc(loadLocalAvatarUrl(userId));
+  if (existing && isDataAvatarSrc(existing) && !isDataAvatarSrc(normalized)) return;
+
+  saveLocalAvatarUrl(userId, normalized);
 }
 
 function enrichProfileWithLocalAvatar(
@@ -238,11 +252,47 @@ export function persistLocalTailorAvatarUrl(
   userId = 'guest-local-user'
 ): void {
   const existing = loadLocalTailorProfile();
+  const normalized = normalizeAvatarSrc(avatarUrl);
   saveLocalTailorProfile({
     phone: profile.phone || existing?.phone || '',
     cloud_notes: profile.cloud_notes ?? existing?.cloud_notes ?? '',
     shop_name: profile.shop_name ?? existing?.shop_name ?? '',
-    avatar_url: avatarUrl,
+    avatar_url: normalized || undefined,
   });
-  saveLocalAvatarUrl(userId, avatarUrl);
+  if (normalized) {
+    saveLocalAvatarUrl(userId, normalized);
+  } else {
+    removeLocalAvatarUrl(userId);
+  }
+}
+
+export async function clearTailorAvatarUrl(
+  userId: string,
+  profile: Omit<TailorProfileUpsert, 'user_id' | 'avatar_url'>
+): Promise<void> {
+  removeLocalAvatarUrl(userId);
+
+  if (!isFirebaseConfigured()) {
+    persistLocalTailorAvatarUrl('', profile, userId);
+    return;
+  }
+
+  const authUser = getFirebaseAuthClient().currentUser;
+  if (!authUser || authUser.uid !== userId) return;
+
+  const db = getFirebaseFirestoreClient();
+  await setDoc(
+    doc(db, 'tailor_profiles', userId),
+    {
+      ...buildTailorProfileWriteRow({
+        user_id: userId,
+        phone: profile.phone,
+        cloud_notes: profile.cloud_notes,
+        shop_name: profile.shop_name,
+      }),
+      avatar_url: deleteField(),
+      updated_at: new Date().toISOString(),
+    },
+    { merge: true }
+  );
 }

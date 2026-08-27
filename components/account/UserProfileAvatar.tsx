@@ -1,5 +1,8 @@
 'use client';
 
+import { useEffect, useState } from 'react';
+import { normalizeAvatarSrc } from '@/lib/avatar-src';
+
 type UserProfileAvatarProps = {
   src?: string | null;
   alt?: string;
@@ -39,15 +42,27 @@ export function UserProfileAvatar({
   size = 'sm',
   className = '',
 }: UserProfileAvatarProps) {
-  const trimmed = src?.trim();
+  const normalizedSrc = normalizeAvatarSrc(src);
+  const [broken, setBroken] = useState(false);
+
+  useEffect(() => {
+    setBroken(false);
+  }, [normalizedSrc]);
+
+  const showImage = Boolean(normalizedSrc) && !broken;
 
   return (
     <span
       className={`relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-primary/25 bg-primary/8 shadow-md ring-2 ring-primary/15 ${SIZE_CLASS[size]} ${className}`}
     >
-      {trimmed ? (
+      {showImage ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={trimmed} alt={alt} className="h-full w-full object-cover" />
+        <img
+          src={normalizedSrc}
+          alt={alt}
+          className="h-full w-full object-cover"
+          onError={() => setBroken(true)}
+        />
       ) : (
         <UserProfileIcon className={`${ICON_CLASS[size]} text-primary`} />
       )}

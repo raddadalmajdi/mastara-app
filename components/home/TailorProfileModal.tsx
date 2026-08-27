@@ -2,6 +2,7 @@
 
 import { TailorAvatarPicker } from '@/components/account/TailorAvatarPicker';
 import type { AvatarSaveFeedback } from '@/components/account/AccountMenuPanel';
+import { hasDisplayAvatar } from '@/lib/avatar-src';
 import { COUNTRY_CODES } from '@/lib/home/constants';
 import type { AuthFeedback } from '@/lib/home/types';
 
@@ -82,7 +83,9 @@ export function TailorProfileModal({
             feedback={avatarFeedback}
             onPickFile={onAvatarFilePick}
             onSaveCloud={onSaveAvatar}
-            onRemove={tailorAvatarUrl || pendingAvatarPreview ? onRemoveAvatar : undefined}
+            onRemove={
+              hasDisplayAvatar(tailorAvatarUrl || pendingAvatarPreview) ? onRemoveAvatar : undefined
+            }
             onDiscardPending={onDiscardPendingAvatar}
           />
 

@@ -11,6 +11,7 @@ import { isFirebaseConfigured } from '@/lib/firebase-auth-client';
 import { getUserFacingErrorMessage } from '@/lib/user-facing-error';
 import { fileToAvatarJpegBlob, uploadTailorAvatar } from '@/lib/upload-tailor-avatar';
 import {
+  clearTailorAvatarUrl,
   fetchTailorProfile,
   loadLocalAvatarUrl,
   loadLocalTailorProfile,
@@ -24,6 +25,7 @@ import {
   syncLocalAvatarToDatabaseIfNeeded,
   upsertTailorProfile,
 } from '@/lib/tailor-profile';
+import { normalizeAvatarSrc } from '@/lib/avatar-src';
 
 type UseTailorProfileOptions = {
   user: AppUser | null;
@@ -165,9 +167,9 @@ export function useTailorProfile({
       return;
     }
     const userId = appUserId(user);
-    const cachedAvatar = loadLocalAvatarUrl(userId);
-    if (cachedAvatar?.trim()) {
-      setTailorAvatarUrl(cachedAvatar.trim());
+    const cachedAvatar = normalizeAvatarSrc(loadLocalAvatarUrl(userId));
+    if (cachedAvatar) {
+      setTailorAvatarUrl(cachedAvatar);
     }
     void fetchProfile(userId);
   }, [user, fetchProfile, resetProfile]);
@@ -253,7 +255,7 @@ export function useTailorProfile({
   };
 
   const syncAvatarToCloud = useCallback(
-    async (userId: string, blob: Blob) => {
+    async (userId: string, blob: Blob, displayDataUrl: string) => {
       setSavingAvatar(true);
       setAvatarFeedback(null);
       const snapshot = tailorProfileSnapshot();
@@ -261,7 +263,8 @@ export function useTailorProfile({
       try {
         const publicUrl = await uploadTailorAvatar(userId, blob);
         const persistTarget = await persistTailorAvatarUrl(userId, publicUrl, snapshot);
-        setTailorAvatarUrl(publicUrl);
+        persistAvatarLocally(userId, displayDataUrl);
+        setTailorAvatarUrl(displayDataUrl);
         clearPendingAvatar();
         setAvatarFeedback({
           type: 'success',
@@ -309,7 +312,7 @@ export function useTailorProfile({
       });
 
       if (isFirebaseConfigured() && user) {
-        void syncAvatarToCloud(appUserId(user), jpegBlob);
+        void syncAvatarToCloud(appUserId(user), jpegBlob, dataUrl);
       }
     } catch (pickError) {
       setAvatarFeedback({
@@ -323,18 +326,22 @@ export function useTailorProfile({
     const blob = pendingAvatarBlobRef.current;
     if (!blob) return;
     if (!user || !isFirebaseConfigured()) return;
-    await syncAvatarToCloud(appUserId(user), blob);
+    const dataUrl = normalizeAvatarSrc(tailorAvatarUrl) || (await blobToDataUrl(blob));
+    await syncAvatarToCloud(appUserId(user), blob, dataUrl);
   };
 
   const handleRemoveAvatar = () => {
     const userId = user ? appUserId(user) : 'guest-local-user';
-    removeLocalAvatarUrl(userId);
-    if (!isFirebaseConfigured() || !user) {
-      persistLocalTailorAvatarUrl('', tailorProfileSnapshot(), userId);
-    }
+    const snapshot = tailorProfileSnapshot();
     clearPendingAvatar();
     setTailorAvatarUrl('');
     setAvatarFeedback({ type: 'success', message: 'تمت إزالة صورة المحل.' });
+    void clearTailorAvatarUrl(userId, snapshot).catch(() => {
+      removeLocalAvatarUrl(userId);
+      if (!isFirebaseConfigured() || !user) {
+        persistLocalTailorAvatarUrl('', snapshot, userId);
+      }
+    });
   };
 
   return {

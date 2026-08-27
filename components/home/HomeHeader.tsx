@@ -6,6 +6,7 @@ import { UserProfileAvatar } from '@/components/account/UserProfileAvatar';
 import { AppBrand } from '@/components/brand/AppBrand';
 import { isFirebaseConfigured } from '@/lib/firebase-auth-client';
 import type { AvatarSaveFeedback } from '@/components/account/AccountMenuPanel';
+import { hasDisplayAvatar, normalizeAvatarSrc } from '@/lib/avatar-src';
 
 type HomeHeaderProps = {
   menuRef: React.RefObject<HTMLDivElement | null>;
@@ -50,7 +51,7 @@ export function HomeHeader({
   onOpenSettings,
   onLogout,
 }: HomeHeaderProps) {
-  const displayAvatar = pendingAvatarPreview || tailorAvatarUrl;
+  const displayAvatar = normalizeAvatarSrc(pendingAvatarPreview || tailorAvatarUrl);
   const merchantLabel = tailorShopName.trim() || 'محلّي';
 
   return (

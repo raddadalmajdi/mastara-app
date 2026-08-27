@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { TailorAvatarPicker } from '@/components/account/TailorAvatarPicker';
 import { UserProfileAvatar } from '@/components/account/UserProfileAvatar';
+import { hasDisplayAvatar, normalizeAvatarSrc } from '@/lib/avatar-src';
 
 export type AvatarSaveFeedback = { type: 'success' | 'error'; message: string } | null;
 
@@ -75,7 +76,7 @@ export function AccountMenuPanel({
   if (!open) return null;
 
   const phoneLabel = isTailorRegistered ? `+${tailorCountryCode}${tailorLocalPhone}` : 'غير مسجل';
-  const displayAvatar = pendingAvatarPreview || avatarUrl;
+  const displayAvatar = normalizeAvatarSrc(pendingAvatarPreview || avatarUrl);
 
   return (
     <div className="absolute left-0 mt-2 w-80 sm:w-[22rem] rounded-2xl border border-mistara-gold/30 glass-panel p-4 shadow-2xl backdrop-blur-md z-50 space-y-4">
@@ -104,7 +105,7 @@ export function AccountMenuPanel({
         compact
         onPickFile={onAvatarFilePick}
         onSaveCloud={onSaveAvatar}
-        onRemove={displayAvatar ? onRemoveAvatar : undefined}
+        onRemove={hasDisplayAvatar(displayAvatar) ? onRemoveAvatar : undefined}
         onDiscardPending={onDiscardPendingAvatar}
       />
 

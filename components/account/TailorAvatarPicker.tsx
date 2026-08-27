@@ -3,6 +3,7 @@
 import { useRef } from 'react';
 import { UserProfileAvatar } from '@/components/account/UserProfileAvatar';
 import type { AvatarSaveFeedback } from '@/components/account/AccountMenuPanel';
+import { hasDisplayAvatar, normalizeAvatarSrc } from '@/lib/avatar-src';
 
 type TailorAvatarPickerProps = {
   avatarUrl: string;
@@ -30,7 +31,7 @@ export function TailorAvatarPicker({
   onDiscardPending,
 }: TailorAvatarPickerProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const displayAvatar = pendingPreview || avatarUrl;
+  const displayAvatar = normalizeAvatarSrc(pendingPreview || avatarUrl);
 
   return (
     <div className={`rounded-2xl border border-primary/15 bg-mistara-sand/50 ${compact ? 'p-3' : 'p-4'} space-y-3`}>
@@ -77,7 +78,7 @@ export function TailorAvatarPicker({
         >
           {displayAvatar ? 'تغيير الصورة' : 'رفع صورة المحل'}
         </button>
-        {displayAvatar && onRemove && (
+        {hasDisplayAvatar(displayAvatar) && onRemove && (
           <button
             type="button"
             disabled={savingAvatar}
