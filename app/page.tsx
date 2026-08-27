@@ -160,7 +160,7 @@ export default function Home() {
             workspace.setCustomerNameLocked(false);
           }}
           onSaveContact={() => void workspace.handleSaveCustomerContact()}
-          isSearchingInvoices={workspace.isSearchingInvoices}
+          isRefreshingInvoices={workspace.isRefreshingInvoices}
           customerInvoicesCount={workspace.customerInvoices.length}
           uploadSaveError={workspace.uploadSaveError}
           uploadSavePhase={workspace.uploadSavePhase}

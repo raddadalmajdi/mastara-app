@@ -7,5 +7,5 @@ export const COUNTRY_CODES = [
   { code: '968', name: 'عمان 🇴🇲' },
 ] as const;
 
-export const INVOICE_SEARCH_DEBOUNCE_MS = 350;
+export const INVOICE_SEARCH_DEBOUNCE_MS = 100;
 export const FULL_PHONE_LOCAL_LENGTH = 7;

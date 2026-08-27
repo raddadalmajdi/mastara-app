@@ -17,7 +17,7 @@ type CustomerContactSectionProps = {
   customerNameEditing: boolean;
   onStartNameEdit: () => void;
   onSaveContact: () => void;
-  isSearchingInvoices: boolean;
+  isRefreshingInvoices: boolean;
   customerInvoicesCount: number;
   uploadSaveError: string | null;
   uploadSavePhase: InvoiceSaveUiPhase;
@@ -35,11 +35,16 @@ export function CustomerContactSection({
   customerNameEditing,
   onStartNameEdit,
   onSaveContact,
-  isSearchingInvoices,
+  isRefreshingInvoices,
   customerInvoicesCount,
   uploadSaveError,
   uploadSavePhase,
 }: CustomerContactSectionProps) {
+  const canSaveNewContact =
+    isCustomerPhoneSearchable(customerLocalPhone) &&
+    customerDisplayName.trim().length > 0 &&
+    (customerBookStatus !== 'known' || customerNameEditing);
+
   return (
     <section className="dashboard-contact-card space-y-[clamp(0.875rem,3.5vw,1.25rem)]">
       <header>
@@ -115,19 +120,17 @@ export function CustomerContactSection({
         </div>
       </div>
 
-      {isCustomerPhoneSearchable(customerLocalPhone) &&
-        customerDisplayName.trim() &&
-        customerBookStatus === 'new' && (
-          <button
-            type="button"
-            onClick={onSaveContact}
-            className="auth-primary-btn w-full rounded-xl py-3 text-[clamp(0.8125rem,3.6vw,0.9375rem)] font-bold shadow touch-manipulation"
-          >
-            حفظ الرقم والاسم في دفتر العملاء
-          </button>
-        )}
+      {canSaveNewContact && customerBookStatus !== 'known' && (
+        <button
+          type="button"
+          onClick={onSaveContact}
+          className="auth-primary-btn w-full rounded-xl py-3 text-[clamp(0.8125rem,3.6vw,0.9375rem)] font-bold shadow touch-manipulation"
+        >
+          حفظ الرقم والاسم في دفتر العملاء
+        </button>
+      )}
 
-      {customerNameEditing && customerBookStatus === 'known' && customerDisplayName.trim() && (
+      {canSaveNewContact && customerNameEditing && customerBookStatus === 'known' && (
         <button
           type="button"
           onClick={onSaveContact}
@@ -145,8 +148,8 @@ export function CustomerContactSection({
 
       {isCustomerPhoneSearchable(customerLocalPhone) && (
         <p className="rounded-xl border border-primary/10 bg-mistara-sand/80 px-3 py-2.5 text-[clamp(0.6875rem,3vw,0.8125rem)] font-bold leading-relaxed text-mistara-brown/75">
-          {isSearchingInvoices || customerBookStatus === 'searching'
-            ? 'جاري البحث في سجل العملاء والفواتير...'
+          {isRefreshingInvoices
+            ? 'جاري تحديث الأرشيف من السحابة...'
             : customerBookStatus === 'known' && customerDisplayName
               ? `عميل مسجّل: ${customerDisplayName}`
               : customerInvoicesCount > 0

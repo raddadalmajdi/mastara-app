@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { DocumentScanResult } from '@/lib/document-scanner/scan-result';
 import type { InvoiceSaveUiPhase } from '@/components/invoices/InvoiceSaveProgressRing';
 import {
   FULL_PHONE_LOCAL_LENGTH,
   INVOICE_SEARCH_DEBOUNCE_MS,
 } from '@/lib/home/constants';
+import { searchInvoicesInstant } from '@/lib/home/invoice-local-search';
 import type { AppUser, CustomerBookStatus, CustomerInvoice } from '@/lib/home/types';
 import { appUserId } from '@/lib/home/types';
 import { blobToDataUrl, buildInvoicePdfLabel } from '@/lib/home/invoice-helpers';
@@ -41,7 +42,7 @@ export function useCustomerWorkspace({ user, organizationId }: UseCustomerWorksp
   const [customerNameLocked, setCustomerNameLocked] = useState(false);
   const [customerNameEditing, setCustomerNameEditing] = useState(false);
   const [customerInvoices, setCustomerInvoices] = useState<CustomerInvoice[]>([]);
-  const [isSearchingInvoices, setIsSearchingInvoices] = useState(false);
+  const [isRefreshingInvoices, setIsRefreshingInvoices] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadSavePhase, setUploadSavePhase] = useState<InvoiceSaveUiPhase>('idle');
   const [uploadSaveError, setUploadSaveError] = useState<string | null>(null);
@@ -50,159 +51,192 @@ export function useCustomerWorkspace({ user, organizationId }: UseCustomerWorksp
   const [activeImageIndex, setActiveImageIndex] = useState<number | null>(null);
   const [exportingPdfId, setExportingPdfId] = useState<string | null>(null);
 
-  const customerLookupTimerRef = useRef<number | null>(null);
   const invoiceSearchTimerRef = useRef<number | null>(null);
   const invoiceSearchSeqRef = useRef(0);
   const customerLookupSeqRef = useRef(0);
+  const customerDisplayNameRef = useRef(customerDisplayName);
+
+  useEffect(() => {
+    customerDisplayNameRef.current = customerDisplayName;
+  }, [customerDisplayName]);
 
   useEffect(() => {
     return () => {
-      if (customerLookupTimerRef.current !== null) {
-        window.clearTimeout(customerLookupTimerRef.current);
-      }
       if (invoiceSearchTimerRef.current !== null) {
         window.clearTimeout(invoiceSearchTimerRef.current);
       }
     };
   }, []);
 
-  const applyInvoiceSearchResults = (filtered: CustomerInvoice[]) => {
+  useEffect(() => {
+    if (!user || !isFirebaseConfigured()) return;
+    const userId = appUserId(user);
+    void fetchInvoicesForUser({
+      userId,
+      organizationId,
+      allowedOrganizationId: organizationId,
+    }).catch(() => undefined);
+  }, [user, organizationId]);
+
+  const applyInvoiceSearchResults = useCallback((filtered: CustomerInvoice[]) => {
     setCustomerInvoices(filtered);
     const initialMessages: Record<string, string> = {};
     filtered.forEach((inv) => {
       initialMessages[inv.id] = `تم! شكراً لتعاملك معنا، نسعد بخدمتك. رابط مستندك (PDF): ${invoiceShareDocumentUrl(inv)}`;
     });
     setWhatsappMessages(initialMessages);
-  };
+  }, []);
 
-  const searchInvoices = async (localPhone: string, cCode: string) => {
-    if (!isCustomerPhoneSearchable(localPhone)) {
-      setCustomerInvoices([]);
-      setWhatsappMessages({});
-      return;
-    }
-
-    const variants = phoneMatchVariants(cCode, localPhone);
-    const searchSeq = ++invoiceSearchSeqRef.current;
-
-    setIsSearchingInvoices(true);
-    try {
-      if (!isFirebaseConfigured()) {
-        const savedInvoices = JSON.parse(localStorage.getItem('mistarh_local_invoices') || '[]');
-        const filtered = savedInvoices.filter((inv: { customer_phone?: string }) =>
-          variants.some((variant) => phonesMatch(String(inv.customer_phone ?? ''), variant))
-        );
-        if (searchSeq !== invoiceSearchSeqRef.current) return;
-        applyInvoiceSearchResults(filtered);
-        return;
-      }
-
-      if (!user) {
-        if (searchSeq !== invoiceSearchSeqRef.current) return;
+  const runInstantInvoiceSearch = useCallback(
+    (localPhone: string, cCode: string) => {
+      if (!isCustomerPhoneSearchable(localPhone)) {
         setCustomerInvoices([]);
         setWhatsappMessages({});
         return;
       }
 
-      const userId = appUserId(user);
-      const localDigits = localPhone.replace(/\D/g, '');
-      let data: CustomerInvoice[];
+      const variants = phoneMatchVariants(cCode, localPhone);
+      const userId = user ? appUserId(user) : null;
+      const instant = searchInvoicesInstant({
+        userId,
+        organizationId,
+        variants,
+        fullPhone: normalizeStoredPhone(`${cCode}${localPhone}`),
+      });
+      applyInvoiceSearchResults(instant);
+    },
+    [applyInvoiceSearchResults, organizationId, user]
+  );
 
-      if (localDigits.length >= FULL_PHONE_LOCAL_LENGTH) {
-        const fullPhone = normalizeStoredPhone(`${cCode}${localPhone}`);
-        data = await fetchInvoicesByCustomerPhone({
-          userId,
-          customerPhone: fullPhone,
-          organizationId,
-          allowedOrganizationId: organizationId,
-        });
+  const refreshInvoicesFromCloud = useCallback(
+    async (localPhone: string, cCode: string) => {
+      if (!isCustomerPhoneSearchable(localPhone)) return;
 
-        if (data.length === 0) {
-          for (const variant of variants) {
-            const normalized = normalizeStoredPhone(variant);
-            if (!normalized || normalized === fullPhone) continue;
-            const alt = await fetchInvoicesByCustomerPhone({
-              userId,
-              customerPhone: normalized,
-              organizationId,
-              allowedOrganizationId: organizationId,
-            });
-            if (alt.length > 0) {
-              data = alt;
-              break;
+      const variants = phoneMatchVariants(cCode, localPhone);
+      const searchSeq = ++invoiceSearchSeqRef.current;
+      setIsRefreshingInvoices(true);
+
+      try {
+        if (!isFirebaseConfigured()) {
+          return;
+        }
+
+        if (!user) {
+          return;
+        }
+
+        const userId = appUserId(user);
+        const localDigits = localPhone.replace(/\D/g, '');
+        let data: CustomerInvoice[];
+
+        if (localDigits.length >= FULL_PHONE_LOCAL_LENGTH) {
+          const fullPhone = normalizeStoredPhone(`${cCode}${localPhone}`);
+          data = await fetchInvoicesByCustomerPhone({
+            userId,
+            customerPhone: fullPhone,
+            organizationId,
+            allowedOrganizationId: organizationId,
+          });
+
+          if (data.length === 0) {
+            for (const variant of variants) {
+              const normalized = normalizeStoredPhone(variant);
+              if (!normalized || normalized === fullPhone) continue;
+              const alt = await fetchInvoicesByCustomerPhone({
+                userId,
+                customerPhone: normalized,
+                organizationId,
+                allowedOrganizationId: organizationId,
+              });
+              if (alt.length > 0) {
+                data = alt;
+                break;
+              }
             }
           }
+        } else {
+          const all = await fetchInvoicesForUser({
+            userId,
+            organizationId,
+            allowedOrganizationId: organizationId,
+          });
+          data = all.filter((inv) =>
+            variants.some((variant) => phonesMatch(String(inv.customer_phone ?? ''), variant))
+          );
         }
-      } else {
-        const all = await fetchInvoicesForUser({
-          userId,
-          organizationId,
-          allowedOrganizationId: organizationId,
-        });
-        data = all.filter((inv) =>
-          variants.some((variant) => phonesMatch(String(inv.customer_phone ?? ''), variant))
-        );
+
+        if (searchSeq !== invoiceSearchSeqRef.current) return;
+        applyInvoiceSearchResults(data);
+      } catch (searchErr) {
+        if (searchSeq !== invoiceSearchSeqRef.current) return;
+        console.warn('[invoices] cloud refresh failed', searchErr);
+      } finally {
+        if (searchSeq === invoiceSearchSeqRef.current) {
+          setIsRefreshingInvoices(false);
+        }
+      }
+    },
+    [applyInvoiceSearchResults, organizationId, user]
+  );
+
+  const scheduleInvoiceSearch = useCallback(
+    (localPhone: string, cCode: string) => {
+      runInstantInvoiceSearch(localPhone, cCode);
+
+      if (invoiceSearchTimerRef.current !== null) {
+        window.clearTimeout(invoiceSearchTimerRef.current);
       }
 
-      if (searchSeq !== invoiceSearchSeqRef.current) return;
-      applyInvoiceSearchResults(data);
-    } catch (searchErr) {
-      if (searchSeq !== invoiceSearchSeqRef.current) return;
-      console.warn('[invoices] search failed', searchErr);
-      setCustomerInvoices([]);
-      setWhatsappMessages({});
-    } finally {
-      if (searchSeq === invoiceSearchSeqRef.current) {
-        setIsSearchingInvoices(false);
+      if (!isCustomerPhoneSearchable(localPhone) || !isFirebaseConfigured() || !user) {
+        setIsRefreshingInvoices(false);
+        return;
       }
-    }
-  };
 
-  const scheduleInvoiceSearch = (localPhone: string, cCode: string) => {
-    if (invoiceSearchTimerRef.current !== null) {
-      window.clearTimeout(invoiceSearchTimerRef.current);
-    }
-    if (!isCustomerPhoneSearchable(localPhone)) {
-      setCustomerInvoices([]);
-      setWhatsappMessages({});
-      return;
-    }
-    invoiceSearchTimerRef.current = window.setTimeout(() => {
-      void searchInvoices(localPhone, cCode);
-    }, INVOICE_SEARCH_DEBOUNCE_MS);
-  };
+      invoiceSearchTimerRef.current = window.setTimeout(() => {
+        void refreshInvoicesFromCloud(localPhone, cCode);
+      }, INVOICE_SEARCH_DEBOUNCE_MS);
+    },
+    [refreshInvoicesFromCloud, runInstantInvoiceSearch, user]
+  );
 
-  const applyDirectoryHit = (name: string) => {
+  const applyDirectoryHit = useCallback((name: string) => {
     const trimmed = name.trim();
     if (!trimmed) return;
     setCustomerDisplayName(trimmed);
     setCustomerBookStatus('known');
     setCustomerNameLocked(true);
     setCustomerNameEditing(false);
-  };
+  }, []);
 
-  const scheduleCustomerDirectoryLookup = (localPhone: string, cCode: string) => {
-    if (customerLookupTimerRef.current !== null) {
-      window.clearTimeout(customerLookupTimerRef.current);
+  const markDirectoryAsNewIfEditable = useCallback(() => {
+    if (customerDisplayNameRef.current.trim()) {
+      setCustomerBookStatus('new');
+      setCustomerNameLocked(false);
+      setCustomerNameEditing(false);
     }
-    if (!isCustomerNameLookupReady(localPhone)) {
-      customerLookupSeqRef.current += 1;
-      if (!isCustomerPhoneSearchable(localPhone)) {
-        setCustomerBookStatus('idle');
+  }, []);
+
+  const runCustomerDirectoryLookup = useCallback(
+    (localPhone: string, cCode: string) => {
+      if (!isCustomerNameLookupReady(localPhone)) {
+        customerLookupSeqRef.current += 1;
+        if (!isCustomerPhoneSearchable(localPhone)) {
+          setCustomerBookStatus('idle');
+        }
+        return;
       }
-      return;
-    }
-    const tailorId = user ? appUserId(user) : 'guest-local-user';
-    const fullPhone = `${cCode}${localPhone}`;
-    const instantHit = lookupTailorCustomerByPhoneSync(tailorId, fullPhone, organizationId);
-    if (instantHit?.customer_name?.trim()) {
-      applyDirectoryHit(instantHit.customer_name);
-    } else {
-      setCustomerBookStatus('searching');
-    }
 
-    const lookupSeq = ++customerLookupSeqRef.current;
-    customerLookupTimerRef.current = window.setTimeout(() => {
+      const tailorId = user ? appUserId(user) : 'guest-local-user';
+      const fullPhone = `${cCode}${localPhone}`;
+      const instantHit = lookupTailorCustomerByPhoneSync(tailorId, fullPhone, organizationId);
+
+      if (instantHit?.customer_name?.trim()) {
+        applyDirectoryHit(instantHit.customer_name);
+      } else {
+        markDirectoryAsNewIfEditable();
+      }
+
+      const lookupSeq = ++customerLookupSeqRef.current;
       void (async () => {
         try {
           const hit = await lookupTailorCustomerByPhone(tailorId, fullPhone, organizationId);
@@ -210,24 +244,24 @@ export function useCustomerWorkspace({ user, organizationId }: UseCustomerWorksp
           if (hit?.customer_name?.trim()) {
             applyDirectoryHit(hit.customer_name);
           } else if (!instantHit) {
-            setCustomerBookStatus('new');
-            setCustomerNameLocked(false);
-            setCustomerNameEditing(false);
+            markDirectoryAsNewIfEditable();
           }
         } catch (lookupError) {
           if (lookupSeq !== customerLookupSeqRef.current) return;
           if (process.env.NODE_ENV === 'development') {
             console.warn('[tailor_customers] lookup failed', lookupError);
           }
-          if (!instantHit) setCustomerBookStatus('new');
+          if (!instantHit) markDirectoryAsNewIfEditable();
         }
       })();
-    }, 50);
-  };
+    },
+    [applyDirectoryHit, markDirectoryAsNewIfEditable, organizationId, user]
+  );
 
   const handleCustomerPhoneInput = (val: string) => {
     const cleanVal = normalizeStoredPhone(val);
     setCustomerLocalPhone(cleanVal);
+
     if (!isCustomerPhoneSearchable(cleanVal)) {
       setCustomerDisplayName('');
       setCustomerBookStatus('idle');
@@ -235,37 +269,50 @@ export function useCustomerWorkspace({ user, organizationId }: UseCustomerWorksp
       setCustomerNameEditing(false);
       setCustomerInvoices([]);
       setWhatsappMessages({});
-    } else if (!isCustomerNameLookupReady(cleanVal)) {
+      setIsRefreshingInvoices(false);
+      invoiceSearchSeqRef.current += 1;
+      customerLookupSeqRef.current += 1;
+      return;
+    }
+
+    if (!isCustomerNameLookupReady(cleanVal)) {
       setCustomerBookStatus('idle');
       if (customerNameLocked) {
         setCustomerDisplayName('');
         setCustomerNameLocked(false);
         setCustomerNameEditing(false);
       }
-    } else {
-      setCustomerBookStatus('searching');
     }
-    if (isCustomerPhoneSearchable(cleanVal)) {
-      scheduleInvoiceSearch(cleanVal, customerCountryCode);
-      scheduleCustomerDirectoryLookup(cleanVal, customerCountryCode);
-    }
+
+    scheduleInvoiceSearch(cleanVal, customerCountryCode);
+    runCustomerDirectoryLookup(cleanVal, customerCountryCode);
   };
 
   const handleCountryCodeChange = (newCode: string) => {
     setCustomerCountryCode(newCode);
-    if (isCustomerPhoneSearchable(customerLocalPhone)) {
-      setCustomerBookStatus('searching');
-    } else {
+    if (!isCustomerPhoneSearchable(customerLocalPhone)) {
       setCustomerDisplayName('');
       setCustomerBookStatus('idle');
       setCustomerNameLocked(false);
       setCustomerNameEditing(false);
       setCustomerInvoices([]);
       setWhatsappMessages({});
+      setIsRefreshingInvoices(false);
+      return;
     }
-    if (isCustomerPhoneSearchable(customerLocalPhone)) {
-      scheduleInvoiceSearch(customerLocalPhone, newCode);
-      scheduleCustomerDirectoryLookup(customerLocalPhone, newCode);
+
+    scheduleInvoiceSearch(customerLocalPhone, newCode);
+    runCustomerDirectoryLookup(customerLocalPhone, newCode);
+  };
+
+  const handleDisplayNameChange = (value: string) => {
+    setCustomerDisplayName(value);
+    if (
+      value.trim() &&
+      isCustomerPhoneSearchable(customerLocalPhone) &&
+      !customerNameLocked
+    ) {
+      setCustomerBookStatus('new');
     }
   };
 
@@ -325,19 +372,30 @@ export function useCustomerWorkspace({ user, organizationId }: UseCustomerWorksp
 
     let nameToSave = customerDisplayName.trim();
     if (!nameToSave) {
-      try {
-        const hit = await lookupTailorCustomerByPhone(
-          user ? appUserId(user) : 'guest-local-user',
-          fullCustomerPhone,
-          organizationId
-        );
-        if (hit) {
-          nameToSave = hit.customer_name;
-          setCustomerDisplayName(hit.customer_name);
-          setCustomerBookStatus('known');
+      const syncHit = lookupTailorCustomerByPhoneSync(
+        user ? appUserId(user) : 'guest-local-user',
+        fullCustomerPhone,
+        organizationId
+      );
+      if (syncHit?.customer_name) {
+        nameToSave = syncHit.customer_name;
+        setCustomerDisplayName(syncHit.customer_name);
+        setCustomerBookStatus('known');
+      } else {
+        try {
+          const hit = await lookupTailorCustomerByPhone(
+            user ? appUserId(user) : 'guest-local-user',
+            fullCustomerPhone,
+            organizationId
+          );
+          if (hit) {
+            nameToSave = hit.customer_name;
+            setCustomerDisplayName(hit.customer_name);
+            setCustomerBookStatus('known');
+          }
+        } catch {
+          /* ignore lookup errors before save */
         }
-      } catch {
-        /* ignore lookup errors before save */
       }
     }
     if (!nameToSave) {
@@ -354,6 +412,13 @@ export function useCustomerWorkspace({ user, organizationId }: UseCustomerWorksp
         const imageUrl = await blobToDataUrl(jpegBlob);
         const pdfUrl = await blobToDataUrl(pdfBlob);
 
+        await upsertTailorCustomer(
+          user ? appUserId(user) : 'guest-local-user',
+          fullCustomerPhone,
+          nameToSave,
+          organizationId
+        );
+
         const newInvoice: CustomerInvoice = {
           id: 'local-' + Date.now(),
           customer_phone: fullCustomerPhone,
@@ -361,13 +426,6 @@ export function useCustomerWorkspace({ user, organizationId }: UseCustomerWorksp
           pdf_url: pdfUrl,
           created_at: new Date().toISOString(),
         };
-
-        await upsertTailorCustomer(
-          user ? appUserId(user) : 'guest-local-user',
-          fullCustomerPhone,
-          nameToSave,
-          organizationId
-        );
 
         const savedInvoices = JSON.parse(localStorage.getItem('mistarh_local_invoices') || '[]');
         const updatedInvoices = [newInvoice, ...savedInvoices];
@@ -383,11 +441,8 @@ export function useCustomerWorkspace({ user, organizationId }: UseCustomerWorksp
           throw storageErr;
         }
 
-        try {
-          await searchInvoices(localPhone, customerCountryCode);
-        } catch (searchErr) {
-          console.warn('[invoices] refresh after save failed', searchErr);
-        }
+        runInstantInvoiceSearch(localPhone, customerCountryCode);
+        void refreshInvoicesFromCloud(localPhone, customerCountryCode);
         setUploadSavePhase('success');
         setShowOpenCvScanner(false);
         window.setTimeout(() => setUploadSavePhase('idle'), 2800);
@@ -411,11 +466,8 @@ export function useCustomerWorkspace({ user, organizationId }: UseCustomerWorksp
         setCustomerBookStatus('known');
         setCustomerNameLocked(true);
 
-        try {
-          await searchInvoices(localPhone, customerCountryCode);
-        } catch (searchErr) {
-          console.warn('[invoices] refresh after save failed', searchErr);
-        }
+        runInstantInvoiceSearch(localPhone, customerCountryCode);
+        void refreshInvoicesFromCloud(localPhone, customerCountryCode);
         setUploadSavePhase('success');
         setShowOpenCvScanner(false);
         window.setTimeout(() => setUploadSavePhase('idle'), 2800);
@@ -483,14 +535,14 @@ export function useCustomerWorkspace({ user, organizationId }: UseCustomerWorksp
     customerCountryCode,
     customerLocalPhone,
     customerDisplayName,
-    setCustomerDisplayName,
+    setCustomerDisplayName: handleDisplayNameChange,
     customerBookStatus,
     customerNameLocked,
     customerNameEditing,
     setCustomerNameEditing,
     setCustomerNameLocked,
     customerInvoices,
-    isSearchingInvoices,
+    isRefreshingInvoices,
     isUploading,
     uploadSavePhase,
     uploadSaveError,
