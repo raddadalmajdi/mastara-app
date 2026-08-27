@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useRef } from 'react';
+import { TailorAvatarPicker } from '@/components/account/TailorAvatarPicker';
 import { UserProfileAvatar } from '@/components/account/UserProfileAvatar';
 
 export type AvatarSaveFeedback = { type: 'success' | 'error'; message: string } | null;
@@ -22,6 +22,7 @@ type AccountMenuPanelProps = {
   avatarFeedback: AvatarSaveFeedback;
   onAvatarFilePick: (file: File) => void;
   onSaveAvatar: () => void;
+  onRemoveAvatar: () => void;
   onDiscardPendingAvatar: () => void;
   /** يُغلق القائمة قبل أي انتقال (اختياري). */
   onCloseMenu?: () => void;
@@ -65,13 +66,12 @@ export function AccountMenuPanel({
   avatarFeedback,
   onAvatarFilePick,
   onSaveAvatar,
+  onRemoveAvatar,
   onDiscardPendingAvatar,
   onCloseMenu,
   onOpenSettings,
   onLogout,
 }: AccountMenuPanelProps) {
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
   if (!open) return null;
 
   const phoneLabel = isTailorRegistered ? `+${tailorCountryCode}${tailorLocalPhone}` : 'غير مسجل';
@@ -80,21 +80,12 @@ export function AccountMenuPanel({
   return (
     <div className="absolute left-0 mt-2 w-80 sm:w-[22rem] rounded-2xl border border-mistara-gold/30 glass-panel p-4 shadow-2xl backdrop-blur-md z-50 space-y-4">
       <div className="flex items-center gap-3 border-b border-mistara-brown/15 pb-3">
-        <div className="relative shrink-0">
-          <UserProfileAvatar
-            src={displayAvatar}
-            alt="صورة حساب الخياط"
-            size="md"
-            className={
-              hasPendingAvatar ? 'border-primary/45 ring-primary/30' : undefined
-            }
-          />
-          {savingAvatar && (
-            <span className="absolute inset-0 flex items-center justify-center rounded-full bg-mistara-cream/70">
-              <span className="h-5 w-5 animate-spin rounded-full border-2 border-primary/30 border-t-primary" />
-            </span>
-          )}
-        </div>
+        <UserProfileAvatar
+          src={displayAvatar}
+          alt="صورة حساب الخياط"
+          size="md"
+          className={hasPendingAvatar ? 'border-primary/45 ring-primary/30' : undefined}
+        />
         <div className="min-w-0 flex-1">
           <p className="text-sm font-black text-mistara-gold">لوحة الخياط</p>
           <p className="truncate text-sm font-bold text-mistara-espresso">
@@ -104,68 +95,18 @@ export function AccountMenuPanel({
         </div>
       </div>
 
-      <div className="space-y-2">
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          className="hidden"
-          onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file) onAvatarFilePick(file);
-            e.target.value = '';
-          }}
-        />
-        <button
-          type="button"
-          disabled={savingAvatar}
-          onClick={() => fileInputRef.current?.click()}
-          className="w-full rounded-xl border border-mistara-gold/30 bg-mistara-gold/10 py-2.5 text-sm font-bold text-mistara-warm transition-colors hover:bg-mistara-gold/12 disabled:opacity-60"
-        >
-          {avatarUrl || hasPendingAvatar ? 'اختيار صورة أخرى' : 'رفع صورة أو شعار'}
-        </button>
-
-        {hasPendingAvatar && (
-          <div className="flex gap-2">
-            <button
-              type="button"
-              disabled={savingAvatar}
-              onClick={onSaveAvatar}
-              className="flex-1 rounded-xl bg-mistara-gold py-2.5 text-sm font-black text-mistara-cream shadow-md shadow-mistara-gold/15 disabled:opacity-60"
-            >
-              {savingAvatar ? 'جاري الحفظ...' : 'حفظ الصورة الشخصية'}
-            </button>
-            <button
-              type="button"
-              disabled={savingAvatar}
-              onClick={onDiscardPendingAvatar}
-              className="rounded-xl border border-mistara-brown/20 bg-mistara-beige px-3 py-2.5 text-xs font-bold text-mistara-brown disabled:opacity-60"
-              aria-label="إلغاء المعاينة"
-            >
-              ✕
-            </button>
-          </div>
-        )}
-
-        {hasPendingAvatar && !savingAvatar && (
-          <p className="text-[11px] font-bold text-mistara-gold-dark">
-            معاينة — اضغط «حفظ الصورة الشخصية» لتثبيتها بعد تحديث الصفحة.
-          </p>
-        )}
-
-        {avatarFeedback && (
-          <p
-            role="status"
-            className={`rounded-xl px-3 py-2 text-xs font-bold ${
-              avatarFeedback.type === 'success'
-                ? 'border border-mistara-gold/35 bg-mistara-gold/12 text-mistara-warm'
-                : 'border border-red-800/30 bg-red-800/8 text-red-800'
-            }`}
-          >
-            {avatarFeedback.message}
-          </p>
-        )}
-      </div>
+      <TailorAvatarPicker
+        avatarUrl={avatarUrl}
+        pendingPreview={pendingAvatarPreview}
+        hasPendingCloudSync={hasPendingAvatar}
+        savingAvatar={savingAvatar}
+        feedback={avatarFeedback}
+        compact
+        onPickFile={onAvatarFilePick}
+        onSaveCloud={onSaveAvatar}
+        onRemove={displayAvatar ? onRemoveAvatar : undefined}
+        onDiscardPending={onDiscardPendingAvatar}
+      />
 
       <div className="rounded-xl border border-mistara-brown/15 bg-mistara-cream/60 px-3 py-2.5 space-y-1.5">
         <div>

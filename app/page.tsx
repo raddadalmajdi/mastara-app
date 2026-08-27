@@ -136,6 +136,7 @@ export default function Home() {
         avatarFeedback={tailor.avatarFeedback}
         onAvatarFilePick={(file) => void tailor.handleAvatarFilePick(file)}
         onSaveAvatar={() => void tailor.handleSaveAvatar()}
+        onRemoveAvatar={tailor.handleRemoveAvatar}
         onDiscardPendingAvatar={tailor.handleDiscardPendingAvatar}
         onOpenSettings={() => {
           session.setShowMenu(false);
@@ -211,6 +212,14 @@ export default function Home() {
         cloudNotes={tailor.cloudNotes}
         onCloudNotesChange={tailor.setCloudNotes}
         tailorAvatarUrl={tailor.tailorAvatarUrl}
+        pendingAvatarPreview={tailor.pendingAvatarPreview}
+        hasPendingAvatar={tailor.hasPendingAvatar}
+        savingAvatar={tailor.savingAvatar}
+        avatarFeedback={tailor.avatarFeedback}
+        onAvatarFilePick={(file) => void tailor.handleAvatarFilePick(file)}
+        onSaveAvatar={() => void tailor.handleSaveAvatar()}
+        onRemoveAvatar={tailor.handleRemoveAvatar}
+        onDiscardPendingAvatar={tailor.handleDiscardPendingAvatar}
         settingsFeedback={tailor.settingsFeedback}
         savingSettings={tailor.savingSettings}
         onSubmit={(e) => void tailor.handleSaveTailorProfile(e)}

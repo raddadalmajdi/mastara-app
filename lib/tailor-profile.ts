@@ -73,6 +73,22 @@ export function loadLocalAvatarUrl(userId: string): string | null {
   }
 }
 
+export function removeLocalAvatarUrl(userId: string): void {
+  if (typeof window === 'undefined' || !userId) return;
+  try {
+    localStorage.removeItem(`${LOCAL_AVATAR_PREFIX}${userId}`);
+  } catch {
+    /* ignore */
+  }
+}
+
+/** يحفظ صورة المحل محلياً (Base64) مربوطة بمعرّف التاجر — للعرض الفوري. */
+export function persistAvatarLocally(userId: string, avatarDataUrl: string): void {
+  const trimmed = avatarDataUrl.trim();
+  if (!userId || !trimmed) return;
+  saveLocalAvatarUrl(userId, trimmed);
+}
+
 export function resolveAvatarUrl(dbUrl: string | null | undefined, userId: string): string {
   const fromDb = dbUrl?.trim();
   if (fromDb) return fromDb;

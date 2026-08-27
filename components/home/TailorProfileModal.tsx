@@ -1,5 +1,7 @@
 'use client';
 
+import { TailorAvatarPicker } from '@/components/account/TailorAvatarPicker';
+import type { AvatarSaveFeedback } from '@/components/account/AccountMenuPanel';
 import { COUNTRY_CODES } from '@/lib/home/constants';
 import type { AuthFeedback } from '@/lib/home/types';
 
@@ -15,6 +17,14 @@ type TailorProfileModalProps = {
   cloudNotes: string;
   onCloudNotesChange: (value: string) => void;
   tailorAvatarUrl: string;
+  pendingAvatarPreview: string | null;
+  hasPendingAvatar: boolean;
+  savingAvatar: boolean;
+  avatarFeedback: AvatarSaveFeedback;
+  onAvatarFilePick: (file: File) => void;
+  onSaveAvatar: () => void;
+  onRemoveAvatar: () => void;
+  onDiscardPendingAvatar: () => void;
   settingsFeedback: AuthFeedback;
   savingSettings: boolean;
   onSubmit: (e: React.FormEvent) => void;
@@ -32,6 +42,14 @@ export function TailorProfileModal({
   cloudNotes,
   onCloudNotesChange,
   tailorAvatarUrl,
+  pendingAvatarPreview,
+  hasPendingAvatar,
+  savingAvatar,
+  avatarFeedback,
+  onAvatarFilePick,
+  onSaveAvatar,
+  onRemoveAvatar,
+  onDiscardPendingAvatar,
   settingsFeedback,
   savingSettings,
   onSubmit,
@@ -56,23 +74,21 @@ export function TailorProfileModal({
         </div>
 
         <form onSubmit={onSubmit} className="space-y-[clamp(0.875rem,3.5vw,1.125rem)]">
-          <div className="flex items-center gap-3 rounded-2xl border border-mistara-brown/15 bg-mistara-cream/60 p-3">
-            {tailorAvatarUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={tailorAvatarUrl}
-                alt="معاينة صورة الحساب"
-                className="h-14 w-14 shrink-0 rounded-2xl border border-primary/30 object-cover"
-              />
-            ) : (
-              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-lg font-black text-primary">
-                م
-              </div>
-            )}
-            <p className="text-[clamp(0.6875rem,3vw,0.8125rem)] leading-relaxed text-mistara-brown/80">
-              أدخل رقم جوالك لإكمال تسجيل محلّك. يمكنك لاحقاً إضافة الشعار من قائمة الحساب.
-            </p>
-          </div>
+          <TailorAvatarPicker
+            avatarUrl={tailorAvatarUrl}
+            pendingPreview={pendingAvatarPreview}
+            hasPendingCloudSync={hasPendingAvatar}
+            savingAvatar={savingAvatar}
+            feedback={avatarFeedback}
+            onPickFile={onAvatarFilePick}
+            onSaveCloud={onSaveAvatar}
+            onRemove={tailorAvatarUrl || pendingAvatarPreview ? onRemoveAvatar : undefined}
+            onDiscardPending={onDiscardPendingAvatar}
+          />
+
+          <p className="text-[clamp(0.6875rem,3vw,0.8125rem)] leading-relaxed text-mistara-brown/80">
+            أدخل رقم جوالك لإكمال تسجيل محلّك. صورة المحل تُحفظ فوراً على هذا الجهاز وتظهر في لوحة التحكم.
+          </p>
 
           {settingsFeedback && (
             <div

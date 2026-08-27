@@ -12,9 +12,12 @@ import { getUserFacingErrorMessage } from '@/lib/user-facing-error';
 import { fileToAvatarJpegBlob, uploadTailorAvatar } from '@/lib/upload-tailor-avatar';
 import {
   fetchTailorProfile,
+  loadLocalAvatarUrl,
   loadLocalTailorProfile,
+  persistAvatarLocally,
   persistLocalTailorAvatarUrl,
   persistTailorAvatarUrl,
+  removeLocalAvatarUrl,
   resolveAvatarUrl,
   saveLocalAvatarUrl,
   saveLocalTailorProfile,
@@ -106,7 +109,7 @@ export function useTailorProfile({
       if (!isFirebaseConfigured()) {
         const local = loadLocalTailorProfile();
         if (local?.shop_name) setTailorShopName(local.shop_name);
-        if (local?.avatar_url) setTailorAvatarUrl(local.avatar_url);
+        setTailorAvatarUrl(resolveAvatarUrl(local?.avatar_url, userId));
         if (local?.cloud_notes) setCloudNotes(local.cloud_notes);
         if (local?.phone) {
           applyTailorPhoneFromStorage(local.phone, setTailorCountryCode, setTailorLocalPhone);
@@ -161,7 +164,12 @@ export function useTailorProfile({
       resetProfile();
       return;
     }
-    void fetchProfile(appUserId(user));
+    const userId = appUserId(user);
+    const cachedAvatar = loadLocalAvatarUrl(userId);
+    if (cachedAvatar?.trim()) {
+      setTailorAvatarUrl(cachedAvatar.trim());
+    }
+    void fetchProfile(userId);
   }, [user, fetchProfile, resetProfile]);
 
   useEffect(() => {
@@ -244,18 +252,65 @@ export function useTailorProfile({
     setSavingSettings(false);
   };
 
+  const syncAvatarToCloud = useCallback(
+    async (userId: string, blob: Blob) => {
+      setSavingAvatar(true);
+      setAvatarFeedback(null);
+      const snapshot = tailorProfileSnapshot();
+
+      try {
+        const publicUrl = await uploadTailorAvatar(userId, blob);
+        const persistTarget = await persistTailorAvatarUrl(userId, publicUrl, snapshot);
+        setTailorAvatarUrl(publicUrl);
+        clearPendingAvatar();
+        setAvatarFeedback({
+          type: 'success',
+          message:
+            persistTarget === 'database'
+              ? 'تم حفظ صورة المحل في حسابك.'
+              : 'تم حفظ الصورة على هذا الجهاز — ستُزامَن مع السحابة لاحقاً.',
+        });
+      } catch (saveError) {
+        setAvatarFeedback({
+          type: 'error',
+          message: getUserFacingErrorMessage(saveError, 'تعذّر مزامنة صورة المحل.'),
+        });
+      } finally {
+        setSavingAvatar(false);
+      }
+    },
+    [clearPendingAvatar, tailorProfileSnapshot]
+  );
+
   const handleAvatarFilePick = async (file: File) => {
     setAvatarFeedback(null);
     try {
       const jpegBlob = await fileToAvatarJpegBlob(file);
+      const dataUrl = await blobToDataUrl(jpegBlob);
+      const userId = user ? appUserId(user) : 'guest-local-user';
+
+      persistAvatarLocally(userId, dataUrl);
+      if (!isFirebaseConfigured() || !user) {
+        persistLocalTailorAvatarUrl(dataUrl, tailorProfileSnapshot(), userId);
+      }
+
       if (pendingPreviewUrlRef.current) {
         URL.revokeObjectURL(pendingPreviewUrlRef.current);
+        pendingPreviewUrlRef.current = null;
       }
+
       pendingAvatarBlobRef.current = jpegBlob;
-      const previewUrl = URL.createObjectURL(jpegBlob);
-      pendingPreviewUrlRef.current = previewUrl;
-      setPendingAvatarPreview(previewUrl);
-      setHasPendingAvatar(true);
+      setTailorAvatarUrl(dataUrl);
+      setPendingAvatarPreview(null);
+      setHasPendingAvatar(isFirebaseConfigured() && Boolean(user));
+      setAvatarFeedback({
+        type: 'success',
+        message: 'تم حفظ صورة المحل محلياً — تظهر لك فوراً.',
+      });
+
+      if (isFirebaseConfigured() && user) {
+        void syncAvatarToCloud(appUserId(user), jpegBlob);
+      }
     } catch (pickError) {
       setAvatarFeedback({
         type: 'error',
@@ -267,41 +322,19 @@ export function useTailorProfile({
   const handleSaveAvatar = async () => {
     const blob = pendingAvatarBlobRef.current;
     if (!blob) return;
+    if (!user || !isFirebaseConfigured()) return;
+    await syncAvatarToCloud(appUserId(user), blob);
+  };
 
-    setSavingAvatar(true);
-    setAvatarFeedback(null);
-    const snapshot = tailorProfileSnapshot();
-
-    try {
-      if (!isFirebaseConfigured() || !user) {
-        const dataUrl = await blobToDataUrl(blob);
-        persistLocalTailorAvatarUrl(dataUrl, snapshot, user ? appUserId(user) : 'guest-local-user');
-        setTailorAvatarUrl(dataUrl);
-        clearPendingAvatar();
-        setAvatarFeedback({ type: 'success', message: 'تم حفظ الصورة الشخصية بنجاح.' });
-        return;
-      }
-
-      const userId = appUserId(user);
-      const publicUrl = await uploadTailorAvatar(userId, blob);
-      const persistTarget = await persistTailorAvatarUrl(userId, publicUrl, snapshot);
-      setTailorAvatarUrl(publicUrl);
-      clearPendingAvatar();
-      setAvatarFeedback({
-        type: 'success',
-        message:
-          persistTarget === 'database'
-            ? 'تم حفظ الصورة الشخصية في حسابك.'
-            : 'تم حفظ الصورة على هذا الجهاز — ستُزامَن مع السحابة عند توفر الاتصال.',
-      });
-    } catch (saveError) {
-      setAvatarFeedback({
-        type: 'error',
-        message: getUserFacingErrorMessage(saveError, 'تعذّر حفظ صورة الحساب.'),
-      });
-    } finally {
-      setSavingAvatar(false);
+  const handleRemoveAvatar = () => {
+    const userId = user ? appUserId(user) : 'guest-local-user';
+    removeLocalAvatarUrl(userId);
+    if (!isFirebaseConfigured() || !user) {
+      persistLocalTailorAvatarUrl('', tailorProfileSnapshot(), userId);
     }
+    clearPendingAvatar();
+    setTailorAvatarUrl('');
+    setAvatarFeedback({ type: 'success', message: 'تمت إزالة صورة المحل.' });
   };
 
   return {
@@ -330,6 +363,7 @@ export function useTailorProfile({
     handleSaveTailorProfile,
     handleAvatarFilePick,
     handleSaveAvatar,
+    handleRemoveAvatar,
     handleDiscardPendingAvatar: () => {
       clearPendingAvatar();
       setAvatarFeedback(null);
