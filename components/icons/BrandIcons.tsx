@@ -31,6 +31,33 @@ export function CameraScanIcon({ className = 'h-5 w-5', ...props }: IconProps) {
   );
 }
 
+/** أيقونة FAB — فاتورة داخل إطار ماسح مع عدسة كاميرا (Lucide-style). */
+export function InvoiceScanFabIcon({ className = 'h-7 w-7', ...props }: IconProps) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.65"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      {...props}
+    >
+      <path d="M5 9V6h3" strokeWidth="2.1" />
+      <path d="M19 9V6h-3" strokeWidth="2.1" />
+      <path d="M5 15v3h3" strokeWidth="2.1" />
+      <path d="M19 15v3h-3" strokeWidth="2.1" />
+      <path d="M9 7h6a1.5 1.5 0 011.5 1.5V16.5l-1.5-1-1.5 1-1.5-1-1.5 1-1.5-1L9 16.5V8.5A1.5 1.5 0 019 7z" />
+      <path d="M10.5 10h4.5" />
+      <path d="M10.5 12h3.25" />
+      <path d="M10 14.5h5" strokeWidth="2.15" />
+      <circle cx="16.75" cy="16.75" r="2.1" strokeWidth="1.45" />
+      <circle cx="16.75" cy="16.75" r="0.85" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
 export function DocumentStackIcon({ className = 'h-5 w-5', ...props }: IconProps) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" {...props}>
