@@ -19,8 +19,10 @@ import {
   uploadScannedInvoiceFiles,
 } from '@/lib/upload-scanned-invoice';
 import {
+  isCustomerNameLookupReady,
   isCustomerPhoneSearchable,
   lookupTailorCustomerByPhone,
+  lookupTailorCustomerByPhoneSync,
   normalizeStoredPhone,
   phoneMatchVariants,
   phonesMatch,
@@ -171,33 +173,44 @@ export function useCustomerWorkspace({ user, organizationId }: UseCustomerWorksp
     }, INVOICE_SEARCH_DEBOUNCE_MS);
   };
 
+  const applyDirectoryHit = (name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    setCustomerDisplayName(trimmed);
+    setCustomerBookStatus('known');
+    setCustomerNameLocked(true);
+    setCustomerNameEditing(false);
+  };
+
   const scheduleCustomerDirectoryLookup = (localPhone: string, cCode: string) => {
     if (customerLookupTimerRef.current !== null) {
       window.clearTimeout(customerLookupTimerRef.current);
     }
-    if (!isCustomerPhoneSearchable(localPhone)) {
+    if (!isCustomerNameLookupReady(localPhone)) {
       customerLookupSeqRef.current += 1;
-      setCustomerBookStatus('idle');
+      if (!isCustomerPhoneSearchable(localPhone)) {
+        setCustomerBookStatus('idle');
+      }
       return;
     }
+    const tailorId = user ? appUserId(user) : 'guest-local-user';
+    const fullPhone = `${cCode}${localPhone}`;
+    const instantHit = lookupTailorCustomerByPhoneSync(tailorId, fullPhone, organizationId);
+    if (instantHit?.customer_name?.trim()) {
+      applyDirectoryHit(instantHit.customer_name);
+    } else {
+      setCustomerBookStatus('searching');
+    }
+
     const lookupSeq = ++customerLookupSeqRef.current;
     customerLookupTimerRef.current = window.setTimeout(() => {
       void (async () => {
-        setCustomerBookStatus('searching');
-        const fullPhone = `${cCode}${localPhone}`;
         try {
-          const hit = await lookupTailorCustomerByPhone(
-            user ? appUserId(user) : 'guest-local-user',
-            fullPhone,
-            organizationId
-          );
+          const hit = await lookupTailorCustomerByPhone(tailorId, fullPhone, organizationId);
           if (lookupSeq !== customerLookupSeqRef.current) return;
           if (hit?.customer_name?.trim()) {
-            setCustomerDisplayName(hit.customer_name.trim());
-            setCustomerBookStatus('known');
-            setCustomerNameLocked(true);
-            setCustomerNameEditing(false);
-          } else {
+            applyDirectoryHit(hit.customer_name);
+          } else if (!instantHit) {
             setCustomerBookStatus('new');
             setCustomerNameLocked(false);
             setCustomerNameEditing(false);
@@ -207,14 +220,14 @@ export function useCustomerWorkspace({ user, organizationId }: UseCustomerWorksp
           if (process.env.NODE_ENV === 'development') {
             console.warn('[tailor_customers] lookup failed', lookupError);
           }
-          setCustomerBookStatus('new');
+          if (!instantHit) setCustomerBookStatus('new');
         }
       })();
-    }, 200);
+    }, 50);
   };
 
   const handleCustomerPhoneInput = (val: string) => {
-    const cleanVal = val.replace(/\D/g, '');
+    const cleanVal = normalizeStoredPhone(val);
     setCustomerLocalPhone(cleanVal);
     if (!isCustomerPhoneSearchable(cleanVal)) {
       setCustomerDisplayName('');
@@ -223,6 +236,13 @@ export function useCustomerWorkspace({ user, organizationId }: UseCustomerWorksp
       setCustomerNameEditing(false);
       setCustomerInvoices([]);
       setWhatsappMessages({});
+    } else if (!isCustomerNameLookupReady(cleanVal)) {
+      setCustomerBookStatus('idle');
+      if (customerNameLocked) {
+        setCustomerDisplayName('');
+        setCustomerNameLocked(false);
+        setCustomerNameEditing(false);
+      }
     } else {
       setCustomerBookStatus('searching');
     }

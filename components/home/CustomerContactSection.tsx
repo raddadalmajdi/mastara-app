@@ -3,7 +3,7 @@
 import { COUNTRY_CODES } from '@/lib/home/constants';
 import type { CustomerBookStatus } from '@/lib/home/types';
 import type { InvoiceSaveUiPhase } from '@/components/invoices/InvoiceSaveProgressRing';
-import { isCustomerPhoneSearchable } from '@/lib/tailor-customers';
+import { isCustomerPhoneSearchable, normalizeStoredPhone } from '@/lib/tailor-customers';
 
 type CustomerContactSectionProps = {
   customerLocalPhone: string;
@@ -62,7 +62,7 @@ export function CustomerContactSection({
             autoComplete="tel-national"
             enterKeyHint="done"
             value={customerLocalPhone}
-            onChange={(e) => onPhoneChange(e.target.value.replace(/\D/g, ''))}
+            onChange={(e) => onPhoneChange(normalizeStoredPhone(e.target.value))}
             placeholder="50123456"
             className="auth-phone-input--hero tnum text-right font-mono"
             dir="ltr"

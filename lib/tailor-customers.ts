@@ -21,6 +21,8 @@ export type TailorCustomerRecord = {
 
 const LEGACY_LOCAL_CUSTOMERS_KEY = 'mistarh_local_customers';
 const GUEST_TAILOR_ID = 'guest-local-user';
+const GCC_COUNTRY_CODES = ['965', '966', '971', '974', '973', '968'];
+const PHONE_CORE_LEN = 8;
 
 type LocalCustomer = {
   phone: string;
@@ -29,25 +31,166 @@ type LocalCustomer = {
   organization_id?: string | null;
 };
 
+const memoryCustomers = new Map<string, LocalCustomer[]>();
+
 function localCustomersKey(tailorUserId: string): string {
   return `esalak_tailor_customers_${tailorUserId}`;
 }
 
-function readLocalCustomers(tailorUserId: string): LocalCustomer[] {
+export function normalizeStoredPhone(fullPhone: string): string {
+  const mapped = String(fullPhone || '')
+    .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
+    .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)));
+  return mapped.replace(/\D/g, '');
+}
+
+export function phoneSuffix(phone: string, length = PHONE_CORE_LEN): string {
+  const digits = normalizeStoredPhone(phone);
+  if (!digits) return '';
+  return digits.length <= length ? digits : digits.slice(-length);
+}
+
+function stripKnownCountryCode(digits: string): string {
+  for (const cc of GCC_COUNTRY_CODES) {
+    if (digits.startsWith(cc) && digits.length - cc.length >= 7) {
+      return digits.slice(cc.length);
+    }
+  }
+  if (digits.startsWith('00') && digits.length > 9) {
+    return stripKnownCountryCode(digits.slice(2));
+  }
+  return digits;
+}
+
+export function expandPhoneLookupKeys(fullPhone: string): string[] {
+  const raw = normalizeStoredPhone(fullPhone);
+  const keys = new Set<string>();
+  if (!raw) return [];
+  keys.add(raw);
+  if (raw.startsWith('00')) keys.add(raw.slice(2));
+  const local = stripKnownCountryCode(raw);
+  keys.add(local);
+  for (const cc of GCC_COUNTRY_CODES) {
+    keys.add(`${cc}${local}`);
+    keys.add(`+${cc}${local}`);
+  }
+  keys.add(phoneSuffix(raw, 8));
+  keys.add(phoneSuffix(raw, 9));
+  keys.add(phoneSuffix(local, 8));
+  return [...keys].filter(Boolean);
+}
+
+export const MIN_CUSTOMER_PHONE_SEARCH_LENGTH = 4;
+export const MIN_CUSTOMER_NAME_LOOKUP_LENGTH = 7;
+
+export function isCustomerPhoneSearchable(localPhone: string): boolean {
+  return normalizeStoredPhone(localPhone).length >= MIN_CUSTOMER_PHONE_SEARCH_LENGTH;
+}
+
+export function isCustomerNameLookupReady(localPhone: string): boolean {
+  return normalizeStoredPhone(localPhone).length >= MIN_CUSTOMER_NAME_LOOKUP_LENGTH;
+}
+
+export function phoneMatchVariants(countryCode: string, localPhone: string): string[] {
+  const local = normalizeStoredPhone(localPhone);
+  const cc = normalizeStoredPhone(countryCode);
+  return expandPhoneLookupKeys(cc ? `${cc}${local}` : local);
+}
+
+export function phonesMatch(a: string, b: string): boolean {
+  const da = normalizeStoredPhone(a);
+  const db = normalizeStoredPhone(b);
+  if (!da || !db) return false;
+  if (da === db) return true;
+
+  const localA = stripKnownCountryCode(da);
+  const localB = stripKnownCountryCode(db);
+  if (localA && localB && localA === localB) return true;
+
+  const coreLen = Math.min(PHONE_CORE_LEN, da.length, db.length);
+  if (coreLen >= 7 && da.slice(-coreLen) === db.slice(-coreLen)) return true;
+  if (da.length >= 8 && db.length >= 8 && da.slice(-8) === db.slice(-8)) return true;
+  if (da.length >= 9 && db.length >= 9 && da.slice(-9) === db.slice(-9)) return true;
+
+  return false;
+}
+
+function customerNameFromData(data: Record<string, unknown> | undefined): string {
+  if (!data) return '';
+  const raw = data.customer_name ?? data.name ?? data.customerName ?? data.client_name;
+  return typeof raw === 'string' ? raw.trim() : '';
+}
+
+function phoneFromData(id: string, data: Record<string, unknown>): string {
+  const raw = data.phone ?? data.customer_phone ?? data.mobile ?? data.phoneNumber;
+  const fromFields = normalizeStoredPhone(String(raw ?? ''));
+  if (fromFields) return fromFields;
+  const trailing = String(id).match(/(\d{7,15})$/);
+  return trailing ? trailing[1] : '';
+}
+
+function recordFromData(
+  id: string,
+  data: Record<string, unknown>,
+  fallbackTailorId: string,
+  fallbackOrg?: string | null
+): TailorCustomerRecord | null {
+  const customer_name = customerNameFromData(data);
+  if (!customer_name) return null;
+  return {
+    id,
+    tailor_user_id: String(data.tailor_user_id || fallbackTailorId),
+    organization_id:
+      data.organization_id != null && String(data.organization_id).trim()
+        ? String(data.organization_id)
+        : fallbackOrg ?? null,
+    phone: phoneFromData(id, data),
+    customer_name,
+  };
+}
+
+function readStoredList(key: string): LocalCustomer[] {
   if (typeof window === 'undefined') return [];
   try {
-    const scoped = JSON.parse(localStorage.getItem(localCustomersKey(tailorUserId)) || '[]') as LocalCustomer[];
-    if (Array.isArray(scoped) && scoped.length > 0) return scoped;
-    const legacy = JSON.parse(localStorage.getItem(LEGACY_LOCAL_CUSTOMERS_KEY) || '[]') as LocalCustomer[];
-    return Array.isArray(legacy) ? legacy : [];
+    const parsed = JSON.parse(localStorage.getItem(key) || '[]') as LocalCustomer[];
+    return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
   }
 }
 
+function mergeCustomerLists(...lists: LocalCustomer[][]): LocalCustomer[] {
+  const merged: LocalCustomer[] = [];
+  for (const list of lists) {
+    for (const item of list) {
+      if (!item?.customer_name?.trim() || !item.phone) continue;
+      const idx = merged.findIndex((c) => phonesMatch(c.phone, item.phone));
+      if (idx >= 0) {
+        merged[idx] = { ...merged[idx], ...item, customer_name: item.customer_name.trim() };
+      } else {
+        merged.push({ ...item, customer_name: item.customer_name.trim() });
+      }
+    }
+  }
+  return merged;
+}
+
+function readLocalCustomers(tailorUserId: string): LocalCustomer[] {
+  const fromMemory = memoryCustomers.get(tailorUserId) || [];
+  const scoped = readStoredList(localCustomersKey(tailorUserId));
+  const guest = tailorUserId !== GUEST_TAILOR_ID ? readStoredList(localCustomersKey(GUEST_TAILOR_ID)) : [];
+  const legacy = readStoredList(LEGACY_LOCAL_CUSTOMERS_KEY);
+  return mergeCustomerLists(fromMemory, scoped, guest, legacy);
+}
+
 function writeLocalCustomers(tailorUserId: string, list: LocalCustomer[]): void {
+  memoryCustomers.set(tailorUserId, list.slice(0, 400));
   if (typeof window === 'undefined') return;
-  localStorage.setItem(localCustomersKey(tailorUserId), JSON.stringify(list.slice(0, 400)));
+  try {
+    localStorage.setItem(localCustomersKey(tailorUserId), JSON.stringify(list.slice(0, 400)));
+  } catch {
+    /* private mode / quota */
+  }
 }
 
 function cacheLocalCustomer(
@@ -69,71 +212,17 @@ function cacheLocalCustomer(
   writeLocalCustomers(tailorUserId, list);
 }
 
-export function normalizeStoredPhone(fullPhone: string): string {
-  return fullPhone.replace(/\D/g, '');
-}
-
-export const MIN_CUSTOMER_PHONE_SEARCH_LENGTH = 4;
-
-export function isCustomerPhoneSearchable(localPhone: string): boolean {
-  return localPhone.replace(/\D/g, '').length >= MIN_CUSTOMER_PHONE_SEARCH_LENGTH;
-}
-
-export function phoneMatchVariants(countryCode: string, localPhone: string): string[] {
-  const local = localPhone.replace(/\D/g, '');
-  const cc = countryCode.replace(/\D/g, '');
-  const full = `${cc}${local}`;
-  const variants = new Set<string>();
-  if (local) variants.add(local);
-  if (full) variants.add(full);
-  if (cc && local) variants.add(`+${cc}${local}`);
-  return [...variants];
-}
-
-export function phonesMatch(a: string, b: string): boolean {
-  const da = normalizeStoredPhone(a);
-  const db = normalizeStoredPhone(b);
-  if (!da || !db) return false;
-  if (da === db) return true;
-  if (da.endsWith(db) || db.endsWith(da)) return true;
-  return false;
-}
-
-function customerNameFromData(data: Record<string, unknown> | undefined): string {
-  if (!data) return '';
-  const raw = data.customer_name ?? data.name ?? data.customerName ?? data.client_name;
-  return typeof raw === 'string' ? raw.trim() : '';
-}
-
-function recordFromData(
-  id: string,
-  data: Record<string, unknown>,
-  fallbackTailorId: string,
-  fallbackOrg?: string | null
-): TailorCustomerRecord | null {
-  const customer_name = customerNameFromData(data);
-  if (!customer_name) return null;
-  return {
-    id,
-    tailor_user_id: String(data.tailor_user_id || fallbackTailorId),
-    organization_id:
-      data.organization_id != null && String(data.organization_id).trim()
-        ? String(data.organization_id)
-        : fallbackOrg ?? null,
-    phone: normalizeStoredPhone(String(data.phone || '')),
-    customer_name,
-  };
-}
-
-function findLocalCustomer(
+export function lookupTailorCustomerByPhoneSync(
   tailorUserId: string,
   fullPhone: string,
   organizationId?: string | null
 ): TailorCustomerRecord | null {
-  const hit = readLocalCustomers(tailorUserId).find((c) => phonesMatch(c.phone, fullPhone));
+  const normalized = normalizeStoredPhone(fullPhone);
+  if (!normalized) return null;
+  const hit = readLocalCustomers(tailorUserId).find((c) => phonesMatch(c.phone, normalized));
   if (!hit?.customer_name?.trim()) return null;
   return {
-    id: `local-${normalizeStoredPhone(hit.phone)}`,
+    id: `local-${phoneSuffix(hit.phone)}`,
     tailor_user_id: tailorUserId,
     organization_id: organizationId ?? hit.organization_id ?? null,
     phone: hit.phone,
@@ -158,10 +247,11 @@ export async function lookupTailorCustomerByPhone(
   const normalized = normalizeStoredPhone(fullPhone);
   if (!normalized) return null;
 
-  const localHit = findLocalCustomer(tailorUserId, normalized, organizationId);
+  const localHit = lookupTailorCustomerByPhoneSync(tailorUserId, normalized, organizationId);
+  if (localHit) return localHit;
 
   if (!isFirebaseConfigured() || isGuestTailor(tailorUserId)) {
-    return localHit;
+    return null;
   }
 
   try {
@@ -171,43 +261,79 @@ export async function lookupTailorCustomerByPhone(
   }
 
   const db = getFirebaseFirestoreClient();
-  const variants = Array.from(
-    new Set([normalized, ...phoneMatchVariants('', normalized)].map((v) => normalizeStoredPhone(v) || v))
-  ).filter(Boolean);
+  const variants = expandPhoneLookupKeys(normalized);
+  const orgKeys = Array.from(new Set([organizationId?.trim() || 'personal', 'personal']));
 
-  for (const variant of variants) {
-    const digits = normalizeStoredPhone(variant);
-    if (!digits) continue;
-    const directSnap = await getDoc(doc(db, 'tailor_customers', customerDocId(tailorUserId, digits, organizationId)));
-    if (directSnap.exists()) {
-      const record = recordFromData(directSnap.id, directSnap.data() as Record<string, unknown>, tailorUserId, organizationId);
-      if (record) {
-        cacheLocalCustomer(tailorUserId, record.phone, record.customer_name, record.organization_id);
-        return record;
+  for (const orgKey of orgKeys) {
+    for (const variant of variants) {
+      const digits = normalizeStoredPhone(variant);
+      if (!digits) continue;
+      const directSnap = await getDoc(
+        doc(db, 'tailor_customers', customerDocId(tailorUserId, digits, orgKey === 'personal' ? null : orgKey))
+      );
+      if (directSnap.exists()) {
+        const record = recordFromData(
+          directSnap.id,
+          directSnap.data() as Record<string, unknown>,
+          tailorUserId,
+          organizationId
+        );
+        if (record && phonesMatch(record.phone || digits, normalized)) {
+          cacheLocalCustomer(tailorUserId, record.phone || digits, record.customer_name, record.organization_id);
+          return record;
+        }
       }
     }
   }
 
-  for (const variant of variants) {
-    const snap = await getDocs(
-      query(
-        collection(db, 'tailor_customers'),
-        where('tailor_user_id', '==', tailorUserId),
-        where('phone', '==', variant),
-        limit(5)
-      )
-    );
-    for (const docSnap of snap.docs) {
-      const record = recordFromData(docSnap.id, docSnap.data() as Record<string, unknown>, tailorUserId, organizationId);
-      if (record && phonesMatch(record.phone, normalized)) {
-        cacheLocalCustomer(tailorUserId, record.phone, record.customer_name, record.organization_id);
-        return record;
+  const suffix = phoneSuffix(normalized, 8);
+  if (suffix.length >= 7) {
+    try {
+      const suffixSnap = await getDocs(
+        query(
+          collection(db, 'tailor_customers'),
+          where('tailor_user_id', '==', tailorUserId),
+          where('phone_suffix', '==', suffix),
+          limit(5)
+        )
+      );
+      for (const docSnap of suffixSnap.docs) {
+        const record = recordFromData(docSnap.id, docSnap.data() as Record<string, unknown>, tailorUserId, organizationId);
+        if (record && phonesMatch(record.phone || suffix, normalized)) {
+          cacheLocalCustomer(tailorUserId, record.phone || suffix, record.customer_name, record.organization_id);
+          return record;
+        }
       }
+    } catch {
+      /* index may not be deployed yet */
+    }
+  }
+
+  for (const variant of variants) {
+    const equalityValue = variant.startsWith('+') ? variant : normalizeStoredPhone(variant) || variant;
+    try {
+      const snap = await getDocs(
+        query(
+          collection(db, 'tailor_customers'),
+          where('tailor_user_id', '==', tailorUserId),
+          where('phone', '==', equalityValue),
+          limit(5)
+        )
+      );
+      for (const docSnap of snap.docs) {
+        const record = recordFromData(docSnap.id, docSnap.data() as Record<string, unknown>, tailorUserId, organizationId);
+        if (record && phonesMatch(record.phone || equalityValue, normalized)) {
+          cacheLocalCustomer(tailorUserId, record.phone || String(equalityValue), record.customer_name, record.organization_id);
+          return record;
+        }
+      }
+    } catch {
+      /* ignore query variant errors */
     }
   }
 
   const wideSnap = await getDocs(
-    query(collection(db, 'tailor_customers'), where('tailor_user_id', '==', tailorUserId), limit(80))
+    query(collection(db, 'tailor_customers'), where('tailor_user_id', '==', tailorUserId), limit(500))
   );
   for (const docSnap of wideSnap.docs) {
     const record = recordFromData(docSnap.id, docSnap.data() as Record<string, unknown>, tailorUserId, organizationId);
@@ -230,6 +356,9 @@ export async function upsertTailorCustomer(
   const name = customerName.trim();
   if (!phone || !name) return;
 
+  const localDigits = stripKnownCountryCode(phone);
+  const suffix = phoneSuffix(localDigits || phone, 8);
+
   cacheLocalCustomer(tailorUserId, phone, name, organizationId);
 
   if (!isFirebaseConfigured() || isGuestTailor(tailorUserId)) {
@@ -244,6 +373,8 @@ export async function upsertTailorCustomer(
   const payload: Record<string, unknown> = {
     tailor_user_id: tailorUserId,
     phone,
+    phone_local: localDigits,
+    phone_suffix: suffix,
     customer_name: name,
     name,
     organization_id: organizationId ?? null,

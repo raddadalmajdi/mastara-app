@@ -43,6 +43,14 @@
       ]
     },
     {
+      "collectionGroup": "tailor_customers",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "tailor_user_id", "order": "ASCENDING" },
+        { "fieldPath": "phone_suffix", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "organization_members",
       "queryScope": "COLLECTION",
       "fields": [
