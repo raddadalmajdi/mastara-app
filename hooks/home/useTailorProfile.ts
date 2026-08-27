@@ -30,7 +30,6 @@ import { normalizeAvatarSrc } from '@/lib/avatar-src';
 type UseTailorProfileOptions = {
   user: AppUser | null;
   organizationId: string | null;
-  authBootstrapping: boolean;
   setLoading: (loading: boolean) => void;
 };
 
@@ -55,7 +54,6 @@ function applyTailorPhoneFromStorage(
 export function useTailorProfile({
   user,
   organizationId,
-  authBootstrapping,
   setLoading,
 }: UseTailorProfileOptions) {
   const [tailorCountryCode, setTailorCountryCode] = useState('965');
@@ -74,7 +72,6 @@ export function useTailorProfile({
   const [showTailorProfileModal, setShowTailorProfileModal] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
   const [settingsFeedback, setSettingsFeedback] = useState<AuthFeedback>(null);
-  const profileOnboardingShownRef = useRef(false);
 
   const clearPendingAvatar = useCallback(() => {
     if (pendingPreviewUrlRef.current) {
@@ -103,7 +100,6 @@ export function useTailorProfile({
     setCheckingTailor(false);
     clearPendingAvatar();
     setAvatarFeedback(null);
-    profileOnboardingShownRef.current = false;
   }, [clearPendingAvatar]);
 
   const fetchProfile = useCallback(
@@ -181,13 +177,6 @@ export function useTailorProfile({
       }
     };
   }, []);
-
-  useEffect(() => {
-    if (!user || checkingTailor || authBootstrapping) return;
-    if (isTailorRegistered || profileOnboardingShownRef.current) return;
-    profileOnboardingShownRef.current = true;
-    setShowTailorProfileModal(true);
-  }, [user, checkingTailor, authBootstrapping, isTailorRegistered]);
 
   const handleSaveTailorProfile = async (e: React.FormEvent) => {
     e.preventDefault();

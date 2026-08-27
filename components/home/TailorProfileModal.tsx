@@ -62,7 +62,7 @@ export function TailorProfileModal({
       <div className="auth-shell-card glass-panel w-full max-h-[92dvh] overflow-y-auto border border-primary/20 shadow-2xl sm:max-h-none">
         <div className="mb-[clamp(0.75rem,3vw,1rem)] flex items-center justify-between border-b border-mistara-brown/15 pb-2">
           <h3 className="text-[clamp(1rem,4.2vw,1.125rem)] font-bold text-mistara-espresso">
-            إكمال تسجيل المحل
+            إعدادات المحل
           </h3>
           <button
             type="button"
@@ -90,7 +90,7 @@ export function TailorProfileModal({
           />
 
           <p className="text-[clamp(0.6875rem,3vw,0.8125rem)] leading-relaxed text-mistara-brown/80">
-            أدخل رقم جوالك لإكمال تسجيل محلّك. صورة المحل تُحفظ فوراً على هذا الجهاز وتظهر في لوحة التحكم.
+            عدّل اسم المحل ورقم الجوال والملاحظات وصورة الشعار. يمكنك إغلاق هذه النافذة والعودة للعمل فوراً.
           </p>
 
           {settingsFeedback && (

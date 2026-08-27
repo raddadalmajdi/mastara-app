@@ -39,7 +39,6 @@ export default function Home() {
   const tailor = useTailorProfile({
     user: session.user,
     organizationId,
-    authBootstrapping: session.authBootstrapping,
     setLoading: session.setLoading,
   });
 
@@ -62,17 +61,17 @@ export default function Home() {
     auth.resetAuthForm();
   }, [session, auth]);
 
-  const showAppBootScreen =
-    Boolean(session.user) &&
-    (session.loading || tailor.checkingTailor || session.authBootstrapping);
+  const isResolvingSession =
+    isFirebaseConfigured() &&
+    (session.sessionCheckPending || session.authBootstrapping);
 
-  if (showAppBootScreen) {
+  if (isResolvingSession) {
     return (
       <AuthBootScreen
         message={
           session.authBootstrapping
             ? 'جاري التحقق من جلسة الدخول...'
-            : 'جاري تحميل بيانات حسابك...'
+            : 'جاري فتح لوحة التحكم...'
         }
       />
     );
