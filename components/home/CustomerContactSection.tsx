@@ -41,26 +41,37 @@ export function CustomerContactSection({
   uploadSavePhase,
 }: CustomerContactSectionProps) {
   return (
-    <section className="glass-panel border border-mistara-gold/35 p-4 rounded-3xl space-y-3 shadow-xl">
-      <div className="space-y-1.5">
-        <label className="auth-field-label block">رقم هاتف العميل</label>
-        <div className="flex items-stretch gap-2">
+    <section className="dashboard-contact-card space-y-[clamp(0.875rem,3.5vw,1.25rem)]">
+      <header>
+        <h2 className="dashboard-contact-title">إدخال بيانات العميل</h2>
+        <p className="text-[clamp(0.75rem,3.2vw,0.875rem)] leading-relaxed text-mistara-brown/75">
+          اكتب رقم جوال العميل أولاً — ستظهر لوحة الأرقام تلقائياً على الهاتف.
+        </p>
+      </header>
+
+      <div className="space-y-2">
+        <label htmlFor="customer-phone" className="auth-field-label block">
+          رقم هاتف العميل
+        </label>
+        <div className="auth-phone-row">
           <input
+            id="customer-phone"
             type="tel"
             inputMode="numeric"
             pattern="[0-9]*"
             autoComplete="tel-national"
             enterKeyHint="done"
             value={customerLocalPhone}
-            onChange={(e) => onPhoneChange(e.target.value)}
+            onChange={(e) => onPhoneChange(e.target.value.replace(/\D/g, ''))}
             placeholder="50123456"
-            className="auth-phone-input tnum text-right font-mono"
+            className="auth-phone-input--hero tnum text-right font-mono"
             dir="ltr"
           />
           <select
+            id="customer-country-code"
             value={customerCountryCode}
             onChange={(e) => onCountryCodeChange(e.target.value)}
-            className="auth-phone-select tnum font-mono"
+            className="auth-phone-select--hero tnum font-mono"
             aria-label="رمز الدولة"
           >
             {COUNTRY_CODES.map((c) => (
@@ -72,24 +83,29 @@ export function CustomerContactSection({
         </div>
       </div>
 
-      <div className="space-y-1.5">
-        <label className="text-sm text-mistara-gold font-bold block">اسم العميل</label>
-        <div className="flex gap-2 items-stretch">
+      <div className="space-y-2">
+        <label htmlFor="customer-name" className="auth-field-label block">
+          اسم العميل
+        </label>
+        <div className="flex items-stretch gap-2">
           <input
+            id="customer-name"
             type="text"
+            autoComplete="name"
+            enterKeyHint="next"
             value={customerDisplayName}
             onChange={(e) => onDisplayNameChange(e.target.value)}
             readOnly={customerNameLocked && !customerNameEditing}
             placeholder="اكتب اسم العميل هنا..."
-            className={`flex-1 min-w-0 rounded-xl bg-mistara-cream border border-mistara-brown/15 p-3.5 text-base font-bold text-mistara-espresso ${
-              customerNameLocked && !customerNameEditing ? 'cursor-default opacity-90' : ''
+            className={`auth-field-input min-h-[clamp(3rem,11vw,3.5rem)] font-bold ${
+              customerNameLocked && !customerNameEditing ? 'cursor-default bg-mistara-sand/60 opacity-90' : ''
             }`}
           />
           {customerBookStatus === 'known' && customerDisplayName.trim() && !customerNameEditing && (
             <button
               type="button"
               onClick={onStartNameEdit}
-              className="shrink-0 rounded-xl glass-panel border border-mistara-gold/35 px-3.5 text-mistara-warm font-bold text-sm hover:bg-mistara-beige transition-colors"
+              className="shrink-0 rounded-xl border border-primary/25 bg-mistara-sand px-3.5 text-primary transition-colors touch-manipulation hover:bg-primary/10"
               aria-label="تعديل اسم العميل"
               title="تعديل الاسم"
             >
@@ -105,7 +121,7 @@ export function CustomerContactSection({
           <button
             type="button"
             onClick={onSaveContact}
-            className="w-full bg-mistara-gold text-mistara-cream text-sm font-bold py-3 rounded-xl shadow"
+            className="auth-primary-btn w-full rounded-xl py-3 text-[clamp(0.8125rem,3.6vw,0.9375rem)] font-bold shadow touch-manipulation"
           >
             حفظ الرقم والاسم في دفتر العملاء
           </button>
@@ -115,18 +131,20 @@ export function CustomerContactSection({
         <button
           type="button"
           onClick={onSaveContact}
-          className="w-full bg-mistara-gold-dark text-mistara-cream text-sm font-bold py-3 rounded-xl shadow"
+          className="auth-primary-btn w-full rounded-xl py-3 text-[clamp(0.8125rem,3.6vw,0.9375rem)] font-bold shadow touch-manipulation"
         >
           حفظ الاسم المحدّث
         </button>
       )}
 
       {uploadSaveError && customerLocalPhone.length >= 1 && uploadSavePhase === 'idle' && (
-        <p className="text-xs text-red-800 font-bold">{uploadSaveError}</p>
+        <p className="text-[clamp(0.75rem,3.2vw,0.875rem)] font-bold text-red-800" role="alert">
+          {uploadSaveError}
+        </p>
       )}
 
       {isCustomerPhoneSearchable(customerLocalPhone) && (
-        <p className="text-[11px] text-mistara-brown/60 font-bold">
+        <p className="rounded-xl border border-primary/10 bg-mistara-sand/80 px-3 py-2.5 text-[clamp(0.6875rem,3vw,0.8125rem)] font-bold leading-relaxed text-mistara-brown/75">
           {isSearchingInvoices || customerBookStatus === 'searching'
             ? 'جاري البحث في سجل العملاء والفواتير...'
             : customerBookStatus === 'known' && customerDisplayName

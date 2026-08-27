@@ -114,7 +114,10 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen bg-mistara-sand text-mistara-espresso flex flex-col relative pb-36" dir="rtl">
+    <div
+      className="relative flex min-h-[100dvh] flex-col bg-mistara-sand text-mistara-espresso"
+      dir="rtl"
+    >
       {session.showWelcomeSuccess && <WelcomeSuccessOverlay />}
 
       <HomeHeader
@@ -141,7 +144,7 @@ export default function Home() {
         onLogout={() => void handleLogout()}
       />
 
-      <main className="flex-1 max-w-lg sm:max-w-2xl lg:max-w-4xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 space-y-4 sm:space-y-6">
+      <main className="dashboard-main">
         <CustomerContactSection
           customerLocalPhone={workspace.customerLocalPhone}
           customerCountryCode={workspace.customerCountryCode}

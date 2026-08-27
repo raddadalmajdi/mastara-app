@@ -194,6 +194,95 @@ h1, h2, h3, h4, h5, h6 {
   text-align: center;
 }
 
+.auth-phone-select:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 4px var(--color-ring);
+  outline: none;
+}
+
+/* ─── Merchant dashboard — customer phone entry ─── */
+.dashboard-main {
+  flex: 1 1 auto;
+  width: min(100%, 36rem);
+  margin-inline: auto;
+  padding: clamp(0.75rem, 3vw, 1.5rem) clamp(1rem, 4vw, 2rem);
+  padding-bottom: max(clamp(5rem, 18vw, 9rem), env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: clamp(1rem, 4vw, 1.5rem);
+}
+
+.dashboard-contact-card {
+  width: 100%;
+  border-radius: clamp(1.25rem, 4vw, 1.75rem);
+  border: 1px solid rgba(23, 70, 158, 0.18);
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 20px 50px -20px rgba(23, 70, 158, 0.22);
+  padding: clamp(1.125rem, 4.5vw, 1.625rem);
+}
+
+.dashboard-contact-title {
+  font-size: clamp(1.0625rem, 4.5vw, 1.25rem);
+  font-weight: 800;
+  color: var(--color-mistara-espresso);
+  margin-bottom: clamp(0.75rem, 3vw, 1rem);
+}
+
+.auth-phone-row {
+  display: flex;
+  align-items: stretch;
+  gap: clamp(0.5rem, 2vw, 0.75rem);
+  width: 100%;
+}
+
+.auth-phone-input--hero {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: clamp(3.75rem, 14vw, 4.75rem);
+  padding: clamp(1.125rem, 4.5vw, 1.5rem) clamp(1rem, 4vw, 1.375rem);
+  font-size: clamp(1.5rem, 6.5vw, 2.125rem);
+  line-height: 1.2;
+  letter-spacing: 0.04em;
+  border-radius: clamp(0.875rem, 3vw, 1.25rem);
+  background: #ffffff;
+  border: 2px solid rgba(23, 70, 158, 0.2);
+  color: var(--color-mistara-espresso);
+  font-weight: 800;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.auth-phone-input--hero::placeholder {
+  color: rgba(51, 65, 85, 0.38);
+  font-weight: 600;
+}
+
+.auth-phone-input--hero:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 4px var(--color-ring);
+}
+
+.auth-phone-select--hero {
+  flex-shrink: 0;
+  min-height: clamp(3.75rem, 14vw, 4.75rem);
+  width: clamp(5.75rem, 24vw, 7.25rem);
+  padding: clamp(0.875rem, 3.5vw, 1.125rem) clamp(0.375rem, 1.5vw, 0.625rem);
+  font-size: clamp(0.9375rem, 4vw, 1.0625rem);
+  font-weight: 800;
+  color: var(--color-primary);
+  text-align: center;
+  border-radius: clamp(0.875rem, 3vw, 1.25rem);
+  background: rgba(240, 247, 255, 0.95);
+  border: 2px solid rgba(23, 70, 158, 0.2);
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.auth-phone-select--hero:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 4px var(--color-ring);
+}
+
 .auth-primary-btn {
   background: #17469E;
   color: #FFFFFF;
