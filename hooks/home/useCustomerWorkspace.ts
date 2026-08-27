@@ -52,6 +52,7 @@ export function useCustomerWorkspace({ user, organizationId }: UseCustomerWorksp
   const customerLookupTimerRef = useRef<number | null>(null);
   const invoiceSearchTimerRef = useRef<number | null>(null);
   const invoiceSearchSeqRef = useRef(0);
+  const customerLookupSeqRef = useRef(0);
 
   useEffect(() => {
     return () => {
@@ -175,9 +176,11 @@ export function useCustomerWorkspace({ user, organizationId }: UseCustomerWorksp
       window.clearTimeout(customerLookupTimerRef.current);
     }
     if (!isCustomerPhoneSearchable(localPhone)) {
+      customerLookupSeqRef.current += 1;
       setCustomerBookStatus('idle');
       return;
     }
+    const lookupSeq = ++customerLookupSeqRef.current;
     customerLookupTimerRef.current = window.setTimeout(() => {
       void (async () => {
         setCustomerBookStatus('searching');
@@ -188,18 +191,19 @@ export function useCustomerWorkspace({ user, organizationId }: UseCustomerWorksp
             fullPhone,
             organizationId
           );
-          if (hit) {
-            setCustomerDisplayName(hit.customer_name);
+          if (lookupSeq !== customerLookupSeqRef.current) return;
+          if (hit?.customer_name?.trim()) {
+            setCustomerDisplayName(hit.customer_name.trim());
             setCustomerBookStatus('known');
             setCustomerNameLocked(true);
             setCustomerNameEditing(false);
           } else {
-            setCustomerDisplayName('');
             setCustomerBookStatus('new');
             setCustomerNameLocked(false);
             setCustomerNameEditing(false);
           }
         } catch (lookupError) {
+          if (lookupSeq !== customerLookupSeqRef.current) return;
           if (process.env.NODE_ENV === 'development') {
             console.warn('[tailor_customers] lookup failed', lookupError);
           }
@@ -375,6 +379,10 @@ export function useCustomerWorkspace({ user, organizationId }: UseCustomerWorksp
           { label: fullCustomerPhone }
         );
 
+        await upsertTailorCustomer(userId, fullCustomerPhone, nameToSave, organizationId);
+        setCustomerBookStatus('known');
+        setCustomerNameLocked(true);
+
         await insertInvoiceRecord(
           {
             user_id: userId,
@@ -385,9 +393,6 @@ export function useCustomerWorkspace({ user, organizationId }: UseCustomerWorksp
           },
           { allowedOrganizationId: organizationId }
         );
-
-        await upsertTailorCustomer(userId, fullCustomerPhone, nameToSave, organizationId);
-        setCustomerBookStatus('known');
 
         try {
           await searchInvoices(localPhone, customerCountryCode);
