@@ -282,9 +282,14 @@ export function useCustomerWorkspace({ user, organizationId }: UseCustomerWorksp
       window.setTimeout(() => setUploadSaveError(null), 3500);
       return;
     }
+    if (!user) {
+      setUploadSaveError('يجب تسجيل الدخول لحفظ بيانات العميل.');
+      window.setTimeout(() => setUploadSaveError(null), 3500);
+      return;
+    }
     try {
       await upsertTailorCustomer(
-        user ? appUserId(user) : 'guest-local-user',
+        appUserId(user),
         `${customerCountryCode}${localPhone}`,
         name,
         organizationId

@@ -68,13 +68,40 @@ service cloud.firestore {
         );
     }
 
+    function customerDocIdOwnedByUser(docId) {
+      let uid = request.auth.uid;
+      return docId.size() > uid.size()
+        && docId[0:uid.size()] == uid
+        && docId[uid.size():uid.size() + 1] == '_';
+    }
+
+    function canReadTailorCustomer(docId) {
+      return isSignedIn() && (
+        !exists(/databases/$(database)/documents/tailor_customers/$(docId))
+        || resource.data.tailor_user_id == request.auth.uid
+        || customerDocIdOwnedByUser(docId)
+      );
+    }
+
+    function canWriteTailorCustomer() {
+      return isSignedIn()
+        && request.resource.data.tailor_user_id == request.auth.uid
+        && request.resource.data.phone is string
+        && request.resource.data.phone.size() > 0
+        && request.resource.data.customer_name is string
+        && request.resource.data.customer_name.size() > 0
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0;
+    }
+
     match /tailor_customers/{docId} {
-      allow read: if isSignedIn() && resource.data.tailor_user_id == request.auth.uid;
-      allow create: if isSignedIn()
-        && request.resource.data.tailor_user_id == request.auth.uid;
-      allow update: if isSignedIn()
-        && resource.data.tailor_user_id == request.auth.uid
-        && request.resource.data.tailor_user_id == request.auth.uid;
+      allow read: if canReadTailorCustomer(docId);
+      allow create: if canWriteTailorCustomer();
+      allow update: if canWriteTailorCustomer()
+        && (
+          resource.data.tailor_user_id == request.auth.uid
+          || customerDocIdOwnedByUser(docId)
+        );
       allow delete: if isSignedIn() && resource.data.tailor_user_id == request.auth.uid;
     }
 

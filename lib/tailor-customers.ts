@@ -410,13 +410,13 @@ export async function upsertTailorCustomer(
   const localDigits = stripKnownCountryCode(phone);
   const suffix = phoneSuffix(localDigits || phone, 8);
   const orgId = organizationId?.trim() || null;
-  const docId = customerDocId(merchantId, phone, organizationId);
 
   cacheLocalCustomer(merchantId, phone, name, orgId);
 
   if (!isFirebaseConfigured() || isGuestTailor(merchantId)) {
+    const guestDocId = customerDocId(merchantId, phone, organizationId);
     return {
-      id: docId,
+      id: guestDocId,
       tailor_user_id: merchantId,
       phone,
       customer_name: name,
@@ -424,25 +424,54 @@ export async function upsertTailorCustomer(
     };
   }
 
-  await assertAuthenticatedUserId(merchantId);
+  const authUid = await assertAuthenticatedUserId(merchantId);
+  const docId = customerDocId(authUid, phone, organizationId);
 
   const db = getFirebaseFirestoreClient();
-  const existing = await getDoc(doc(db, 'tailor_customers', docId));
+  let isNew = true;
+
+  try {
+    const existing = await getDoc(doc(db, 'tailor_customers', docId));
+    isNew = !existing.exists();
+  } catch (readError) {
+    const code =
+      typeof readError === 'object' &&
+      readError !== null &&
+      'code' in readError &&
+      typeof (readError as { code?: unknown }).code === 'string'
+        ? (readError as { code: string }).code
+        : '';
+    if (code !== 'permission-denied') {
+      throw readError;
+    }
+    isNew = true;
+  }
+
   const payload = buildTailorCustomerWritePayload({
-    tailorUserId: merchantId,
+    tailorUserId: authUid,
     phone,
     localDigits,
     suffix,
     customerName: name,
     organizationId: orgId,
-    isNew: !existing.exists(),
+    isNew,
   });
 
-  await setDoc(doc(db, 'tailor_customers', docId), payload, { merge: true });
+  try {
+    await setDoc(doc(db, 'tailor_customers', docId), payload, { merge: true });
+  } catch (writeError) {
+    const message = writeError instanceof Error ? writeError.message : String(writeError);
+    if (/permission|insufficient/i.test(message)) {
+      throw new Error(
+        'تعذّر حفظ بيانات العميل — تحقق من تسجيل الدخول أو تواصل مع الدعم إن استمر الخطأ.'
+      );
+    }
+    throw writeError;
+  }
 
   return {
     id: docId,
-    tailor_user_id: merchantId,
+    tailor_user_id: authUid,
     phone,
     customer_name: name,
     organization_id: orgId,
